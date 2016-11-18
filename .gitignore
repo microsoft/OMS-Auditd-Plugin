@@ -1,0 +1,6 @@
+# git ignore file for auoms project
+
+/build/config.mak
+/build/Makefile.version
+/intermediate/
+/target/

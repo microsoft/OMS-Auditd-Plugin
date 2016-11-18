@@ -1,0 +1,647 @@
+/*
+    microsoft-oms-auditd-plugin
+
+    Copyright (c) Microsoft Corporation
+
+    All rights reserved. 
+
+    MIT License
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the ""Software""), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+#include "Event.h"
+
+#include "Queue.h"
+
+#include <cstring>
+#include <algorithm>
+#include <exception>
+#include <iostream>
+
+/*****************************************************************************
+ ** CONSTANTS that define structure of AuditEvent
+ *****************************************************************************/
+
+/*
+ *  Event:
+ *      uint32_t size (including size)
+ *      uint64_t sec
+ *      uint32_t msec
+ *      uint64_t serial
+ *      uint16_t num_records
+ *      uint32_t flags
+ *      int32_t pid
+ *      RecordIndex:
+ *          uint32_t[] offsets (from start of event)
+ *      Records:
+ *          uint32_t record_type
+ *          uint16_t num_fields
+ *          uint16_t record_name_size
+ *          uint16_t record_text_size
+ *          FieldIndex: (original order)
+ *              uint32_t offsets (from start of record)
+ *          FieldIndex: (sorted by field name)
+ *              uint32_t offsets (from start of record)
+ *          char[] record_type_name (null terminated)
+ *          char[] record_text (null terminated)
+ *          Fields:
+ *              uint16_t field_name_size
+ *              uint16_t raw_value_size
+ *              uint16_t interp_value_size
+ *              uint16_t field_type
+ *              char[] field_name (null terminated)
+ *              char[] raw_value (null terminated)
+ *              char[] interp_value  (null terminated, only present if interp_value_size > 0)
+ */
+
+inline uint32_t& INDEX_VALUE(uint8_t* data, uint32_t offset, uint32_t index) {
+    return *reinterpret_cast<uint32_t*>(data+offset+sizeof(uint32_t)*index);
+}
+
+inline uint32_t INDEX_VALUE(const uint8_t* data, uint32_t offset, uint32_t index) {
+    return *reinterpret_cast<const uint32_t*>(data+offset+sizeof(uint32_t)*index);
+}
+
+inline uint32_t* INDEX_PTR(uint8_t* data, uint32_t offset, uint32_t index) {
+    return reinterpret_cast<uint32_t*>(data+offset+sizeof(uint32_t)*index);
+}
+
+inline const uint32_t* INDEX_PTR(const uint8_t* data, uint32_t offset, uint32_t index) {
+    return reinterpret_cast<const uint32_t*>(data+offset+sizeof(uint32_t)*index);
+}
+
+inline char* CHAR_PTR(uint8_t* data, uint32_t offset) {
+    return reinterpret_cast<char*>(data+offset);
+}
+
+inline const char* CHAR_PTR(const uint8_t* data, uint32_t offset) {
+    return reinterpret_cast<const char*>(data+offset);
+}
+
+constexpr uint32_t EVENT_SIZE_OFFSET = 0;
+constexpr uint32_t EVENT_SIZE_SIZE = sizeof(uint32_t);
+inline uint32_t& EVENT_SIZE(uint8_t* data) { return *reinterpret_cast<uint32_t*>(data+EVENT_SIZE_OFFSET); }
+inline uint32_t EVENT_SIZE(const uint8_t* data) { return *reinterpret_cast<const uint32_t*>(data+EVENT_SIZE_OFFSET); }
+
+constexpr uint32_t EVENT_SEC_OFFSET = EVENT_SIZE_OFFSET + EVENT_SIZE_SIZE;
+constexpr uint32_t EVENT_SEC_SIZE = sizeof(uint64_t);
+inline uint64_t& EVENT_SEC(uint8_t* data) { return *reinterpret_cast<uint64_t*>(data+EVENT_SEC_OFFSET); }
+inline uint64_t EVENT_SEC(const uint8_t* data) { return *reinterpret_cast<const uint64_t*>(data+EVENT_SEC_OFFSET); }
+
+constexpr uint32_t EVENT_MSEC_OFFSET = EVENT_SEC_OFFSET + EVENT_SEC_SIZE;
+constexpr uint32_t EVENT_MSEC_SIZE = sizeof(uint32_t);
+inline uint32_t& EVENT_MSEC(uint8_t* data) { return *reinterpret_cast<uint32_t*>(data+EVENT_MSEC_OFFSET); }
+inline uint32_t EVENT_MSEC(const uint8_t* data) { return *reinterpret_cast<const uint32_t*>(data+EVENT_MSEC_OFFSET); }
+
+constexpr uint32_t EVENT_SERIAL_OFFSET = EVENT_MSEC_OFFSET + EVENT_MSEC_SIZE;
+constexpr uint32_t EVENT_SERIAL_SIZE = sizeof(uint64_t);
+inline uint64_t& EVENT_SERIAL(uint8_t* data) { return *reinterpret_cast<uint64_t*>(data+EVENT_SERIAL_OFFSET); }
+inline uint64_t EVENT_SERIAL(const uint8_t* data) { return *reinterpret_cast<const uint64_t*>(data+EVENT_SERIAL_OFFSET); }
+
+constexpr uint32_t EVENT_NUM_RECORDS_OFFSET = EVENT_SERIAL_OFFSET + EVENT_SERIAL_SIZE;
+constexpr uint32_t EVENT_NUM_RECORDS_SIZE = sizeof(uint16_t);
+inline uint16_t& EVENT_NUM_RECORDS(uint8_t* data) { return *reinterpret_cast<uint16_t*>(data+EVENT_NUM_RECORDS_OFFSET); }
+inline uint16_t EVENT_NUM_RECORDS(const uint8_t* data) { return *reinterpret_cast<const uint16_t*>(data+EVENT_NUM_RECORDS_OFFSET); }
+
+constexpr uint32_t EVENT_FLAGS_OFFSET = EVENT_NUM_RECORDS_OFFSET + EVENT_NUM_RECORDS_SIZE;
+constexpr uint32_t EVENT_FLAGS_SIZE = sizeof(int32_t);
+inline uint32_t& EVENT_FLAGS(uint8_t* data) { return *reinterpret_cast<uint32_t*>(data+EVENT_FLAGS_OFFSET); }
+inline uint32_t EVENT_FLAGS(const uint8_t* data) { return *reinterpret_cast<const uint32_t*>(data+EVENT_FLAGS_OFFSET); }
+
+constexpr uint32_t EVENT_PID_OFFSET = EVENT_FLAGS_OFFSET + EVENT_FLAGS_SIZE;
+constexpr uint32_t EVENT_PID_SIZE = sizeof(int32_t);
+inline int32_t& EVENT_PID(uint8_t* data) { return *reinterpret_cast<int32_t*>(data+EVENT_PID_OFFSET); }
+inline int32_t EVENT_PID(const uint8_t* data) { return *reinterpret_cast<const int32_t*>(data+EVENT_PID_OFFSET); }
+
+constexpr uint32_t EVENT_RECORD_INDEX_OFFSET = EVENT_PID_OFFSET + EVENT_PID_SIZE;
+constexpr uint32_t EVENT_RECORD_INDEX_SIZE(uint32_t num_records) { return sizeof(uint32_t) * num_records; }
+inline uint32_t& EVENT_RECORD_INDEX_VALUE(uint8_t* data, int index) {
+    return *reinterpret_cast<uint32_t*>(data+EVENT_RECORD_INDEX_OFFSET+sizeof(uint32_t)*index);
+}
+
+constexpr uint32_t EVENT_HEADER_SIZE(uint32_t num_records) { return EVENT_RECORD_INDEX_OFFSET + EVENT_RECORD_INDEX_SIZE(num_records); }
+
+
+constexpr uint32_t RECORD_TYPE_OFFSET = 0;
+constexpr uint32_t RECORD_TYPE_SIZE = sizeof(uint32_t);
+inline uint32_t& RECORD_TYPE(uint8_t* data, uint32_t record_offset) {
+    return *reinterpret_cast<uint32_t*>(data+record_offset);
+}
+inline uint32_t RECORD_TYPE(const uint8_t* data, uint32_t record_offset) {
+    return *reinterpret_cast<const uint32_t*>(data+record_offset);
+}
+
+constexpr uint32_t RECORD_NUM_FIELDS_OFFSET = RECORD_TYPE_OFFSET + RECORD_TYPE_SIZE;
+constexpr uint32_t RECORD_NUM_FIELDS_SIZE = sizeof(uint16_t);
+inline uint16_t& RECORD_NUM_FIELDS(uint8_t* data, uint32_t record_offset) {
+    return *reinterpret_cast<uint16_t*>(data+record_offset+RECORD_NUM_FIELDS_OFFSET);
+}
+inline uint16_t RECORD_NUM_FIELDS(const uint8_t* data, uint32_t record_offset) {
+    return *reinterpret_cast<const uint16_t*>(data+record_offset+RECORD_NUM_FIELDS_OFFSET);
+}
+
+constexpr uint32_t RECORD_NAME_SIZE_OFFSET = RECORD_NUM_FIELDS_OFFSET + RECORD_NUM_FIELDS_SIZE;
+constexpr uint32_t RECORD_NAME_SIZE_SIZE = sizeof(uint16_t);
+inline uint16_t& RECORD_NAME_SIZE(uint8_t* data, uint32_t record_offset) {
+    return *reinterpret_cast<uint16_t*>(data+record_offset+RECORD_NAME_SIZE_OFFSET);
+}
+inline uint16_t RECORD_NAME_SIZE(const uint8_t* data, uint32_t record_offset) {
+    return *reinterpret_cast<const uint16_t*>(data+record_offset+RECORD_NAME_SIZE_OFFSET);
+}
+
+constexpr uint32_t RECORD_TEXT_SIZE_OFFSET = RECORD_NAME_SIZE_OFFSET + RECORD_NAME_SIZE_SIZE;
+constexpr uint32_t RECORD_TEXT_SIZE_SIZE = sizeof(uint16_t);
+inline uint16_t& RECORD_TEXT_SIZE(uint8_t* data, uint32_t record_offset) {
+    return *reinterpret_cast<uint16_t*>(data+record_offset+RECORD_TEXT_SIZE_OFFSET);
+}
+inline uint16_t RECORD_TEXT_SIZE(const uint8_t* data, uint32_t record_offset) {
+    return *reinterpret_cast<const uint16_t*>(data+record_offset+RECORD_TEXT_SIZE_OFFSET);
+}
+
+constexpr uint32_t RECORD_FIELD_INDEX_OFFSET = RECORD_TEXT_SIZE_OFFSET + RECORD_TEXT_SIZE_SIZE;
+constexpr uint32_t RECORD_FIELD_INDEX_SIZE(uint16_t num_fields) { return sizeof(uint32_t) * num_fields; }
+
+inline uint32_t RECORD_FIELD_SORTED_INDEX_OFFSET(uint16_t num_fields) {
+    return RECORD_FIELD_INDEX_OFFSET + RECORD_FIELD_INDEX_SIZE(num_fields);
+}
+
+constexpr uint32_t RECORD_TYPE_NAME_OFFSET(uint16_t num_fields) { return RECORD_FIELD_INDEX_OFFSET + RECORD_FIELD_INDEX_SIZE(num_fields) * 2; }
+
+inline char* RECORD_TYPE_NAME_PTR(uint8_t* data, uint32_t record_offset, uint16_t num_fields) {
+    return reinterpret_cast<char*>(data+record_offset+RECORD_TYPE_NAME_OFFSET(num_fields));
+}
+
+inline const char* RECORD_TYPE_NAME_PTR(const uint8_t* data, uint32_t record_offset, uint16_t num_fields) {
+    return reinterpret_cast<const char*>(data+record_offset+RECORD_TYPE_NAME_OFFSET(num_fields));
+}
+
+constexpr uint32_t RECORD_TEXT_OFFSET(uint16_t num_fields, uint16_t name_size) { return RECORD_FIELD_INDEX_OFFSET + RECORD_FIELD_INDEX_SIZE(num_fields) * 2 + name_size; }
+
+inline char* RECORD_TEXT_PTR(uint8_t* data, uint32_t record_offset, uint16_t num_fields, uint16_t name_size) {
+    return reinterpret_cast<char*>(data+record_offset+RECORD_TEXT_OFFSET(num_fields, name_size));
+}
+
+inline const char* RECORD_TEXT_PTR(const uint8_t* data, uint32_t record_offset, uint16_t num_fields, uint16_t name_size) {
+    return reinterpret_cast<const char*>(data+record_offset+RECORD_TEXT_OFFSET(num_fields, name_size));
+}
+
+constexpr uint32_t RECORD_HEADER_SIZE(uint16_t num_fields, uint16_t name_size, uint16_t text_size) {
+    return RECORD_TYPE_NAME_OFFSET(num_fields) + name_size + text_size;
+}
+
+constexpr uint32_t FIELD_NAME_SIZE_OFFSET = 0;
+constexpr uint32_t FIELD_NAME_SIZE_SIZE = sizeof(uint16_t);
+inline uint16_t& FIELD_NAME_SIZE(uint8_t* data, uint32_t field_offset) {
+    return *reinterpret_cast<uint16_t*>(data+field_offset);
+}
+inline uint16_t FIELD_NAME_SIZE(const uint8_t* data, uint32_t field_offset) {
+    return *reinterpret_cast<const uint16_t*>(data+field_offset);
+}
+
+constexpr uint32_t FIELD_RAW_SIZE_OFFSET = FIELD_NAME_SIZE_OFFSET + FIELD_NAME_SIZE_SIZE;
+constexpr uint32_t FIELD_RAW_SIZE_SIZE = sizeof(uint16_t);
+inline uint16_t& FIELD_RAW_SIZE(uint8_t* data, uint32_t field_offset) {
+    return *reinterpret_cast<uint16_t*>(data+field_offset+FIELD_RAW_SIZE_OFFSET);
+}
+inline uint16_t FIELD_RAW_SIZE(const uint8_t* data, uint32_t field_offset) {
+    return *reinterpret_cast<const uint16_t*>(data+field_offset+FIELD_RAW_SIZE_OFFSET);
+}
+
+constexpr uint32_t FIELD_INTERP_SIZE_OFFSET = FIELD_RAW_SIZE_OFFSET + FIELD_RAW_SIZE_SIZE;
+constexpr uint32_t FIELD_INTERP_SIZE_SIZE = sizeof(uint16_t);
+inline uint16_t& FIELD_INTERP_SIZE(uint8_t* data, uint32_t field_offset) {
+    return *reinterpret_cast<uint16_t*>(data+field_offset+FIELD_INTERP_SIZE_OFFSET);
+}
+inline uint16_t FIELD_INTERP_SIZE(const uint8_t* data, uint32_t field_offset) {
+    return *reinterpret_cast<const uint16_t*>(data+field_offset+FIELD_INTERP_SIZE_OFFSET);
+}
+
+constexpr uint32_t FIELD_TYPE_OFFSET = FIELD_INTERP_SIZE_OFFSET + FIELD_INTERP_SIZE_SIZE;
+constexpr uint32_t FIELD_TYPE_SIZE = sizeof(uint16_t);
+inline uint16_t& FIELD_TYPE(uint8_t* data, uint32_t field_offset) {
+    return *reinterpret_cast<uint16_t*>(data+field_offset+FIELD_TYPE_OFFSET);
+}
+
+inline uint16_t FIELD_TYPE(const uint8_t* data, uint32_t field_offset) {
+    return *reinterpret_cast<const uint16_t*>(data+field_offset+FIELD_TYPE_OFFSET);
+}
+
+constexpr uint32_t FIELD_HEADER_SIZE = FIELD_TYPE_OFFSET + FIELD_TYPE_SIZE;
+constexpr uint32_t FIELD_NAME_OFFSET = FIELD_HEADER_SIZE;
+
+constexpr uint32_t FIELD_RAW_VALUE_OFFSET(uint16_t name_size) { return FIELD_NAME_OFFSET + name_size; }
+constexpr uint32_t FIELD_INTERP_VALUE_OFFSET(uint16_t name_size, uint16_t raw_size) { return FIELD_NAME_OFFSET + name_size + raw_size; }
+
+/*****************************************************************************
+ ** EventBuilder
+ *****************************************************************************/
+
+int EventBuilder::BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint16_t num_records) {
+    if (_data != nullptr) {
+        throw std::runtime_error("Event already started!");
+    }
+
+    _roffset = EVENT_HEADER_SIZE(num_records);
+    _record_idx = 0;
+
+    size_t size = _roffset;
+    int ret = _allocator->Allocate(reinterpret_cast<void**>(&_data), size);
+    if (ret != 1) {
+        return ret;
+    }
+    _size = size;
+
+    EVENT_SIZE(_data) = 0;
+    EVENT_SEC(_data) = sec;
+    EVENT_MSEC(_data) = msec;
+    EVENT_SERIAL(_data) = serial;
+    EVENT_NUM_RECORDS(_data) = num_records;
+    EVENT_PID(_data) = -1;
+
+    return 1;
+}
+
+void EventBuilder::SetEventFlags(uint32_t flags) {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    EVENT_FLAGS(_data) = flags;
+}
+
+void EventBuilder::SetEventPid(int32_t pid) {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    EVENT_PID(_data) = pid;
+}
+
+int EventBuilder::EndEvent() {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    if (_record_idx != EVENT_NUM_RECORDS(_data)) {
+        throw std::runtime_error("EventRecord ended prematurely: Expected " + std::to_string(EVENT_NUM_RECORDS(_data)) + " records, only " + std::to_string(_record_idx) + " where added");
+    }
+
+    EVENT_SIZE(_data) = static_cast<uint32_t>(_size);
+
+    _data = nullptr;
+    _size = 0;
+    return _allocator->Commit();
+};
+
+int EventBuilder::CancelEvent() {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    EVENT_SIZE(_data) = 0;
+
+    _data = nullptr;
+    _size = 0;
+    return _allocator->Rollback();
+}
+
+int EventBuilder::BeginRecord(uint16_t record_type, const char* record_name, const char* record_text, uint16_t num_fields) {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    _num_fields = num_fields;
+    _field_idx = 0;
+
+    size_t name_size = strlen(record_name)+1;
+    if (name_size > UINT16_MAX) {
+        throw std::runtime_error("record_name length exceeds limit");
+    }
+
+    size_t text_size = strlen(record_text)+1;
+    if (text_size > UINT16_MAX) {
+        throw std::runtime_error("record_text length exceeds limit");
+    }
+
+    size_t size = _size+RECORD_HEADER_SIZE(num_fields, static_cast<uint16_t>(name_size), static_cast<uint16_t>(text_size));
+    int ret = _allocator->Allocate(reinterpret_cast<void**>(&_data), size);
+    if (ret != 1) {
+        return ret;
+    }
+    _size = size;
+
+    EVENT_RECORD_INDEX_VALUE(_data, _record_idx) = static_cast<uint32_t>(_roffset);
+    RECORD_TYPE(_data, _roffset) = record_type;
+    RECORD_NUM_FIELDS(_data, _roffset) = num_fields;
+    RECORD_NAME_SIZE(_data, _roffset) = static_cast<uint16_t>(name_size);
+    RECORD_TEXT_SIZE(_data, _roffset) = static_cast<uint16_t>(text_size);
+
+    memcpy(RECORD_TYPE_NAME_PTR(_data, _roffset, num_fields), record_name, name_size);
+    RECORD_TYPE_NAME_PTR(_data, _roffset, num_fields)[name_size-1] = 0;
+
+    memcpy(RECORD_TEXT_PTR(_data, _roffset, num_fields, static_cast<uint16_t>(name_size)), record_text, text_size);
+    RECORD_TEXT_PTR(_data, _roffset, num_fields, static_cast<uint16_t>(name_size))[text_size-1] = 0;
+
+    _foffset = static_cast<uint32_t>(_size);
+    _fidxoffset = _roffset+RECORD_FIELD_INDEX_OFFSET;
+    _fsortedidxoffset = _roffset+RECORD_FIELD_SORTED_INDEX_OFFSET(num_fields);
+
+    return 1;
+}
+
+int EventBuilder::EndRecord() {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    if (_field_idx != _num_fields) {
+        throw std::runtime_error("EventRecord ended prematurely: Expected " + std::to_string(_num_fields) + " fields, only " + std::to_string(_field_idx) + " where added");
+    }
+
+    // Sort fields
+    memcpy(_data+_fsortedidxoffset, _data+_fidxoffset, sizeof(uint32_t)*_num_fields);
+    uint32_t* start = INDEX_PTR(_data, _fsortedidxoffset, 0);
+    uint32_t* end = INDEX_PTR(_data, _fsortedidxoffset, _num_fields);
+    std::sort(start, end, [this](uint32_t a, uint32_t b) -> bool {
+        return strcmp(CHAR_PTR(_data, a+FIELD_NAME_OFFSET),
+                      CHAR_PTR(_data, b+FIELD_NAME_OFFSET)) < 0;
+    });
+
+    _record_idx += 1;
+    _roffset = static_cast<uint32_t>(_size);
+
+    return 1;
+}
+
+int EventBuilder::AddField(const char *field_name, const char* raw_value, const char* interp_value, event_field_type_t field_type) {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    size_t name_size = strlen(field_name)+1;
+    size_t raw_size = strlen(raw_value)+1;
+    size_t fsize = FIELD_HEADER_SIZE + name_size + raw_size;
+    size_t interp_size = 0;
+    if (interp_value != nullptr && raw_value != interp_value) {
+        interp_size = strlen(interp_value)+1;
+        fsize += interp_size;
+    }
+
+    if (name_size > UINT16_MAX) {
+        throw std::runtime_error("field_name length exceeds limit");
+    }
+
+    if (raw_size > UINT16_MAX) {
+        throw std::runtime_error("raw_value length exceeds limit");
+    }
+
+    if (interp_size > UINT16_MAX) {
+        throw std::runtime_error("interp_value length exceeds limit");
+    }
+
+    size_t size = _size+fsize;
+    int ret = _allocator->Allocate(reinterpret_cast<void**>(&_data), size);
+    if (ret != 1) {
+        return ret;
+    }
+    _size = size;
+
+    FIELD_NAME_SIZE(_data, _foffset) = static_cast<uint16_t>(name_size);
+    FIELD_RAW_SIZE(_data, _foffset) = static_cast<uint16_t>(raw_size);
+    FIELD_INTERP_SIZE(_data, _foffset) = static_cast<uint16_t>(interp_size);
+    FIELD_TYPE(_data, _foffset) = field_type;
+
+    memcpy(_data+_foffset + FIELD_NAME_OFFSET, field_name, name_size);
+    CHAR_PTR(_data, _foffset + FIELD_NAME_OFFSET)[name_size-1] = 0;
+
+    memcpy(_data+ _foffset + FIELD_RAW_VALUE_OFFSET(static_cast<uint16_t>(name_size)), raw_value, raw_size);
+    CHAR_PTR(_data, _foffset + FIELD_RAW_VALUE_OFFSET(static_cast<uint16_t>(name_size)))[raw_size-1] = 0;
+
+    if (interp_size > 0) {
+        memcpy(_data+_foffset + FIELD_INTERP_VALUE_OFFSET(static_cast<uint16_t>(name_size), static_cast<uint16_t>(raw_size)), interp_value, interp_size);
+        CHAR_PTR(_data, _foffset + FIELD_INTERP_VALUE_OFFSET(static_cast<uint16_t>(name_size), static_cast<uint16_t>(raw_size)))[interp_size-1] = 0;
+    }
+
+    INDEX_VALUE(_data, _fidxoffset, _field_idx) = _foffset;
+
+    _foffset = static_cast<uint32_t>(_size);
+    _field_idx += 1;
+
+    return 1;
+}
+
+/*****************************************************************************
+ ** EventRecordField
+ *****************************************************************************/
+
+const char* EventRecordField::FieldName() const {
+    return CHAR_PTR(_data, _foffset + FIELD_NAME_OFFSET);
+}
+
+uint16_t EventRecordField::FieldNameSize() const {
+    return FIELD_NAME_SIZE(_data, _foffset) - static_cast<uint16_t>(1);
+}
+
+const char* EventRecordField::RawValue() const {
+    return CHAR_PTR(_data, _foffset + FIELD_RAW_VALUE_OFFSET(FIELD_NAME_SIZE(_data, _foffset)));
+}
+
+uint16_t EventRecordField::RawValueSize() const {
+    return FIELD_RAW_SIZE(_data, _foffset) - static_cast<uint16_t>(1);
+}
+
+const char* EventRecordField::InterpValue() const {
+    if (FIELD_INTERP_SIZE(_data, _foffset) > 0) {
+        return CHAR_PTR(_data, _foffset + FIELD_INTERP_VALUE_OFFSET(
+                FIELD_NAME_SIZE(_data, _foffset),
+                FIELD_RAW_SIZE(_data, _foffset)
+        ));
+    } else {
+        return nullptr;
+    }
+}
+
+uint16_t EventRecordField::InterpValueSize() const {
+    if (FIELD_INTERP_SIZE(_data, _foffset) > 0) {
+        return FIELD_INTERP_SIZE(_data, _foffset) - static_cast<uint16_t>(1);
+    } else {
+        return 0;
+    }
+}
+
+event_field_type_t EventRecordField::FieldType() const {
+    return static_cast<event_field_type_t>(FIELD_TYPE(_data, _foffset));
+}
+
+EventRecordField::EventRecordField(const uint8_t* data, uint32_t fidxoffset, uint32_t index) {
+    _data = data;
+    _fidxoffset = fidxoffset;
+    _index = index;
+    _foffset = INDEX_VALUE(_data, _fidxoffset, _index);
+}
+
+void EventRecordField::move(int32_t n) {
+    _index += n;
+    _foffset = INDEX_VALUE(_data, _fidxoffset, _index);
+}
+
+/*****************************************************************************
+ ** EventRecord
+ *****************************************************************************/
+
+uint32_t EventRecord::RecordType() const {
+    return RECORD_TYPE(_data, _roffset);
+}
+
+const char* EventRecord::RecordTypeName() const {
+    return RECORD_TYPE_NAME_PTR(_data, _roffset, RECORD_NUM_FIELDS(_data, _roffset));
+}
+
+uint16_t EventRecord::RecordTypeNameSize() const {
+    return RECORD_NAME_SIZE(_data, _roffset) - static_cast<uint16_t>(1);
+}
+
+const char* EventRecord::RecordText() const {
+    return RECORD_TEXT_PTR(_data, _roffset, RECORD_NUM_FIELDS(_data, _roffset), RECORD_NAME_SIZE(_data, _roffset));
+}
+
+uint16_t EventRecord::RecordTextSize() const {
+    return RECORD_TEXT_SIZE(_data, _roffset) - static_cast<uint16_t>(1);
+}
+
+uint16_t EventRecord::NumFields() const {
+    return RECORD_NUM_FIELDS(_data, _roffset);
+}
+
+EventRecordField EventRecord::FieldAt(uint32_t idx) const {
+    if (idx > RECORD_NUM_FIELDS(_data, _roffset)) {
+        throw std::out_of_range("Field index out of range for EventRecord: " + std::to_string(idx));
+    }
+    return EventRecordField(
+            _data,
+            _roffset+RECORD_FIELD_INDEX_OFFSET,
+            idx
+    );
+
+}
+
+EventRecordField EventRecord::FieldByName(const char* name) const {
+    uint16_t num_fields = RECORD_NUM_FIELDS(_data, _roffset);
+    uint32_t idxoffset = _roffset+RECORD_FIELD_SORTED_INDEX_OFFSET(num_fields);
+    const uint32_t* start = INDEX_PTR(_data, idxoffset, 0);
+    const uint32_t* end = INDEX_PTR(_data, idxoffset, num_fields);
+
+    auto res = std::lower_bound(start, end, name, [this](uint32_t e, const char* v) -> bool {
+        return strcmp(CHAR_PTR(this->_data, e+FIELD_NAME_OFFSET), v) < 0;
+    });
+
+    if (res == end) {
+        return EventRecordField();
+    }
+
+    const char* found = CHAR_PTR(_data, *res+FIELD_NAME_OFFSET);
+
+    if (strcmp(name, found) != 0) {
+        return EventRecordField();
+    }
+
+    return EventRecordField(
+            _data,
+            _roffset+RECORD_FIELD_SORTED_INDEX_OFFSET(num_fields),
+            static_cast<uint32_t>(res - start)
+    );
+}
+
+EventRecordField EventRecord::begin() const {
+    return EventRecordField(
+            _data,
+            _roffset+RECORD_FIELD_INDEX_OFFSET,
+            0
+    );
+}
+
+EventRecordField EventRecord::end() const {
+    return EventRecordField(
+            _data,
+            _roffset+RECORD_FIELD_INDEX_OFFSET,
+            RECORD_NUM_FIELDS(_data, _roffset)
+    );
+}
+
+EventRecordField EventRecord::begin_sorted() const {
+    return EventRecordField(
+            _data,
+            _roffset+RECORD_FIELD_SORTED_INDEX_OFFSET(RECORD_NUM_FIELDS(_data, _roffset)),
+            0
+    );
+}
+
+EventRecordField EventRecord::end_sorted() const {
+    return EventRecordField(
+            _data,
+            _roffset+RECORD_FIELD_SORTED_INDEX_OFFSET(RECORD_NUM_FIELDS(_data, _roffset)),
+            RECORD_NUM_FIELDS(_data, _roffset)
+    );
+}
+
+EventRecord::EventRecord(const uint8_t* data, uint32_t index) {
+    _data = data;
+    _index = index;
+    _roffset = INDEX_VALUE(_data, EVENT_RECORD_INDEX_OFFSET, _index);
+}
+
+void EventRecord::move(int32_t n) {
+    _index += n;
+    _roffset = INDEX_VALUE(_data, EVENT_RECORD_INDEX_OFFSET, _index);
+}
+
+/*****************************************************************************
+ ** Event
+ *****************************************************************************/
+
+uint32_t Event::Size() const {
+    return EVENT_SIZE(_data);
+}
+
+uint64_t Event::Seconds() const {
+    return EVENT_SEC(_data);
+}
+
+uint32_t Event::Milliseconds() const {
+    return EVENT_MSEC(_data);
+}
+
+uint64_t Event::Serial() const {
+    return EVENT_SERIAL(_data);
+}
+
+uint16_t Event::NumRecords() const {
+    return EVENT_NUM_RECORDS(_data);
+}
+
+uint32_t Event::Flags() const {
+    return EVENT_FLAGS(_data);
+}
+
+int32_t Event::Pid() const {
+    return EVENT_PID(_data);
+}
+
+EventRecord Event::RecordAt(uint32_t index) const {
+    if (index > EVENT_NUM_RECORDS(_data)) {
+        throw std::out_of_range("Record index out of range for event: " + std::to_string(index));
+    }
+    return EventRecord(_data, index);
+}
+
+EventRecord Event::begin() const {
+    return EventRecord(_data, 0);
+}
+
+EventRecord Event::end() const {
+    return EventRecord(_data, EVENT_NUM_RECORDS(_data));
+}

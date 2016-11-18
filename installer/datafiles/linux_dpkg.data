@@ -1,0 +1,6 @@
+%Variables
+PERFORMING_UPGRADE_NOT: '[ "$1" != "upgrade" -a "$1" != "purge" ]'
+PACKAGE_TYPE: 'DPKG'
+
+%Dependencies
+auditd
