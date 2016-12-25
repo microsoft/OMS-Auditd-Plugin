@@ -16,53 +16,22 @@
 # THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ####
 
-
-ulinux_detect_installer()
-{
-    INSTALLER=
-
-    # If DPKG lives here, assume we use that. Otherwise we use RPM.
-    which dpkg > /dev/null 2>&1
-    if [ $? -eq 0 ]; then
-        INSTALLER=DPKG
-    else
-        INSTALLER=RPM
-    fi
-}
-
-# $1 - The name of the package to check as to whether it's installed
-check_if_pkg_is_installed() {
-    if [ "$INSTALLER" = "DPKG" ]; then
-        dpkg -s $1 2> /dev/null | grep Status | grep " installed" 1> /dev/null
-    else
-        rpm -q $1 2> /dev/null 1> /dev/null
-    fi
-
-    return $?
-}
-
 ISSUE_WARNING=0
 
-echo "Checking if Auditd and libauparse are installed..." 1>&2
-if [ "$INSTALLER" = "DPKG" ]; then
-    # On debian based systems, the auditd package depends on the libauparse0 package
-    check_if_pkg_is_installed auditd
-    if [ $? -ne 0 ]; then
-        echo "  auditd package isn't installed" 1>&2
+echo "Checking if required dependencies are installed..." 1>&2
+if [ ! -e /sbin/auditd ]; then
+        echo "  auditd isn't installed" 1>&2
         ISSUE_WARNING=1
-    fi
-else
-    check_if_pkg_is_installed audit
-    if [ $? -ne 0 ]; then
-        echo "  audit package isn't installed" 1>&2
+fi
+/sbin/ldconfig -p | grep libaudit.so >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+        echo "  libaudit.so isn't installed" 1>&2
         ISSUE_WARNING=1
-    else
-        check_if_pkg_is_installed audit-libs
-        if [ $? -ne 0 ]; then
-            echo "  audit-libs package isn't installed" 1>&2
-            ISSUE_WARNING=1
-        fi
-    fi
+fi
+/sbin/ldconfig -p | grep libauparse.so >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+        echo "  libauparse.so isn't installed" 1>&2
+        ISSUE_WARNING=1
 fi
 
 if [ $ISSUE_WARNING -ne 0 ]; then
