@@ -25,6 +25,7 @@ AUOMS_BIN=$(RELEASE_DIR)/bin/auoms
 SEPOLICY_SRC_DIR=$(BASE_DIR)/installer/selinux
 SEPOLICY_DIR=$(INTERMEDIATE_DIR)/selinux
 SEPOLICY_DIR_EL5=$(INTERMEDIATE_DIR)/selinux.el5
+SEPOLICY_DIR_EL6=$(INTERMEDIATE_DIR)/selinux.el6
 
 # Compiler flags
 
@@ -109,13 +110,20 @@ $(SEPOLICY_DIR_EL5)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.el5.te $(SEPOLICY_SRC_D
 	$(COPY) $(SEPOLICY_SRC_DIR)/auoms.fc $(SEPOLICY_DIR_EL5)
 	cd $(SEPOLICY_DIR_EL5); make -f /usr/share/selinux/devel/Makefile
 
+$(SEPOLICY_DIR_EL6)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.el6.te $(SEPOLICY_SRC_DIR)/auoms.fc
+	@echo "========================= Building EL6 selinux policy module"
+	$(MKPATH) $(SEPOLICY_DIR_EL6)
+	$(COPY) $(SEPOLICY_SRC_DIR)/auoms.el6.te $(SEPOLICY_DIR_EL6)/auoms.te
+	$(COPY) $(SEPOLICY_SRC_DIR)/auoms.fc $(SEPOLICY_DIR_EL6)
+	cd $(SEPOLICY_DIR_EL6); make -f /usr/share/selinux/devel/Makefile
+
 $(SEPOLICY_DIR)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.te $(SEPOLICY_SRC_DIR)/auoms.fc
 	@echo "========================= Building selinux policy module"
 	$(MKPATH) $(SEPOLICY_DIR)
 	$(COPY) $(SEPOLICY_SRC_DIR)/auoms.te $(SEPOLICY_SRC_DIR)/auoms.fc $(SEPOLICY_DIR)
 	cd $(SEPOLICY_DIR); make -f /usr/share/selinux/devel/Makefile
 
-sepolicy : $(SEPOLICY_DIR_EL5)/auoms.pp $(SEPOLICY_DIR)/auoms.pp
+sepolicy : $(SEPOLICY_DIR_EL5)/auoms.pp $(SEPOLICY_DIR_EL65)/auoms.pp $(SEPOLICY_DIR)/auoms.pp
 
 test : $(AUOMS_BIN)
 	cd $(BUILD_DIR); PATH=/opt/rh/devtoolset-2/root/usr/bin:$(PATH) make
@@ -222,6 +230,7 @@ $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).rpm: $(AUOMS_BIN) sepolicy
 		--DATAFILE_PATH=$(BASE_DIR)/installer/datafiles \
 		--OUTPUTFILE=$(OUTPUT_PACKAGE_PREFIX) \
 		$(INSTALLER_DATAFILES_RPM)
+	sudo $(RMDIR) $(STAGING_DIR)
 
 $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).deb: $(AUOMS_BIN) sepolicy
 	@echo "========================= Performing Building DEB package"
@@ -247,6 +256,7 @@ $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).deb: $(AUOMS_BIN) sepolicy
 		--OUTPUTFILE=$(OUTPUT_PACKAGE_PREFIX) \
 		$(INSTALLER_DATAFILES_DPKG)
 	sudo chown --reference=$(BASE_DIR) $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).deb
+	sudo $(RMDIR) $(STAGING_DIR)
 else
 
 kit : $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).$(PACKAGE_SUFFIX)
@@ -273,5 +283,6 @@ $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).$(PACKAGE_SUFFIX) : $(AUOMS_BIN) sepolicy
 		--DATAFILE_PATH=$(BASE_DIR)/installer/datafiles \
 		--OUTPUTFILE=$(OUTPUT_PACKAGE_PREFIX) \
 		$(INSTALLER_DATAFILES_CURRENT)
+	sudo $(RMDIR) $(STAGING_DIR)
 
 endif

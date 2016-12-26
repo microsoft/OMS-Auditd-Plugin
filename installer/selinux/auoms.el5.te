@@ -18,7 +18,9 @@ policy_module(auoms,1.0);
 
 #
 # This policy file was developed for CentOS/RHEL 5.
-# It will not work on CentOS/RHEL 6 or 7
+# It may not work on CentOS/RHEL 6 and will not work on CentOS/RHEL 7.
+# This policy will not work on systems where the "open" operation was added
+# or where "passwd_file_t" type was added
 #
 
 require {

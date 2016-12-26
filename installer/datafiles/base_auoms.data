@@ -2,6 +2,7 @@
 SHELL_HEADER:            '#!/bin/sh'
 SEPKG_DIR:               '/usr/share/selinux/packages/auoms'
 SEPOLICY_FILE_EL5:       '/usr/share/selinux/packages/auoms/auoms.el5.pp'
+SEPOLICY_FILE_EL6:       '/usr/share/selinux/packages/auoms/auoms.el6.pp'
 SEPOLICY_FILE:           '/usr/share/selinux/packages/auoms/auoms.pp'
 AUDISP_CONF_DIR:         '/etc/audisp/plugins.d'
 AUOMS_AUDISP_CONF:       '/etc/audisp/plugins.d/auoms.conf'
@@ -27,9 +28,11 @@ MAINTAINER:              'Microsoft Corporation'
 ${{AUOMS_BIN}};                             intermediate/${{BUILD_CONFIGURATION}}/builddir/release/bin/auoms;       755; root; root
 
 ${{SEPOLICY_FILE_EL5}};                     intermediate/${{BUILD_CONFIGURATION}}/selinux.el5/auoms.pp;             755; root; root
+${{SEPOLICY_FILE_EL6}};                     intermediate/${{BUILD_CONFIGURATION}}/selinux.el6/auoms.pp;             755; root; root
 ${{SEPOLICY_FILE}};                         intermediate/${{BUILD_CONFIGURATION}}/selinux/auoms.pp;                 755; root; root
 ${{SEPKG_DIR}}/auoms.te;                    installer/selinux/auoms.te;                                             644; root; root
 ${{SEPKG_DIR}}/auoms.el5.te;                installer/selinux/auoms.el5.te;                                         644; root; root
+${{SEPKG_DIR}}/auoms.el6.te;                installer/selinux/auoms.el6.te;                                         644; root; root
 ${{SEPKG_DIR}}/auoms.fc;                    installer/selinux/auoms.fc;                                             644; root; root
 
 /etc/opt/microsoft/auoms/auoms.conf;        installer/conf/auoms.conf;                                              644; root; root; conffile

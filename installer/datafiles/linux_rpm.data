@@ -8,28 +8,26 @@ audit-libs
 
 %Postinstall_200
 if [ -e /usr/sbin/semodule ]; then
-    echo "System appears to have SELinux installed, attempting to determine policy version"
-    policy_ver=$(ls /etc/selinux/*/policy/policy.* | cut -d'.' -f2 | sort | tail -1)
-    if [ -z "$policy_ver" ]; then
-        echo "ERROR: Failed to determine policy version: the auoms policy module will not be installed"
+    echo "System appears to have SELinux installed, attempting to install selinux policy module for auoms"
+
+    SUCCESS=0
+    for POLICY_FILE in ${{SEPOLICY_FILE}} ${{SEPOLICY_FILE_EL6}} ${{SEPOLICY_FILE_EL5}}; do
+        echo "  Trying ${POLICY_FILE}"
+        /usr/sbin/semodule -i ${POLICY_FILE} >/dev/null 2>&1
+        if [ $? -eq 0 ]; then
+            SUCCESS=1
+            break
+        fi
+    done
+
+    if [ $SUCCESS -eq 0 ]; then
+        echo "ERROR: None of the available auoms selinux policy module versions could be installed"
         exit 0
     fi
 
-    if [ $policy_ver -lt 21 ]; then
-        echo "ERROR: policy version ($policy_ver) is older than minimum supported (21): the auoms policy module will not be installed"
-        exit 0
-    elif [ $policy_ver -lt 24 ]; then
-        # Not sure at which version the open permission (or passwd_file_t) was added but lets assume it is less than 24.
-        POLICY_FILE=${{SEPOLICY_FILE_EL5}}
-    else
-        POLICY_FILE=${{SEPOLICY_FILE}}
-    fi
-    echo "Installing selinux policy module for auoms"
-    /usr/sbin/semodule -i ${POLICY_FILE}
-    if [ $? -eq 0 ]; then
-        echo "Labeling auoms files"
-        /sbin/restorecon -R -v /opt/microsoft/auoms /etc/opt/microsoft/auoms /var/opt/microsoft/auoms
-    fi
+    echo "Labeling auoms files"
+    /sbin/restorecon -R -v /opt/microsoft/auoms /etc/opt/microsoft/auoms /var/opt/microsoft/auoms
+
     echo "Restarting auditd (otherwise audispd won't be able to start auoms)"
     service auditd restart
 fi

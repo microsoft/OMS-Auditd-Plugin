@@ -17,9 +17,9 @@ policy_module(auoms,1.0);
 ####
 
 #
-# This policy file was developed for CentOS/RHEL 6 & 7.
-# It will not work on CentOS/RHEL 5, it may not work on CentOS/RHEL 6.
-# It requires the "open" operation and the "passwd_file_t" type.
+# This policy file was developed for CentOS/RHEL 6.
+# It  will not work on CentOS/RHEL 6 or 7.
+# This policy will not work on systems where the "passwd_file_t" type was added
 #
 
 require {
@@ -32,7 +32,6 @@ require {
         type etc_t;
         type syslogd_t;
         type restorecon_t;
-        type passwd_file_t;
         type tmp_t;
         type locale_t;
         type rpm_t;
@@ -77,7 +76,6 @@ allow auoms_t auoms_sock_var_t:sock_file write;
 
 allow auoms_t etc_t:dir { open read getattr search };
 allow auoms_t etc_t:file { open read getattr };
-allow auoms_t passwd_file_t:file { open read };
 
 allow auoms_t locale_t:file { open read getattr };
 allow auoms_t self:unix_dgram_socket { create connect write };
