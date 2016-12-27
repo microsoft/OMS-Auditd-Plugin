@@ -123,7 +123,7 @@ $(SEPOLICY_DIR)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.te $(SEPOLICY_SRC_DIR)/auom
 	$(COPY) $(SEPOLICY_SRC_DIR)/auoms.te $(SEPOLICY_SRC_DIR)/auoms.fc $(SEPOLICY_DIR)
 	cd $(SEPOLICY_DIR); make -f /usr/share/selinux/devel/Makefile
 
-sepolicy : $(SEPOLICY_DIR_EL5)/auoms.pp $(SEPOLICY_DIR_EL65)/auoms.pp $(SEPOLICY_DIR)/auoms.pp
+sepolicy : $(SEPOLICY_DIR_EL5)/auoms.pp $(SEPOLICY_DIR_EL6)/auoms.pp $(SEPOLICY_DIR)/auoms.pp
 
 test : $(AUOMS_BIN)
 	cd $(BUILD_DIR); PATH=/opt/rh/devtoolset-2/root/usr/bin:$(PATH) make
