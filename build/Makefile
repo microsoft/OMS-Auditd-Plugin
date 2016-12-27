@@ -94,6 +94,7 @@ clean-status :
 # No default rules, please
 .SUFFIX:
 
+ifeq ($(ULINUX),1)
 $(AUOMS_BIN) : $(INTERMEDIATE_DIR)/ext_include $(INTERMEDIATE_DIR)/boost_root $(BUILD_DIR) $(BASE_DIR)/*.cpp $(BASE_DIR)/*.h
 	@echo "========================= Building auoms"
 	cd $(BUILD_DIR); PATH=/opt/rh/devtoolset-2/root/usr/bin:$(PATH) make install
@@ -102,7 +103,18 @@ $(BUILD_DIR) :
 	@echo "========================= Creating cmake builddir dir"
 	$(MKPATH) $(BUILD_DIR)
 	cd $(BUILD_DIR); PATH=/opt/rh/devtoolset-2/root/usr/bin:$(PATH) BOOST_ROOT=$(INTERMEDIATE_DIR)/boost_root cmake -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) $(BASE_DIR)
+else
+$(AUOMS_BIN) : $(INTERMEDIATE_DIR)/ext_include $(BUILD_DIR) $(BASE_DIR)/*.cpp $(BASE_DIR)/*.h
+	@echo "========================= Building auoms"
+	cd $(BUILD_DIR); make install
 
+$(BUILD_DIR) :
+	@echo "========================= Creating cmake builddir dir"
+	$(MKPATH) $(BUILD_DIR)
+	cd $(BUILD_DIR); cmake -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) $(BASE_DIR)
+endif
+
+ifeq ($(ULINUX),1)
 $(SEPOLICY_DIR_EL5)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.el5.te $(SEPOLICY_SRC_DIR)/auoms.fc
 	@echo "========================= Building EL5 selinux policy module"
 	$(MKPATH) $(SEPOLICY_DIR_EL5)
@@ -122,11 +134,32 @@ $(SEPOLICY_DIR)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.te $(SEPOLICY_SRC_DIR)/auom
 	$(MKPATH) $(SEPOLICY_DIR)
 	$(COPY) $(SEPOLICY_SRC_DIR)/auoms.te $(SEPOLICY_SRC_DIR)/auoms.fc $(SEPOLICY_DIR)
 	cd $(SEPOLICY_DIR); make -f /usr/share/selinux/devel/Makefile
+else
+$(SEPOLICY_DIR_EL5)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.el5.te $(SEPOLICY_SRC_DIR)/auoms.fc
+	@echo "========================= Building EL5 selinux policy module"
+	$(MKPATH) $(SEPOLICY_DIR_EL5)
+	touch $(SEPOLICY_DIR_EL5)/auoms.pp
+
+$(SEPOLICY_DIR_EL6)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.el6.te $(SEPOLICY_SRC_DIR)/auoms.fc
+	@echo "========================= Building EL6 selinux policy module"
+	$(MKPATH) $(SEPOLICY_DIR_EL6)
+	touch $(SEPOLICY_DIR_EL6)/auoms.pp
+
+$(SEPOLICY_DIR)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.te $(SEPOLICY_SRC_DIR)/auoms.fc
+	@echo "========================= Building selinux policy module"
+	$(MKPATH) $(SEPOLICY_DIR)
+	touch $(SEPOLICY_DIR)/auoms.pp
+endif
 
 sepolicy : $(SEPOLICY_DIR_EL5)/auoms.pp $(SEPOLICY_DIR_EL6)/auoms.pp $(SEPOLICY_DIR)/auoms.pp
 
+ifeq ($(ULINUX),1)
 test : $(AUOMS_BIN)
 	cd $(BUILD_DIR); PATH=/opt/rh/devtoolset-2/root/usr/bin:$(PATH) make
+else
+test : $(AUOMS_BIN)
+	cd $(BUILD_DIR); make
+endif
 
 tests : test
 
@@ -140,6 +173,7 @@ $(INTERMEDIATE_DIR)/ext_include :
 	mv $(INTERMEDIATE_DIR)/tmp/ext_include $(INTERMEDIATE_DIR)
 	$(RMDIR) $(INTERMEDIATE_DIR)/tmp
 
+ifeq ($(ULINUX),1)
 $(INTERMEDIATE_DIR)/boost_root :
 	@echo "========================= Creating boost_root dir"
 	$(MKPATH) $(INTERMEDIATE_DIR)/tmp/boost_root/include
@@ -148,6 +182,7 @@ $(INTERMEDIATE_DIR)/boost_root :
 	cd $(INTERMEDIATE_DIR)/tmp/boost_root/lib; for file in $$(ls $(USR_LIB_DIR)/libboost*.1.48.0); do name=$$(basename $$file); lname=$$(basename $$file .1.48.0); ln -s $$file $$name; ln -s $$file $$lname; done
 	mv $(INTERMEDIATE_DIR)/tmp/boost_root $(INTERMEDIATE_DIR)
 	$(RMDIR) $(INTERMEDIATE_DIR)/tmp
+endif
 
 #--------------------------------------------------------------------------------
 # Build the distribution kit
@@ -264,9 +299,10 @@ kit : $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).$(PACKAGE_SUFFIX)
 $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).$(PACKAGE_SUFFIX) : $(AUOMS_BIN) sepolicy
 
 	@echo "========================= Performing Building installation package"
+	$(MKPATH) $(TARGET_DIR)
 	$(MKPATH) $(INSTALLER_TMPDIR)
 	sudo $(RMDIR) $(STAGING_DIR)
-	python $(PAL_DIR)/installer/InstallBuilder/installbuilder.py \
+	sudo python $(PAL_DIR)/installer/InstallBuilder/installbuilder.py \
 		--BASE_DIR=$(BASE_DIR) \
 		--TARGET_DIR=$(TARGET_DIR) \
 		--INTERMEDIATE_DIR=$(INSTALLER_TMPDIR) \

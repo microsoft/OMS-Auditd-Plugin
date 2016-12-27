@@ -38,17 +38,7 @@ if [ ! -d "$scxpal_dir" ]; then
 fi
 
 if [ ! -e /usr/include/auparse.h ]; then
-    echo "audit-libs-devel package is not installed!" >& 2
-    exit 1
-fi
-
-if [ ! -e /opt/rh/devtoolset-2/root/usr/bin/g++ ]; then
-    echo "devtools-2 packages are not installed!" >& 2
-    exit 1
-fi
-
-if [ ! -e /usr/include/boost148 ]; then
-    echo "boost148-devel package is not installed!" >& 2
+    echo "audit libs dev package is not installed!" >& 2
     exit 1
 fi
 
@@ -181,6 +171,18 @@ fi
 if [ "$opensource_distro" -eq 1 ]; then
     # We really don't want ULINUX, not even defaulted
     NOULINUX=1
+fi
+
+if [ "$ULINUX" -eq 1 ]; then
+    if [ ! -e /opt/rh/devtoolset-2/root/usr/bin/g++ ]; then
+        echo "devtools-2 packages are not installed!" >& 2
+        exit 1
+    fi
+
+    if [ ! -e /usr/include/boost148 ]; then
+        echo "boost148-devel package is not installed!" >& 2
+        exit 1
+    fi
 fi
 
 # Note: Most of this code came from the PAL configure file
