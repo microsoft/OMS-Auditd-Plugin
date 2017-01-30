@@ -17,20 +17,21 @@
 #define AUOMS_EVENTTRANSFORMER_H
 
 #include "EventTransformerConfig.h"
+#include "EventTransformerBase.h"
 #include "MessageSinkBase.h"
 #include "Event.h"
 
 #include <string>
 #include <memory>
 
-class EventTransformer {
+class EventTransformer: public EventTransformerBase {
 public:
     EventTransformer(EventTransformerConfig config, const std::string& tag, std::shared_ptr<MessageSinkBase>& sink):
             _config(config), _tag(tag), _sink(sink)
     {}
 
-    void ProcessEvent(const Event& event);
-    void ProcessEventsGap(const EventGapReport& gap);
+    virtual void ProcessEvent(const Event& event);
+    virtual void ProcessEventsGap(const EventGapReport& gap);
 
 private:
     void begin_message(const Event& event);

@@ -332,7 +332,6 @@ bool AuditEventProcessor::process_field()
         }
     }
 
-
     auto ret = _builder->AddField(name_ptr, val_ptr, interp_ptr, field_type);
     if (ret != 1) {
         if (ret == Queue::CLOSED) {

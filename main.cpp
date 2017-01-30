@@ -13,9 +13,11 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
+#include "OMSEventTransformerConfig.h"
 #include "EventTransformerConfig.h"
 #include "AuditEventProcessor.h"
 #include "MsgPackMessageSink.h"
+#include "OMSEventTransformer.h"
 #include "EventTransformer.h"
 #include "JSONMessageSink.h"
 #include "StdoutWriter.h"
@@ -100,7 +102,7 @@ int main(int argc, char**argv) {
         mode = config.GetString("mode");
     }
 
-    if (mode != "record" && mode != "event") {
+    if (mode != "record" && mode != "event" && mode != "oms") {
         Logger::Error("Invalid 'mode' value: %s", mode.c_str());
         exit(1);
     }
@@ -109,7 +111,7 @@ int main(int argc, char**argv) {
         output_format = config.GetString("output_format");
     }
 
-    if (output_format != "json" && output_format != "msgpack" && output_format != "bond") {
+    if (output_format != "json" && output_format != "msgpack") {
         Logger::Error("Invalid 'output_format' value: %s", output_format.c_str());
         exit(1);
     }
@@ -170,10 +172,22 @@ int main(int argc, char**argv) {
 
     Logger::OpenSyslog("auoms", LOG_DAEMON);
 
-    EventTransformerConfig et_config(mode == "record");
-    if (!et_config.LoadFromConfig(config)) {
-        Logger::Error("Invalid config. Exiting.");
-        exit(1);
+    void * et_config_p;
+
+    if (mode == "oms") {
+        OMSEventTransformerConfig* et_config = new OMSEventTransformerConfig();
+        if (!et_config->LoadFromConfig(config)) {
+            Logger::Error("Invalid config. Exiting.");
+            exit(1);
+        }
+        et_config_p = et_config;
+    } else {
+        EventTransformerConfig* et_config = new EventTransformerConfig(mode == "record");
+        if (!et_config->LoadFromConfig(config)) {
+            Logger::Error("Invalid config. Exiting.");
+            exit(1);
+        }
+        et_config_p = et_config;
     }
 
     auto in_queue = std::make_shared<Queue>(in_queue_file, in_queue_size);
@@ -216,7 +230,12 @@ int main(int argc, char**argv) {
     auto event_queue = std::make_shared<EventQueue>(in_queue);
 
     std::shared_ptr<EventBuilder> builder = std::make_shared<EventBuilder>(event_queue);
-    EventTransformer transformer(et_config, message_label, sink);
+    EventTransformerBase* transformer;
+    if (mode == "oms") {
+        transformer = new OMSEventTransformer(*(static_cast<OMSEventTransformerConfig*>(et_config_p)), message_label, sink);
+    } else {
+        transformer = new EventTransformer(*(static_cast<EventTransformerConfig*>(et_config_p)), message_label, sink);
+    }
     AuditEventProcessor aep(builder, user_db);
     aep.Initialize();
     StdinReader reader;
@@ -288,11 +307,11 @@ int main(int argc, char**argv) {
                     switch (msg_type) {
                         case queue_msg_type_t::EVENT: {
                             Event event(data, size);
-                            transformer.ProcessEvent(event);
+                            transformer->ProcessEvent(event);
                             break;
                         }
                         case queue_msg_type_t::EVENTS_GAP: {
-                            transformer.ProcessEventsGap(*reinterpret_cast<EventGapReport *>(data));
+                            transformer->ProcessEventsGap(*reinterpret_cast<EventGapReport *>(data));
                             break;
                         }
                         default: {

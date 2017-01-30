@@ -17,7 +17,7 @@
 
 #include "Logger.h"
 
-std::string _tolower(const std::string& in)
+static std::string _tolower(const std::string& in)
 {
     std::string out = in;
     for (size_t i = 0; i < out.size(); i++ ) {

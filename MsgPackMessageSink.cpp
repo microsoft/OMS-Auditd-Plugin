@@ -129,3 +129,11 @@ void MsgPackMessageSink::AddStringField(const std::string& name, const std::stri
     _packer.pack(value);
     _num_fields += 1;
 }
+
+void MsgPackMessageSink::AddStringField(const std::string& name, const char* value_data, size_t value_size)
+{
+    _packer.pack(name);
+    _packer.pack_str(value_size);
+    _packer.pack_str_body(value_data, value_size);
+    _num_fields += 1;
+}

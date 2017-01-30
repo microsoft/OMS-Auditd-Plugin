@@ -116,7 +116,7 @@ void EventTransformer::ProcessEventsGap(const EventGapReport& gap)
     _sink->EndMessage();
 }
 
-void decode_hex(std::string& out, const std::string& hex, const std::string null_replacement)
+static void decode_hex(std::string& out, const std::string& hex, const std::string null_replacement)
 {
     if (out.capacity() < hex.length()) {
         out.reserve(hex.length());
@@ -152,7 +152,7 @@ void decode_hex(std::string& out, const std::string& hex, const std::string null
     return;
 }
 
-void unescape(std::string& out, const std::string& in, const std::string null_replacement)
+static void unescape(std::string& out, const std::string& in, const std::string null_replacement)
 {
     if (in.front() == '"' && in.back() == '"') {
         out = in.substr(1, in.size() - 2);

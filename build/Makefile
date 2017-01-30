@@ -163,6 +163,8 @@ endif
 
 tests : test
 
+ext_include: $(INTERMEDIATE_DIR)/ext_include
+
 $(INTERMEDIATE_DIR)/ext_include :
 	@echo "========================= Creating ext_include dir"
 	$(MKPATH) $(INTERMEDIATE_DIR)/tmp/ext_include

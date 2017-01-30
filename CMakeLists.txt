@@ -26,9 +26,13 @@ include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include)
 set(SOURCE_FILES
         main.cpp
         Event.cpp
+        OMSEventTransformerConfig.cpp
+        OMSEventTransformer.cpp
         EventTransformerConfig.cpp
         EventTransformer.cpp
         AuditEventProcessor.cpp
+        JSONMessageSinkBase.cpp
+        JSONMessageBuffer.cpp
         JSONMessageSink.cpp
         MsgPackMessageSink.cpp
         StdinReader.cpp

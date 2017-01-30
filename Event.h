@@ -126,6 +126,7 @@ public:
 
     EventRecordField() {
         _data = nullptr;
+        _roffset = 0;
         _fidxoffset = 0;
         _foffset = 0;
         _index = 0;
@@ -165,7 +166,7 @@ public:
     int32_t operator-(const EventRecordField& other) const { return other._index - _index; }
 
     bool operator==(const EventRecordField& other) const {
-        return _data == other._data && _foffset == other._foffset;
+        return _data == other._data && _roffset == other._roffset && _foffset == other._foffset;
     }
 
     bool operator!=(const EventRecordField& other) const { return !(*this == other); }
@@ -178,12 +179,12 @@ public:
 private:
     friend class EventRecord;
 
-    EventRecordField(const uint8_t* data, uint32_t fidxoffset, uint32_t index);
+    EventRecordField(const uint8_t* data, uint32_t roffset, uint32_t fidxoffset, uint32_t index);
 
     void move(int32_t n);
 
     const uint8_t* _data;
-    uint32_t _num_fields;
+    uint32_t _roffset;
     uint32_t _fidxoffset;
     uint32_t _foffset;
     uint32_t _index;

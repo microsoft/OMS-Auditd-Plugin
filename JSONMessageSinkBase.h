@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,33 +13,20 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_MSG_PACK_MESSAGE_SINK_H
-#define AUOMS_MSG_PACK_MESSAGE_SINK_H
+#ifndef AUOMS_JSONMESSAGESINKBASE_H
+#define AUOMS_JSONMESSAGESINKBASE_H
 
 #include "MessageSinkBase.h"
-#include "OutputBase.h"
-#include "Config.h"
 
-#include <array>
+#include <memory>
 
-#include <msgpack.hpp>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 
-class MsgPackMessageSink: public MessageSinkBase {
+class JSONMessageSinkBase: virtual public MessageSinkVirtBase {
 public:
-    static std::shared_ptr<MessageSinkBase> Create(std::unique_ptr<OutputBase>&& output, const Config& config) {
-        bool use_ext_time = false;
+    JSONMessageSinkBase(): _buffer(0, JSON_BUFFER_SIZE), _writer(_buffer) {}
 
-        if (config.HasKey("msgpack_ext_time")) {
-            use_ext_time = config.GetBool("msgpack_ext_time");
-        }
-        return std::shared_ptr<MessageSinkBase>(static_cast<MessageSinkBase *>(new MsgPackMessageSink(std::move(output), use_ext_time)));
-    }
-
-    MsgPackMessageSink(std::unique_ptr<OutputBase>&& output, bool use_ext_time): MessageSinkBase(std::move(output)), _use_ext_time(use_ext_time), _num_fields(0), _msg(BUFFER_SIZE), _buffer(BUFFER_SIZE), _packer(&_buffer) {}
-
-    virtual void BeginMessage(const std::string& tag, uint64_t sec, uint32_t msec);
-    virtual void EndMessage();
-    virtual void CancelMessage();
     virtual void AddBoolField(const std::string& name, bool value);
     virtual void AddInt32Field(const std::string& name, int32_t value);
     virtual void AddInt64Field(const std::string& name, int64_t value);
@@ -48,18 +35,15 @@ public:
     virtual void AddTimestampField(const std::string& name, uint64_t sec, uint32_t msec);
     virtual void AddStringField(const std::string& name, const std::string& value);
     virtual void AddStringField(const std::string& name, const char* value_data, size_t value_size);
-private:
-    static constexpr size_t BUFFER_SIZE = 64*1024;
+
+protected:
+    static constexpr size_t JSON_BUFFER_SIZE = 64*1024;
 
     void reset();
-    void send_message();
 
-    bool _use_ext_time;
-    uint32_t _num_fields;
-    msgpack::sbuffer _msg;
-    msgpack::sbuffer _buffer;
-    msgpack::packer<msgpack::sbuffer> _packer;
+    rapidjson::StringBuffer _buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> _writer;
+
 };
 
-
-#endif //AUOMS_MSG_PACK_MESSAGE_SINK_H
+#endif //AUOMS_JSONMESSAGESINKBASE_H

@@ -25,7 +25,22 @@
 #include <condition_variable>
 #include <functional>
 
-class MessageSinkBase
+class MessageSinkVirtBase {
+public:
+    virtual void AddBoolField(const std::string& name, bool value) = 0;
+    virtual void AddInt32Field(const std::string& name, int32_t value) = 0;
+    virtual void AddInt64Field(const std::string& name, int64_t value) = 0;
+    virtual void AddDoubleField(const std::string& name, double value) = 0;
+    virtual void AddTimeField(const std::string& name, uint64_t sec, uint32_t msec) = 0;
+    virtual void AddTimestampField(const std::string& name, uint64_t sec, uint32_t msec) = 0;
+    virtual void AddStringField(const std::string& name, const std::string& value) = 0;
+    virtual void AddStringField(const std::string& name, const char* value_data, size_t value_size) = 0;
+
+protected:
+    std::string formatTime(uint64_t sec, uint32_t msec);
+};
+
+class MessageSinkBase: virtual public MessageSinkVirtBase
 {
 public:
     static constexpr int START_SLEEP_PERIOD = 1;
@@ -42,13 +57,6 @@ public:
     virtual void BeginMessage(const std::string& tag, uint64_t sec, uint32_t msec) = 0;
     virtual void EndMessage() = 0;
     virtual void CancelMessage() = 0;
-    virtual void AddBoolField(const std::string& name, bool value) = 0;
-    virtual void AddInt32Field(const std::string& name, int32_t value) = 0;
-    virtual void AddInt64Field(const std::string& name, int64_t value) = 0;
-    virtual void AddDoubleField(const std::string& name, double value) = 0;
-    virtual void AddTimeField(const std::string& name, uint64_t sec, uint32_t msec) = 0;
-    virtual void AddTimestampField(const std::string& name, uint64_t sec, uint32_t msec) = 0;
-    virtual void AddStringField(const std::string& name, const std::string& value) = 0;
 
 protected:
     static std::mutex _static_lock;
@@ -56,7 +64,6 @@ protected:
 
     bool check_open(std::function<void()> on_open = [](){});
     void close_internal(std::function<void()> on_close = [](){});
-    std::string formatTime(uint64_t sec, uint32_t msec);
 
     std::mutex _lock;
     std::condition_variable _cond;

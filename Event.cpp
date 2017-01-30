@@ -477,16 +477,25 @@ event_field_type_t EventRecordField::FieldType() const {
     return static_cast<event_field_type_t>(FIELD_TYPE(_data, _foffset));
 }
 
-EventRecordField::EventRecordField(const uint8_t* data, uint32_t fidxoffset, uint32_t index) {
+EventRecordField::EventRecordField(const uint8_t* data, uint32_t roffset, uint32_t fidxoffset, uint32_t index) {
     _data = data;
+    _roffset = roffset;
     _fidxoffset = fidxoffset;
     _index = index;
-    _foffset = INDEX_VALUE(_data, _fidxoffset, _index);
+    if (_index < RECORD_NUM_FIELDS(_data, _roffset)) {
+        _foffset = INDEX_VALUE(_data, _fidxoffset, _index);
+    } else {
+        _foffset = EVENT_SIZE(_data);
+    }
 }
 
 void EventRecordField::move(int32_t n) {
     _index += n;
-    _foffset = INDEX_VALUE(_data, _fidxoffset, _index);
+    if (_index < RECORD_NUM_FIELDS(_data, _roffset)) {
+        _foffset = INDEX_VALUE(_data, _fidxoffset, _index);
+    } else {
+        _foffset = EVENT_SIZE(_data);
+    }
 }
 
 /*****************************************************************************
@@ -523,6 +532,7 @@ EventRecordField EventRecord::FieldAt(uint32_t idx) const {
     }
     return EventRecordField(
             _data,
+            _roffset,
             _roffset+RECORD_FIELD_INDEX_OFFSET,
             idx
     );
@@ -551,6 +561,7 @@ EventRecordField EventRecord::FieldByName(const char* name) const {
 
     return EventRecordField(
             _data,
+            _roffset,
             _roffset+RECORD_FIELD_SORTED_INDEX_OFFSET(num_fields),
             static_cast<uint32_t>(res - start)
     );
@@ -559,6 +570,7 @@ EventRecordField EventRecord::FieldByName(const char* name) const {
 EventRecordField EventRecord::begin() const {
     return EventRecordField(
             _data,
+            _roffset,
             _roffset+RECORD_FIELD_INDEX_OFFSET,
             0
     );
@@ -567,6 +579,7 @@ EventRecordField EventRecord::begin() const {
 EventRecordField EventRecord::end() const {
     return EventRecordField(
             _data,
+            _roffset,
             _roffset+RECORD_FIELD_INDEX_OFFSET,
             RECORD_NUM_FIELDS(_data, _roffset)
     );
@@ -575,6 +588,7 @@ EventRecordField EventRecord::end() const {
 EventRecordField EventRecord::begin_sorted() const {
     return EventRecordField(
             _data,
+            _roffset,
             _roffset+RECORD_FIELD_SORTED_INDEX_OFFSET(RECORD_NUM_FIELDS(_data, _roffset)),
             0
     );
@@ -583,6 +597,7 @@ EventRecordField EventRecord::begin_sorted() const {
 EventRecordField EventRecord::end_sorted() const {
     return EventRecordField(
             _data,
+            _roffset,
             _roffset+RECORD_FIELD_SORTED_INDEX_OFFSET(RECORD_NUM_FIELDS(_data, _roffset)),
             RECORD_NUM_FIELDS(_data, _roffset)
     );
@@ -592,11 +607,20 @@ EventRecord::EventRecord(const uint8_t* data, uint32_t index) {
     _data = data;
     _index = index;
     _roffset = INDEX_VALUE(_data, EVENT_RECORD_INDEX_OFFSET, _index);
+    if (_index < EVENT_NUM_RECORDS(_data)) {
+        _roffset = INDEX_VALUE(_data, EVENT_RECORD_INDEX_OFFSET, _index);
+    } else {
+        _roffset = EVENT_SIZE(_data);
+    }
 }
 
 void EventRecord::move(int32_t n) {
     _index += n;
-    _roffset = INDEX_VALUE(_data, EVENT_RECORD_INDEX_OFFSET, _index);
+    if (_index < EVENT_NUM_RECORDS(_data)) {
+        _roffset = INDEX_VALUE(_data, EVENT_RECORD_INDEX_OFFSET, _index);
+    } else {
+        _roffset = EVENT_SIZE(_data);
+    }
 }
 
 /*****************************************************************************

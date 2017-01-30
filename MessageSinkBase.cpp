@@ -90,7 +90,7 @@ bool MessageSinkBase::check_open(std::function<void()> on_open)
 }
 
 
-std::string MessageSinkBase::formatTime(uint64_t sec, uint32_t msec)
+std::string MessageSinkVirtBase::formatTime(uint64_t sec, uint32_t msec)
 {
     std::time_t t = sec;
     struct tm tm;

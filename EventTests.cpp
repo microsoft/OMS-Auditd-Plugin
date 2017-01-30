@@ -273,4 +273,12 @@ BOOST_AUTO_TEST_CASE( test )
     BOOST_CHECK_EQUAL(rec.FieldAt(3), rec.FieldByName("field4"));
     BOOST_CHECK_EQUAL(rec.FieldAt(4), rec.FieldByName("field5"));
     BOOST_CHECK_EQUAL(rec.FieldAt(5), rec.FieldByName("field2"));
+
+
+    int x = 0;
+    for (auto field : rec) {
+        BOOST_CHECK_EQUAL(rec.FieldAt(x), field);
+        x++;
+    }
+    BOOST_CHECK_EQUAL(x, rec.NumFields());
 }
