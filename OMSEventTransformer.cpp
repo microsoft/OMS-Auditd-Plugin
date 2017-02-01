@@ -20,14 +20,22 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <iomanip>
 
 void OMSEventTransformer::ProcessEvent(const Event& event)
 {
     auto num_records = event.NumRecords();
 
+    std::ostringstream timestamp_str;
+
     _sink->BeginMessage(_tag, event.Seconds(), event.Milliseconds());
     _sink->AddStringField(_config.MsgTypeFieldName, "AUDIT_EVENT");
-    _sink->AddTimestampField(_config.TimestampFieldName, event.Seconds(), event.Milliseconds());
+
+    timestamp_str << event.Seconds() << "."
+                 << std::setw(3) << std::setfill('0')
+                 << event.Milliseconds();
+
+    _sink->AddStringField(_config.TimestampFieldName, timestamp_str.str());
     _sink->AddInt64Field(_config.SerialFieldName, event.Serial());
     _sink->AddInt32Field(_config.RecordCountFieldName, num_records);
 

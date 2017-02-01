@@ -24,7 +24,7 @@ public:
     {
         IncludeFullRawText = true;
         RawTextFieldName = "raw";
-        TimestampFieldName = "AuditID";
+        TimestampFieldName = "Timestamp";
         SerialFieldName = "SerialNumber";
         MsgTypeFieldName = "MessageType";
         RecordTypeFieldName = "RecordTypeCode";
