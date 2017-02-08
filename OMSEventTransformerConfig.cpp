@@ -89,12 +89,6 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
-        {"null_replacement", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
-            if (config.HasKey(name)) {
-                et_config.NullReplacement = config.GetString(name);
-            }
-            return true;
-        }},
         {"record_type_name_overrides", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 auto doc = config.GetJSON(name);

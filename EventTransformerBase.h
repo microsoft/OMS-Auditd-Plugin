@@ -22,6 +22,10 @@ class EventTransformerBase {
 public:
     virtual void ProcessEvent(const Event& event) = 0;
     virtual void ProcessEventsGap(const EventGapReport& gap) = 0;
+
+protected:
+    static void decode_hex(std::string& out, const std::string& in);
+    static void unescape(std::string& out, const std::string& in);
 };
 
 #endif //AUOMS_EVENTTRANSFORMERBASE_H_H

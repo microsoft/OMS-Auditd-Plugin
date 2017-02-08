@@ -49,8 +49,7 @@ private:
     std::string _raw_name;
     std::string _interp_name;
     std::string _raw_value;
-    std::string _value1;
-    std::string _value2;
+    std::string _interp_value;
 
     JSONMessageBuffer _json_buffer;
 };

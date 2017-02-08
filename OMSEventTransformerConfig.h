@@ -33,7 +33,6 @@ public:
         RecordIndexFieldName = "record-index";
         RecordDataFieldNamePrefix = "record-data-";
         FieldSuffix = "_r";
-        NullReplacement = "\\0";
     }
 
     bool LoadFromConfig(const Config& config);
@@ -51,7 +50,6 @@ public:
     std::string RecordDataFieldNamePrefix;
 
     std::string FieldSuffix; // The suffix to add to the interpreted field name
-    std::string NullReplacement;
 
     std::unordered_map<int, std::string> RecordTypeNameOverrideMap;
     std::unordered_map<std::string, std::string> FieldNameOverrideMap;

@@ -38,6 +38,7 @@ require {
         type rpm_t;
         type setfiles_t;
         type kernel_t;
+        type unconfined_t;
         role system_r;
         class fd use;
         class file { create ioctl read getattr lock write setattr append link unlink rename execute relabelto relabelfrom };

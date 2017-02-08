@@ -49,24 +49,24 @@ void JSONMessageSinkBase::AddTimeField(const std::string& name, uint64_t sec, ui
 {
     _writer.Key(name.c_str(), name.size(), true);
     std::string time = formatTime(sec, msec);
-    _writer.Key(time.c_str(), time.size(), true);
+    _writer.String(time.c_str(), time.size(), true);
 }
 
 void JSONMessageSinkBase::AddTimestampField(const std::string& name, uint64_t sec, uint32_t msec)
 {
     _writer.Key(name.c_str(), name.size(), true);
     std::string time = formatTime(sec, msec);
-    _writer.Key(time.c_str(), time.size(), true);
+    _writer.String(time.c_str(), time.size(), true);
 }
 
 void JSONMessageSinkBase::AddStringField(const std::string& name, const std::string& value)
 {
     _writer.Key(name.c_str(), name.size(), true);
-    _writer.Key(value.c_str(), value.size(), true);
+    _writer.String(value.c_str(), value.size(), true);
 }
 
 void JSONMessageSinkBase::AddStringField(const std::string& name, const char* value_data, size_t value_size)
 {
     _writer.Key(name.c_str(), name.size(), true);
-    _writer.Key(value_data, value_size, true);
+    _writer.String(value_data, value_size, true);
 }

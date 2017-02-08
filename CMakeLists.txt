@@ -28,6 +28,7 @@ set(SOURCE_FILES
         Event.cpp
         OMSEventTransformerConfig.cpp
         OMSEventTransformer.cpp
+        EventTransformerBase.cpp
         EventTransformerConfig.cpp
         EventTransformer.cpp
         AuditEventProcessor.cpp

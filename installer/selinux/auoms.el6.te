@@ -37,6 +37,8 @@ require {
         type rpm_t;
         type setfiles_t;
         type kernel_t;
+        type unconfined_t;
+        type inotifyfs_t;
         role system_r;
         class fd use;
         class file { open create ioctl read getattr lock write setattr append link unlink rename execute relabelto relabelfrom };
@@ -91,6 +93,8 @@ allow auoms_t ld_so_t:file { open read };
 allow auoms_t lib_t:dir search;
 allow auoms_t lib_t:file { open read getattr execute };
 allow auoms_t lib_t:lnk_file {open  read };
+
+allow auoms_t inotifyfs_t:dir read;
 
 #============= restorecon_t ==============
 allow restorecon_t auoms_sock_var_t:dir { open read getattr search relabelto };

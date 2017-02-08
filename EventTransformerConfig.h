@@ -57,7 +57,6 @@ public:
         FieldNameDedupSuffixRawField = false;
         FieldSuffix = "-i";
         DecodeEscapedFieldValues = true;
-        NullReplacement = "<null>";
     }
 
     bool LoadFromConfig(const Config& config);
@@ -99,9 +98,8 @@ public:
     std::string FieldSuffix; // The suffix to add to the raw field name
 
     // Some audit field values might be escaped (HEX encoded).
-    // If DecodeEscapedFieldValues is true, then decode the HEX and replace any null characters with NullReplacement.
+    // If DecodeEscapedFieldValues is true, then decode the HEX and escapes any non-ASCII (c >= 0x80) chars
     bool DecodeEscapedFieldValues;
-    std::string NullReplacement;
 
     std::unordered_map<int, std::string> RecordTypeNameOverrideMap;
     std::unordered_map<std::string, std::string> FieldNameOverrideMap;

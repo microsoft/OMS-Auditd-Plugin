@@ -113,12 +113,6 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
-        {"null_replacement", [](const std::string& name, EventTransformerConfig& et_config, const Config& config)->bool{
-            if (config.HasKey(name)) {
-                et_config.NullReplacement = config.GetString(name);
-            }
-            return true;
-        }},
 
         {"field_emit_mode", [](const std::string& name, EventTransformerConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {

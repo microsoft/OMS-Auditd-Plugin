@@ -307,19 +307,29 @@ bool AuditEventProcessor::process_field()
             break;
         }
         case FIELD_TYPE_UID: {
-            int uid = atoi(val_ptr);
-            interp_str = _user_db->GetUserName(uid);
-            if (interp_str.size() > 0) {
-                interp_ptr = interp_str.c_str();
+            int uid = static_cast<int>(strtoul(val_ptr, NULL, 10));
+            if (uid < 0) {
+                interp_str = "unset";
+            } else {
+                interp_str = _user_db->GetUserName(uid);
             }
+            if (interp_str.size() == 0) {
+                interp_str = "unknown(" + std::to_string(uid) + ")";
+            }
+            interp_ptr = interp_str.c_str();
             break;
         }
         case FIELD_TYPE_GID: {
-            int gid = atoi(val_ptr);
-            interp_str = _user_db->GetGroupName(gid);
-            if (interp_str.size() > 0) {
-                interp_ptr = interp_str.c_str();
+            int gid = static_cast<int>(strtoul(val_ptr, NULL, 10));
+            if (gid < 0) {
+                interp_str = "unset";
+            } else {
+                interp_str = _user_db->GetGroupName(gid);
             }
+            if (interp_str.size() == 0) {
+                interp_str = "unknown(" + std::to_string(gid) + ")";
+            }
+            interp_ptr = interp_str.c_str();
             break;
         }
         case FIELD_TYPE_ESCAPED: {

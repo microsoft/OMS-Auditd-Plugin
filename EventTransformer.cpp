@@ -116,55 +116,6 @@ void EventTransformer::ProcessEventsGap(const EventGapReport& gap)
     _sink->EndMessage();
 }
 
-static void decode_hex(std::string& out, const std::string& hex, const std::string null_replacement)
-{
-    if (out.capacity() < hex.length()) {
-        out.reserve(hex.length());
-    }
-
-    char c = 0;
-    int i = 0;
-    for (auto hex_c : hex) {
-        char x;
-        if (hex_c >= '0' && hex_c <= '9') {
-            x = hex_c - '0';
-        } else if (hex_c >= 'A' && hex_c <= 'F') {
-            x = hex_c - 'A' + (char)10;
-        } else if (hex_c >= 'f' && hex_c <= 'f') {
-            x = hex_c - 'a' + (char)10;
-        } else {
-            // This isn't HEX, just return the original input
-            out = hex;
-            return;
-        }
-        if (i % 2 == 0) {
-            c = x << 4;
-        } else {
-            c |= x;
-            if (c != 0) {
-                out += c;
-            } else {
-                out.append(null_replacement);
-            }
-        }
-        ++i;
-    }
-    return;
-}
-
-static void unescape(std::string& out, const std::string& in, const std::string null_replacement)
-{
-    if (in.front() == '"' && in.back() == '"') {
-        out = in.substr(1, in.size() - 2);
-    } else if (in == "(null)") {
-        out = in;
-    } else if (in.size() % 2 == 0) {
-        decode_hex(out, in, null_replacement);
-    } else {
-        out = in;
-    }
-}
-
 void EventTransformer::begin_message(const Event& event)
 {
     _sink->BeginMessage(_tag, event.Seconds(), event.Milliseconds());
@@ -259,7 +210,7 @@ void EventTransformer::process_field(const EventRecordField& field)
         }
 
         if (field.FieldType() == FIELD_TYPE_ESCAPED && _config.DecodeEscapedFieldValues) {
-            unescape(_value1, _raw_value, _config.NullReplacement);
+            unescape(_value1, _raw_value);
             _sink->AddStringField(_field_name, _value1);
         } else {
             _sink->AddStringField(_field_name, _raw_value);

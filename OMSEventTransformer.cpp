@@ -75,55 +75,6 @@ void OMSEventTransformer::ProcessEventsGap(const EventGapReport& gap)
     _sink->EndMessage();
 }
 
-static void decode_hex(std::string& out, const std::string& hex, const std::string null_replacement)
-{
-    if (out.capacity() < hex.length()) {
-        out.reserve(hex.length());
-    }
-
-    char c = 0;
-    int i = 0;
-    for (auto hex_c : hex) {
-        char x;
-        if (hex_c >= '0' && hex_c <= '9') {
-            x = hex_c - '0';
-        } else if (hex_c >= 'A' && hex_c <= 'F') {
-            x = hex_c - 'A' + (char)10;
-        } else if (hex_c >= 'f' && hex_c <= 'f') {
-            x = hex_c - 'a' + (char)10;
-        } else {
-            // This isn't HEX, just return the original input
-            out = hex;
-            return;
-        }
-        if (i % 2 == 0) {
-            c = x << 4;
-        } else {
-            c |= x;
-            if (c != 0) {
-                out += c;
-            } else {
-                out.append(null_replacement);
-            }
-        }
-        ++i;
-    }
-    return;
-}
-
-static void unescape(std::string& out, const std::string& in, const std::string null_replacement)
-{
-    if (in.front() == '"' && in.back() == '"') {
-        out = in.substr(1, in.size() - 2);
-    } else if (in == "(null)") {
-        out = in;
-    } else if (in.size() % 2 == 0) {
-        decode_hex(out, in, null_replacement);
-    } else {
-        out = in;
-    }
-}
-
 void OMSEventTransformer::process_record(const EventRecord& rec, int record_idx, int record_type, const std::string& record_name)
 {
     _field_name.clear();
@@ -171,29 +122,33 @@ void OMSEventTransformer::process_field(const EventRecordField& field)
         _interp_name.assign(_raw_name);
     }
 
+    if (_raw_name == _interp_name) {
+        _raw_name.append(_config.FieldSuffix);
+    }
+
     _raw_value.assign(field.RawValue(), field.RawValueSize());
 
-    if (field.FieldType() == FIELD_TYPE_ESCAPED) {
+    if (field.FieldType() == FIELD_TYPE_ESCAPED || field.FieldType() == FIELD_TYPE_PROCTITLE) {
         // If the field type is FIELD_TYPE_ESCAPED, then there is no interp value.
-        unescape(_value1, _raw_value, _config.NullReplacement);
-        _json_buffer.AddStringField(_raw_name, _value1);
-        if (_raw_name == _interp_name) {
-            _raw_name.append(_config.FieldSuffix);
-        }
-        _json_buffer.AddStringField(_raw_name, _raw_value);
+        unescape(_interp_value, _raw_value);
+        _json_buffer.AddStringField(_interp_name, _interp_value);
     } else {
         if (field.InterpValueSize() > 0) {
-            _value2.assign(field.InterpValue(), field.InterpValueSize());
-            _json_buffer.AddStringField(_interp_name, _value2);
-            if (_value2 != _raw_value) {
-                if (_raw_name == _interp_name) {
-                    _raw_name.append(_config.FieldSuffix);
-                }
-                _json_buffer.AddStringField(_raw_name, _raw_value);
+            _interp_value.assign(field.InterpValue(), field.InterpValueSize());
+            switch (field.FieldType()) {
+                case FIELD_TYPE_SESSION:
+                    // Since the interpreted value for SES is also (normally) an int
+                    // Replace "unset" and "4294967295" with "-1"
+                    if (_interp_value == "unset" && _interp_value == "4294967295") {
+                        _json_buffer.AddStringField(_interp_name, "-1");
+                    } else {
+                        _json_buffer.AddStringField(_interp_name, _interp_value);
+                    }
+                default:
+                    _json_buffer.AddStringField(_interp_name, _interp_value);
             }
-        } else {
-            _json_buffer.AddStringField(_raw_name, _raw_value);
         }
     }
+    _json_buffer.AddStringField(_raw_name, _raw_value);
 
 }
