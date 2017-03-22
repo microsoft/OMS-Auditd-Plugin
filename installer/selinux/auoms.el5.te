@@ -32,13 +32,11 @@ require {
         type fs_t;
         type etc_t;
         type syslogd_t;
-        type restorecon_t;
         type tmp_t;
         type locale_t;
-        type rpm_t;
-        type setfiles_t;
         type kernel_t;
         type unconfined_t;
+        type var_t;
         role system_r;
         class fd use;
         class file { create ioctl read getattr lock write setattr append link unlink rename execute relabelto relabelfrom };
@@ -53,27 +51,16 @@ require {
 
 
 type auoms_t;
-type auoms_var_t;
-type auoms_sock_var_t;
 type auoms_exec_t;
 
 #============= audisp_t ==============
 logging_dispatcher_domain(auoms_t,auoms_exec_t);
 
-#============= auoms_sock_var_t ==============
-allow auoms_sock_var_t fs_t:filesystem associate;
-
-
-#============= auoms_var_t ==============
-allow auoms_var_t fs_t:filesystem associate;
-
 #============= auoms_t ==============
-allow auoms_t auoms_var_t:dir { read getattr lock search ioctl add_name remove_name write };
-allow auoms_t auoms_var_t:file { create ioctl read getattr lock write setattr append link unlink rename };
-
-allow auoms_t auoms_sock_var_t:unix_stream_socket connectto;
-allow auoms_t auoms_sock_var_t:dir { read getattr search };
-allow auoms_t auoms_sock_var_t:sock_file write;
+allow auoms_t var_t:dir { read getattr lock search ioctl add_name remove_name write };
+allow auoms_t var_t:file { create ioctl read getattr lock write setattr append link unlink rename };
+allow auoms_t var_t:unix_stream_socket connectto;
+allow auoms_t var_t:sock_file write;
 
 allow auoms_t etc_t:dir { read getattr search };
 allow auoms_t etc_t:file { read getattr };
@@ -92,25 +79,3 @@ allow auoms_t ld_so_t:file { read };
 allow auoms_t lib_t:dir search;
 allow auoms_t lib_t:file { read getattr execute };
 allow auoms_t lib_t:lnk_file { read };
-
-#============= restorecon_t ==============
-allow restorecon_t auoms_sock_var_t:dir { read getattr search relabelto };
-allow restorecon_t auoms_sock_var_t:file { getattr relabelto };
-allow restorecon_t auoms_var_t:dir { read getattr search relabelto };
-allow restorecon_t auoms_var_t:file { getattr relabelto };
-
-#============= setfiles_t ==============
-allow setfiles_t auoms_sock_var_t:dir search;
-allow setfiles_t auoms_var_t:dir search;
-
-#============= rpm_t ==============
-allow rpm_t auoms_sock_var_t:dir { getattr rmdir };
-allow rpm_t auoms_sock_var_t:sock_file { getattr setattr unlink };
-allow rpm_t auoms_var_t:dir { read write getattr search remove_name rmdir };
-allow rpm_t auoms_var_t:file { read getattr unlink };
-
-#============= unconfined_t ==============
-allow unconfined_t auoms_var_t:dir { read write getattr search remove_name rmdir };
-allow unconfined_t auoms_var_t:file { read getattr unlink };
-allow unconfined_t auoms_sock_var_t:dir { write read getattr search add_name remove_name rmdir };
-allow unconfined_t auoms_sock_var_t:sock_file { create getattr setattr unlink };

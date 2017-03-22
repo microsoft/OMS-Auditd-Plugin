@@ -20,7 +20,11 @@ ISSUE_WARNING=0
 
 echo "Checking if required dependencies are installed..." 1>&2
 if [ ! -e /sbin/auditd ]; then
-        echo "  auditd isn't installed" 1>&2
+        echo "  /sbin/auditd isn't installed" 1>&2
+        ISSUE_WARNING=1
+fi
+if [ ! -e /sbin/audispd ]; then
+        echo "  /sbin/audispd isn't installed" 1>&2
         ISSUE_WARNING=1
 fi
 /sbin/ldconfig -p | grep libaudit.so >/dev/null 2>&1
@@ -35,6 +39,8 @@ if [ $? -ne 0 ]; then
 fi
 
 if [ $ISSUE_WARNING -ne 0 ]; then
-    echo "  Because neccessary dependencies are not installed, the auoms auditd plugin cannot be installed." 1>&2
+    echo "  Because the necessary dependencies are not installed, the auoms auditd plugin cannot be installed." 1>&2
+    echo "      For Debian & Ubuntu, install the 'auditd' package." 1>&2
+    echo "      For CentOS, RHEL & SLES, install the 'audit' package." 1>&2
     exit 1
 fi
