@@ -13,43 +13,51 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#include "JSONMessageSink.h"
+#ifndef AUOMS_WRITER_BASE_H
+#define AUOMS_WRITER_BASE_H
 
-#include "Logger.h"
+#include "IWriter.h"
 
-void JSONMessageSink::send_message()
-{
-    while(check_open()) {
-        if (_output->Write(_buffer.GetString(), _buffer.GetSize()) != OutputBase::OK) {
-            Logger::Warn("Write failed, closing connection");
-            _output->Close();
-        } else {
-            return;
-        }
+#include <cstdint>
+#include <cstddef>
+#include <stdexcept>
+#include <atomic>
+
+extern "C" {
+#include <sys/uio.h>
+};
+
+class operation_interrupted_exception : public std::runtime_error {
+public:
+    operation_interrupted_exception()
+            : std::runtime_error("Operation Interrupted")
+    {}
+};
+
+class WriterBase: public IWriter {
+public:
+    WriterBase(int fd) {
+        _fd.store(fd);
     }
-}
 
-void JSONMessageSink::BeginMessage(const std::string& tag, uint64_t sec, uint32_t msec)
-{
-    double time = static_cast<double>(sec);
-    time += static_cast<double>(msec)/1000;
-    reset();
-    _writer.StartArray();
-    _writer.Key(tag.c_str(), tag.size(), true);
-    _writer.Double(time);
-    _writer.StartObject();
-}
+    virtual ~WriterBase() {
+        Close();
+    }
 
-void JSONMessageSink::EndMessage()
-{
-    _writer.EndObject();
-    _writer.EndArray();
-    _buffer.Put('\n');
+    virtual bool IsOpen();
+    virtual bool Open();
+    virtual void Close();
 
-    send_message();
-}
+    virtual bool CanRead();
+    virtual int Read(void *buf, size_t buf_size);
 
-void JSONMessageSink::CancelMessage()
-{
-    reset();
-}
+    // Return OK if all bytes written.
+    // Return FAILED on non-recoverable error
+    // Return CLOSED is fd is closed
+    virtual int Write(const void *buf, size_t size);
+
+protected:
+    std::atomic<int> _fd;
+};
+
+#endif //AUOMS_WRITER_BASE_H

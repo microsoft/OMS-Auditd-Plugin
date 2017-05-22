@@ -110,19 +110,6 @@ void AuditEventProcessor::Flush()
     }
 }
 
-void AuditEventProcessor::Reset()
-{
-    auparse_destroy(_state);
-    _state_ptr = auparse_init(AUSOURCE_FEED, nullptr);
-    assert(_state != nullptr);
-    auparse_add_callback(_state, reinterpret_cast<void (*)(auparse_state_t *au, auparse_cb_event_t cb_event_type, void *user_data)>(static_callback), this, nullptr);
-}
-
-void AuditEventProcessor::Close()
-{
-    Flush();
-}
-
 void AuditEventProcessor::static_callback(void *au, dummy_enum_t cb_event_type, void *user_data)
 {
     assert(user_data != nullptr);
@@ -164,37 +151,35 @@ void AuditEventProcessor::callback(void *ptr)
         return;
     }
 
+    uint16_t num_non_eoe_records = 0;
     do {
         auto record_type = auparse_get_type(_state);
         if (record_type == 0) {
             Logger::Warn("auparse_get_type() failed!");
         }
 
-        switch (record_type) {
-            case 1300: //SYSCALL
-                _event_flags |= EVENT_FLAG_HAS_EXE_FIELD & EVENT_FLAG_HAS_COMM_FIELD;
-                break;
-            case 1327: //PROCTITLE
-                _event_flags |= EVENT_FLAG_HAS_PROCTITLE_FIELD;
-                break;
-        }
-
-        std::string record_name;
+        std::string record_type_name;
         const char* name_ptr = audit_msg_type_to_name(record_type);
         if (name_ptr != nullptr) {
-            record_name = name_ptr;
+            record_type_name = name_ptr;
         } else {
-            record_name = std::string("UNKNOWN[") + std::to_string(record_type) + "]";
+            record_type_name = std::string("UNKNOWN[") + std::to_string(record_type) + "]";
         }
 
-        const char * text = auparse_get_record_text(_state);
+        // Ignore the end-of-event (EOE) record
+        if (record_type_name != "EOE") {
+            num_non_eoe_records++;
+        }
+
+        const char *text = auparse_get_record_text(_state);
         if (text == nullptr) {
             Logger::Warn("auparse_get_record_text() failed!");
             cancel_event();
             return;
         }
 
-        auto ret = _builder->BeginRecord(record_type, record_name.c_str(), text, auparse_get_num_fields(_state));
+        auto ret = _builder->BeginRecord(record_type, record_type_name.c_str(), text,
+                                         auparse_get_num_fields(_state));
         if (ret != 1) {
             if (ret == Queue::CLOSED) {
                 throw std::runtime_error("Queue closed");
@@ -218,10 +203,16 @@ void AuditEventProcessor::callback(void *ptr)
             cancel_event();
             return;
         }
-
     } while (auparse_next_record(_state) == 1);
 
-    end_event();
+    // Sometimes the event will only have the EOE record
+    // Only end/emit the event if it's not empty
+    if (num_non_eoe_records > 0) {
+        end_event();
+    } else {
+        cancel_event();
+    }
+
 }
 
 bool AuditEventProcessor::begin_event()
@@ -259,29 +250,11 @@ inline bool NAME_EQUAL_PID(const char *name) {
     return *reinterpret_cast<const uint32_t*>(name) == 0x00646970;
 }
 
-// Assumes x86 (little-endian)
-inline bool NAME_EQUAL_EXE(const char *name) {
-    return *reinterpret_cast<const uint32_t*>(name) == 0x00657865;
-}
-
-// Assumes x86 (little-endian)
-inline bool NAME_EQUAL_COMM(const char *name) {
-    return *reinterpret_cast<const uint32_t*>(name) == 0x6D6D6F63 && name[4] == 0;
-}
-
 bool AuditEventProcessor::process_field()
 {
     const char* name_ptr = auparse_get_field_name(_state);
     if (name_ptr == nullptr) {
         return false;
-    }
-
-    if ((_event_flags & EVENT_FLAG_HAS_EXE_FIELD) == 0 && NAME_EQUAL_EXE(name_ptr)) {
-        _event_flags |= EVENT_FLAG_HAS_EXE_FIELD;
-    }
-
-    if ((_event_flags & EVENT_FLAG_HAS_COMM_FIELD) == 0 && NAME_EQUAL_COMM(name_ptr)) {
-        _event_flags |= EVENT_FLAG_HAS_COMM_FIELD;
     }
 
     const char* val_ptr = auparse_get_field_str(_state);
@@ -303,6 +276,10 @@ bool AuditEventProcessor::process_field()
                 if (pid != 0) {
                     _builder->SetEventPid(pid);
                 }
+            }
+
+            if (strcmp(val_ptr, interp_ptr) == 0) {
+                interp_ptr = nullptr;
             }
             break;
         }
@@ -332,10 +309,12 @@ bool AuditEventProcessor::process_field()
             interp_ptr = interp_str.c_str();
             break;
         }
-        case FIELD_TYPE_ESCAPED: {
-            interp_ptr = nullptr;
+        case FIELD_TYPE_ESCAPED:
+            // interp_ptr remains NULL
             break;
-        }
+        case FIELD_TYPE_PROCTITLE:
+            // interp_ptr remains NULL
+            break;
         default: {
             interp_ptr = auparse_interpret_field(_state);
             break;

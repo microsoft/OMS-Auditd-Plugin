@@ -13,13 +13,7 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#include "OMSEventTransformerConfig.h"
-#include "EventTransformerConfig.h"
 #include "AuditEventProcessor.h"
-#include "MsgPackMessageSink.h"
-#include "OMSEventTransformer.h"
-#include "EventTransformer.h"
-#include "JSONMessageSink.h"
 #include "StdoutWriter.h"
 #include "StdinReader.h"
 #include "UnixDomainWriter.h"
@@ -29,12 +23,12 @@
 #include "Logger.h"
 #include "EventQueue.h"
 #include "UserDB.h"
+#include "Outputs.h"
 
 #include <iostream>
 #include <fstream>
 #include <memory>
 #include <system_error>
-#include <thread>
 
 extern "C" {
 #include <unistd.h>
@@ -58,16 +52,7 @@ int main(int argc, char**argv) {
     // This function will call exit(1) if it fails to load the symbol.
     load_libaudit_symbols();
 
-    std::string output_file = "";
-    std::string output_format = "json";
-    std::string mode = "event";
     std::string config_file = "/etc/opt/microsoft/auoms/auoms.conf";
-    std::string in_queue_file = "/var/opt/microsoft/auoms/data/in_queue.dat";
-    std::string out_queue_file = "/var/opt/microsoft/auoms/data/out_queue.dat";
-    std::string message_label = "audit";
-    size_t in_queue_size = 10*1024*1024;
-    size_t out_queue_size = 128*1024;
-    bool use_ext_time = false;
 
     int opt;
     while ((opt = getopt(argc, argv, "c:")) != -1) {
@@ -90,265 +75,159 @@ int main(int argc, char**argv) {
             exit(1);
         }
     }
+    std::string outconf_dir = "/etc/opt/microsoft/auoms/outconf.d";
+    std::string data_dir = "/var/opt/microsoft/auoms/data";
 
-    if (config.HasKey("output_path")) {
-        output_file = config.GetString("output_path");
+    if (config.HasKey("outconf_dir")) {
+        outconf_dir = config.GetString("outconf_dir");
+    }
+
+    if (config.HasKey("data_dir")) {
+        data_dir = config.GetString("data_dir");
+    }
+
+    std::vector<std::string> allowed_socket_dirs;
+    if (!config.HasKey("allowed_output_socket_dirs")) {
+        Logger::Error("Required config parameter missing: allowed_output_socket_dirs");
+        exit(1);
     } else {
-        Logger::Error("No output parameter found!");
+        auto dirs = config.GetString("allowed_output_socket_dirs");
+        while (!dirs.empty()) {
+            auto idx = dirs.find_first_of(':', 0);
+            std::string dir;
+            if (idx == std::string::npos) {
+                dir = dirs;
+                dirs.clear();
+            } else {
+                dir = dirs.substr(0, idx);
+                dirs = dirs.substr(idx+1);
+            }
+            if (dir.length() < 2 || dir[0] != '/') {
+                Logger::Error("Config parameter 'allowed_socket_dirs' has invalid value");
+                exit(1);
+            }
+            if (dir[dir.length()-1] != '/') {
+                dir += '/';
+            }
+            allowed_socket_dirs.push_back(dir);
+        }
+    }
+
+    std::string queue_file = data_dir + "/queue.dat";
+    std::string cursor_dir = data_dir + "/outputs";
+    size_t queue_size = 10*1024*1024;
+
+    if (config.HasKey("queue_file")) {
+        queue_file = config.GetString("queue_file");
+    }
+
+    if (queue_file.size() == 0) {
+        Logger::Error("Invalid 'queue_file' value");
         exit(1);
     }
 
-    if (config.HasKey("mode")) {
-        mode = config.GetString("mode");
-    }
-
-    if (mode != "record" && mode != "event" && mode != "oms") {
-        Logger::Error("Invalid 'mode' value: %s", mode.c_str());
-        exit(1);
-    }
-
-    if (config.HasKey("output_format")) {
-        output_format = config.GetString("output_format");
-    }
-
-    if (output_format != "json" && output_format != "msgpack") {
-        Logger::Error("Invalid 'output_format' value: %s", output_format.c_str());
-        exit(1);
-    }
-
-    if (config.HasKey("in_queue_file")) {
-        in_queue_file = config.GetString("in_queue_file");
-    }
-
-    if (config.HasKey("out_queue_file")) {
-        out_queue_file = config.GetString("out_queue_file");
-    }
-
-    if (in_queue_file.size() == 0) {
-        Logger::Error("Invalid 'in_queue_file' value");
-        exit(1);
-    }
-
-    if (out_queue_file.size() == 0) {
-        Logger::Error("Invalid 'out_queue_file' value");
-        exit(1);
-    }
-
-    if (config.HasKey("in_queue_size")) {
+    if (config.HasKey("queue_size")) {
         try {
-            in_queue_size = config.GetUint64("in_queue_size");
+            queue_size = config.GetUint64("queue_size");
         } catch(std::exception& ex) {
-            Logger::Error("Invalid 'in_queue_size' value: %s", config.GetString("in_queue_size").c_str());
+            Logger::Error("Invalid 'queue_size' value: %s", config.GetString("queue_size").c_str());
             exit(1);
         }
     }
 
-    if (config.HasKey("out_queue_size")) {
-        try {
-            out_queue_size = config.GetUint64("out_queue_size");
-        } catch(std::exception& ex) {
-            Logger::Error("Invalid 'out_queue_size' value: %s", config.GetString("out_queue_size").c_str());
-            exit(1);
-        }
-    }
-
-    if (in_queue_size < Queue::MIN_QUEUE_SIZE) {
-        Logger::Warn("Value for 'in_queue_size' (%d) is smaller than minimum allowed. Using mimumum (%d).", in_queue_size, Queue::MIN_QUEUE_SIZE);
+    if (queue_size < Queue::MIN_QUEUE_SIZE) {
+        Logger::Warn("Value for 'queue_size' (%d) is smaller than minimum allowed. Using minimum (%d).", queue_size, Queue::MIN_QUEUE_SIZE);
         exit(1);
     }
 
-    if (out_queue_size < Queue::MIN_QUEUE_SIZE) {
-        Logger::Warn("Value for 'out_queue_size' (%d) is smaller than minimum allowed. Using mimumum (%d).", out_queue_size, Queue::MIN_QUEUE_SIZE);
-        exit(1);
+    bool use_syslog = true;
+    if (config.HasKey("use_syslog")) {
+        use_syslog = config.GetBool("use_syslog");
     }
 
-    if (config.HasKey("msgpack_ext_time")) {
-        use_ext_time = config.GetBool("msgpack_ext_time");
+    if (use_syslog) {
+        Logger::OpenSyslog("auoms", LOG_DAEMON);
     }
 
-    if (config.HasKey("message_label")) {
-        message_label = config.GetString("message_label");
-    }
+    // This will block signals like SIGINT and SIGTERM
+    // They will be handled once Signals::Start() is called.
+    Signals::Init();
 
-    Logger::OpenSyslog("auoms", LOG_DAEMON);
-
-    void * et_config_p;
-
-    if (mode == "oms") {
-        OMSEventTransformerConfig* et_config = new OMSEventTransformerConfig();
-        if (!et_config->LoadFromConfig(config)) {
-            Logger::Error("Invalid config. Exiting.");
-            exit(1);
-        }
-        et_config_p = et_config;
-    } else {
-        EventTransformerConfig* et_config = new EventTransformerConfig(mode == "record");
-        if (!et_config->LoadFromConfig(config)) {
-            Logger::Error("Invalid config. Exiting.");
-            exit(1);
-        }
-        et_config_p = et_config;
-    }
-
-    auto in_queue = std::make_shared<Queue>(in_queue_file, in_queue_size);
+    auto queue = std::make_shared<Queue>(queue_file, queue_size);
     try {
-        Logger::Info("Opening input queue: %s", out_queue_file.c_str());
-        in_queue->Open();
+        Logger::Info("Opening queue: %s", queue_file.c_str());
+        queue->Open();
     } catch (std::runtime_error& ex) {
-        Logger::Error("Failed to open input queue file '%s': %s", in_queue_file.c_str(), ex.what());
+        Logger::Error("Failed to open queue file '%s': %s", queue_file.c_str(), ex.what());
         exit(1);
     }
 
-    auto out_queue = std::make_shared<Queue>(out_queue_file, out_queue_size);
-    try {
-        Logger::Info("Opening output queue: %s", out_queue_file.c_str());
-        out_queue->Open();
-    } catch (std::runtime_error& ex) {
-        Logger::Error("Failed to open output queue file '%s': %s", out_queue_file.c_str(), ex.what());
-        exit(1);
-    }
-
-    std::unique_ptr<OutputBase> output;
-
-    if (output_file == "-") {
-        output = std::move(std::unique_ptr<OutputBase>(static_cast<OutputBase*>(new StdoutWriter())));
-    } else {
-        output = std::move(std::unique_ptr<OutputBase>(static_cast<OutputBase*>(new UnixDomainWriter(output_file))));
-    }
-
-    MessageSinkBase::RegisterSinkFactory("json", JSONMessageSink::Create);
-    MessageSinkBase::RegisterSinkFactory("msgpack", MsgPackMessageSink::Create);
-
-    std::shared_ptr<MessageSinkBase> sink = MessageSinkBase::CreateSink(output_format, std::move(output), config);
-
-    if (!sink) {
-        throw std::runtime_error("Invalid output format");
-    }
+    Outputs outputs(queue, outconf_dir, cursor_dir, allowed_socket_dirs);
 
     auto user_db = std::make_shared<UserDB>();
 
-    auto event_queue = std::make_shared<EventQueue>(in_queue);
+    auto event_queue = std::make_shared<EventQueue>(queue);
+    auto builder = std::make_shared<EventBuilder>(event_queue);
 
-    std::shared_ptr<EventBuilder> builder = std::make_shared<EventBuilder>(event_queue);
-    EventTransformerBase* transformer;
-    if (mode == "oms") {
-        transformer = new OMSEventTransformer(*(static_cast<OMSEventTransformerConfig*>(et_config_p)), message_label, sink);
-    } else {
-        transformer = new EventTransformer(*(static_cast<EventTransformerConfig*>(et_config_p)), message_label, sink);
-    }
     AuditEventProcessor aep(builder, user_db);
     aep.Initialize();
     StdinReader reader;
 
-    Signals::Init();
-
-    std::thread in_autosave_thread([&]() {
+    std::thread autosave_thread([&]() {
         try {
-            in_queue->Autosave(128*1024, 250);
+            queue->Autosave(128*1024, 250);
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
             throw;
         }
     });
 
-    std::thread out_autosave_thread([&]() {
-        try {
-            out_queue->Autosave(32*1024, 250);
-        } catch (const std::exception& ex) {
-            Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
-            throw;
-        }
+    try {
+        user_db->Start();
+        outputs.Start();
+    } catch (const std::exception& ex) {
+        Logger::Error("Unexpected exception during startup: %s", ex.what());
+        throw;
+    } catch (...) {
+        Logger::Error("Unexpected exception during startup");
+        throw;
+    }
+
+    Signals::SetHupHandler([&outputs](){
+        outputs.Reload();
     });
 
-    std::thread forward_thread([&]() {
-        try {
-            void* ptr;
-            size_t size;
-            queue_msg_type_t msg_type;
-            while(true) {
-                int64_t id = in_queue->Peek(&size, &msg_type, 250);
-                if (id > 0) {
-                    // Wait until these is enough space in the output queue
-                    auto ret = out_queue->Allocate(&ptr, size, false, -1);
-                    if (ret == Queue::CLOSED) {
-                        Logger::Info("Output Queue closed");
-                        return;
-                    } else if (ret > 0) {
-                        auto tret = in_queue->TryGet(id, ptr, size, true);
-                        if (tret == 1) {
-                            out_queue->Commit(msg_type);
-                        } else {
-                            out_queue->Rollback();
-                        }
-                    }
-                } else if (id == Queue::CLOSED) {
-                    Logger::Info("Input Queue closed");
-                    return;
-                }
-            }
-        } catch (const std::exception& ex) {
-            Logger::Error("Unexpected exception in forward thread: %s", ex.what());
-            throw;
-        } catch (...) {
-            Logger::Error("Unexpected exception in forward thread");
-            throw;
-        }
-    });
+    // Start signal handling thread
+    Signals::Start();
 
-    std::thread output_thread([&]() {
-        try {
-            char data[128*1024];
-            size_t size;
-            queue_msg_type_t msg_type;
-            while(true) {
-                size = sizeof(data);
-                auto ret = out_queue->Get(data, &size, &msg_type, false, 250);
-                if (ret > 0) {
-                    switch (msg_type) {
-                        case queue_msg_type_t::EVENT: {
-                            Event event(data, size);
-                            transformer->ProcessEvent(event);
-                            break;
-                        }
-                        case queue_msg_type_t::EVENTS_GAP: {
-                            transformer->ProcessEventsGap(*reinterpret_cast<EventGapReport *>(data));
-                            break;
-                        }
-                        default: {
-                            Logger::Warn("Unexpected message type found in queue");
-                            break;
-                        }
-                    }
-                    out_queue->Checkpoint(ret); // TODO: Need to refactor this logic.
-                } else if (ret == Queue::CLOSED) {
-                    Logger::Info("Output: Queue closed");
-                    return;
-                }
-            }
-        } catch (const std::exception& ex) {
-            Logger::Error("Unexpected exception in output thread: %s", ex.what());
-            throw;
-        } catch (...) {
-            Logger::Error("Unexpected exception in output thread");
-            throw;
-        }
-    });
-
-    user_db->Start();
-
-    int exit_code = 0;
     try {
         char buffer[64*1024];
-        while(true) {
-            ssize_t nr = reader.Read(buffer, sizeof(buffer));
+        int timeout = -1;
+        bool flushed = true;
+        for (;;) {
+            if (flushed && !Signals::IsExit()) {
+                // Only use infinite timeout if AuditEventProcessor hasn't been flushed
+                // and Signals::IsExit() is false
+                timeout = -1;
+            } else {
+                // We want to keep this number small to reduce shutdown delay.
+                // However, audispd waits 50 msec after sending SIGTERM before closing pipe
+                // So this needs to be larger than 50.
+                timeout = 100;
+            }
+            int nr = reader.Read(buffer, sizeof(buffer), timeout);
             if (nr > 0) {
                 aep.ProcessData(buffer, nr);
-            } else if (nr == 0) {
-                aep.Flush();
-            } else {
-                break;
-            }
-            if (Signals::IsExit()) {
+                flushed = false;
+            } else if (nr == StdinReader::TIMEOUT || nr == StdinReader::INTERRUPTED) {
+                if (nr != StdinReader::INTERRUPTED) {
+                    aep.Flush();
+                    flushed = true;
+                }
+                if (nr == StdinReader::TIMEOUT && Signals::IsExit()) {
+                    break;
+                }
+            } else { // nr == StdinReader::CLOSED
                 break;
             }
         }
@@ -361,20 +240,14 @@ int main(int argc, char**argv) {
     }
 
     Logger::Info("Exiting");
-    std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
     try {
-        aep.Close();
-        user_db->Stop();
-        in_queue->Close();
-        out_queue->Close();
-        sink->Close();
-        forward_thread.join();
-        output_thread.join();
-        in_autosave_thread.join();
-        out_autosave_thread.join();
-        in_queue->Save();
-        out_queue->Save();
+        aep.Flush(); // Force processing of any remaining data
+        outputs.Stop(false); // Trigger outputs shutdown but don't block
+        user_db->Stop(); // Stop user db monitoring
+        queue->Close(); // Close queue, this will trigger exit of autosave thread
+        outputs.Wait(); // Wait for outputs to finish shutdown
+        autosave_thread.join(); // Wait for autosave thread to exit
     } catch (const std::exception& ex) {
         Logger::Error("Unexpected exception during exit: %s", ex.what());
         throw;
@@ -382,5 +255,6 @@ int main(int argc, char**argv) {
         Logger::Error("Unexpected exception during exit");
         throw;
     }
-    exit(exit_code);
+
+    exit(0);
 }

@@ -108,31 +108,51 @@ bool Config::HasKey(const std::string& name) const
 
 bool Config::GetBool(const std::string& name) const
 {
-    std::string val = _map.at(name);
-    if (val == "on" || val == "yes" || val == "true") {
-        return true;
+    if (!HasKey(name)) {
+        throw std::runtime_error("Config::GetBool(): Key not found: " + name);
+    } else {
+        std::string val = _map.at(name);
+        if (val == "on" || val == "yes" || val == "true") {
+            return true;
+        }
+        return false;
     }
-    return false;
 }
 
 int64_t Config::GetInt64(const std::string& name) const
 {
-    return std::stoll(_map.at(name));
+    if (!HasKey(name)) {
+        throw std::runtime_error("Config::GetInt64(): Key not found: " + name);
+    } else {
+        return std::stoll(_map.at(name));
+    }
 }
 
 uint64_t Config::GetUint64(const std::string& name) const
 {
-    return std::stoull(_map.at(name));
+    if (!HasKey(name)) {
+        throw std::runtime_error("Config::GetUint64(): Key not found: " + name);
+    } else {
+        return std::stoull(_map.at(name));
+    }
 }
 
 std::string Config::GetString(const std::string& name) const
 {
-    return _map.at(name);
+    if (!HasKey(name)) {
+        throw std::runtime_error("Config::GetString(): Key not found: " + name);
+    } else {
+        return _map.at(name);
+    }
 }
 
 rapidjson::Document Config::GetJSON(const std::string& name) const
 {
-    rapidjson::Document doc;
-    doc.Parse(_map.at(name).c_str());
-    return doc;
+    if (!HasKey(name)) {
+        throw std::runtime_error("Config::GetJSON(): Key not found: " + name);
+    } else {
+        rapidjson::Document doc;
+        doc.Parse(_map.at(name).c_str());
+        return doc;
+    }
 }

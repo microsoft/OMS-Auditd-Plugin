@@ -13,18 +13,44 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_JSONMESSAGEBUFFER_H
-#define AUOMS_JSONMESSAGEBUFFER_H
 
-#include "JSONMessageSinkBase.h"
+#ifndef AUOMS_OUTPUTS_H
+#define AUOMS_OUTPUTS_H
 
-class JSONMessageBuffer: virtual public JSONMessageSinkBase {
+#include "RunBase.h"
+#include "Output.h"
+#include "Queue.h"
+
+#include <string>
+#include <unordered_map>
+#include <mutex>
+#include <condition_variable>
+#include <memory>
+#include <vector>
+
+class Outputs: public RunBase {
 public:
-    void BeginMessage();
-    void EndMessage();
-    void Reset();
-    const char* GetString();
-    size_t GetSize();
+    Outputs(std::shared_ptr<Queue>& queue, const std::string& conf_dir, const std::string& cursor_dir, const std::vector<std::string>& allowed_socket_dirs):
+            _queue(queue), _conf_dir(conf_dir), _cursor_dir(cursor_dir), _allowed_socket_dirs(allowed_socket_dirs), _do_reload(false) {}
+
+    void Reload();
+
+protected:
+    virtual void on_stop();
+    virtual void run();
+
+private:
+    void do_conf_sync();
+
+    std::shared_ptr<Queue> _queue;
+    std::string _conf_dir;
+    std::string _cursor_dir;
+    std::vector<std::string> _allowed_socket_dirs;
+    bool _do_reload;
+    std::mutex _mutex;
+    std::condition_variable _cond;
+    std::unordered_map<std::string, std::shared_ptr<Output>> _outputs;
 };
 
-#endif //AUOMS_JSONMESSAGEBUFFER_H
+
+#endif //AUOMS_OUTPUTS_H

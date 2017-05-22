@@ -35,11 +35,8 @@ public:
     ~AuditEventProcessor();
 
     void Initialize();
-    void ProcessData(const std::string& data) { ProcessData(data.c_str(), data.length()); }
     void ProcessData(const char* data, size_t data_len);
     void Flush();
-    void Reset();
-    void Close();
 
 private:
     static void static_callback(void *au, dummy_enum_t cb_event_type, void *user_data);

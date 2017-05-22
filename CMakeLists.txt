@@ -26,26 +26,23 @@ include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include)
 set(SOURCE_FILES
         main.cpp
         Event.cpp
-        OMSEventTransformerConfig.cpp
-        OMSEventTransformer.cpp
-        EventTransformerBase.cpp
-        EventTransformerConfig.cpp
-        EventTransformer.cpp
+        OMSEventWriterConfig.cpp
+        OMSEventWriter.cpp
+        JSONEventWriter.cpp
+        MsgPackEventWriter.cpp
         AuditEventProcessor.cpp
-        JSONMessageSinkBase.cpp
-        JSONMessageBuffer.cpp
-        JSONMessageSink.cpp
-        MsgPackMessageSink.cpp
         StdinReader.cpp
         Signals.cpp
-        MessageSinkBase.cpp
         Queue.cpp
-        OutputBase.cpp
+        WriterBase.cpp
         UnixDomainWriter.cpp
         StdoutWriter.cpp
         Logger.cpp
         Config.cpp
         UserDB.cpp
+        RunBase.cpp
+        Outputs.cpp
+        Output.cpp
 )
 
 add_executable(auoms ${SOURCE_FILES})
@@ -77,7 +74,29 @@ set_target_properties(fakefluentd PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAG
 install(TARGETS
         fakefluentd
         RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
-        )
+)
+
+add_executable(fakeaudispd
+        fakeaudispd.cpp
+)
+
+set_target_properties(fakeaudispd PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+
+install(TARGETS
+        fakeaudispd
+        RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
+)
+
+add_executable(fakepipe
+        fakepipe.cpp
+)
+
+set_target_properties(fakepipe PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+
+install(TARGETS
+        fakepipe
+        RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
+)
 
 #Setup CMake to run tests
 enable_testing()

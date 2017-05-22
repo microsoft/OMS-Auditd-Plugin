@@ -13,7 +13,7 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#include "OMSEventTransformerConfig.h"
+#include "OMSEventWriterConfig.h"
 
 #include "Logger.h"
 
@@ -26,85 +26,84 @@ static std::string _tolower(const std::string& in)
     return out;
 }
 
-typedef bool (*config_set_func_t)(const std::string& name, OMSEventTransformerConfig& et_config, const Config& config);
+typedef bool (*config_set_func_t)(const std::string& name, OMSEventWriterConfig& et_config, const Config& config);
 
 static std::unordered_map<std::string, config_set_func_t> _configSetters = {
-        {"include_full_raw_text", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
+        {"include_full_raw_text", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.IncludeFullRawText = config.GetBool(name);
             }
             return true;
         }},
-        {"raw_text_field_name", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
+        {"raw_text_field_name", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.RawTextFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"timestamp_field_name", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
+        {"timestamp_field_name", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.TimestampFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"serial_field_name", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
+        {"serial_field_name", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.SerialFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"record_type_field_name", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
+        {"record_type_field_name", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.RecordTypeFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"record_type_name_field_name", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
+        {"record_type_name_field_name", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.RecordTypeNameFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"record_count_field_name", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
+        {"records_field_name", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
-                et_config.RecordCountFieldName = config.GetString(name);
+                et_config.RecordsFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"record_index_field_name", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
-            if (config.HasKey(name)) {
-                et_config.RecordIndexFieldName = config.GetString(name);
-            }
-            return true;
-        }},
-        {"record_data_field_name_prefix", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
-            if (config.HasKey(name)) {
-                et_config.RecordDataFieldNamePrefix = config.GetString(name);
-            }
-            return true;
-        }},
-        {"field_suffix", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
+        {"field_suffix", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.FieldSuffix = config.GetString(name);
             }
             return true;
         }},
-        {"record_type_name_overrides", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
+        {"record_type_name_overrides", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 auto doc = config.GetJSON(name);
                 if (!doc.IsObject()) {
                     return false;
                 }
                 for (auto it = doc.MemberBegin(); it != doc.MemberEnd(); ++it) {
-                    et_config.RecordTypeNameOverrideMap.emplace(std::make_pair(
-                            it->name.GetInt(),
-                            std::string(it->value.GetString(), it->value.GetStringLength())
-                    ));
+                    if (it->value.IsString()) {
+                        int id = atoi(it->name.GetString());
+                        if (id <= 0) {
+                            Logger::Error("Invalid entry (%s) in config for '%s'", it->name.GetString(), name.c_str());
+                            return false;
+                        } else {
+                            et_config.RecordTypeNameOverrideMap.emplace(std::make_pair(
+                                    id,
+                                    std::string(it->value.GetString(), it->value.GetStringLength())
+                            ));
+                        }
+                    } else {
+                        Logger::Error("Invalid entry (%s) in config for '%s'", it->name.GetString(), name.c_str());
+                        return false;
+                    }
                 }
             }
             return true;
         }},
-        {"field_name_overrides", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
+        {"field_name_overrides", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 auto doc = config.GetJSON(name);
                 if (!doc.IsObject()) {
@@ -119,7 +118,7 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
-        {"interpreted_field_names", [](const std::string& name, OMSEventTransformerConfig& et_config, const Config& config)->bool{
+        {"interpreted_field_names", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 auto doc = config.GetJSON(name);
                 if (!doc.IsObject()) {
@@ -136,7 +135,7 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
         }},
 };
 
-bool OMSEventTransformerConfig::LoadFromConfig(const Config& config)
+bool OMSEventWriterConfig::LoadFromConfig(const Config& config)
 {
     bool good = true;
     for (auto cs : _configSetters) {

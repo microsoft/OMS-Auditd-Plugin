@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,32 +13,18 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_JSON_MESSAGE_SINK_H
-#define AUOMS_JSON_MESSAGE_SINK_H
 
-#include "MessageSinkBase.h"
-#include "JSONMessageSinkBase.h"
-#include "OutputBase.h"
+#ifndef AUOMS_RAWEVENTWRITER_H
+#define AUOMS_RAWEVENTWRITER_H
 
-#include <memory>
+#include "IEventWriter.h"
 
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
-
-class JSONMessageSink: virtual public MessageSinkBase, virtual public JSONMessageSinkBase {
+class RawEventWriter: public IEventWriter {
 public:
-    static std::shared_ptr<MessageSinkBase> Create(std::unique_ptr<OutputBase>&& output, const Config& config) {
-        return std::shared_ptr<MessageSinkBase>(static_cast<MessageSinkBase *>(new JSONMessageSink(std::move(output))));
+    virtual bool WriteEvent(const Event& event, IWriter* writer) {
+        return writer->Write(event.Data(), event.Size()) != IWriter::OK;
     }
-
-    JSONMessageSink(std::unique_ptr<OutputBase>&& output): MessageSinkBase(std::move(output)) {}
-
-    virtual void BeginMessage(const std::string& tag, uint64_t sec, uint32_t msec);
-    virtual void EndMessage();
-    virtual void CancelMessage();
-private:
-    void send_message();
 };
 
 
-#endif //AUOMS_JSON_MESSAGE_SINK_H
+#endif //AUOMS_RAWEVENTWRITER_H

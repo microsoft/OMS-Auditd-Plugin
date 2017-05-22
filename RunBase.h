@@ -13,19 +13,45 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_EVENTTRANSFORMERBASE_H_H
-#define AUOMS_EVENTTRANSFORMERBASE_H_H
 
-#include "Event.h"
+#ifndef AUOMS_RUNBASE_H
+#define AUOMS_RUNBASE_H
 
-class EventTransformerBase {
+#include <mutex>
+#include <condition_variable>
+#include <pthread.h>
+
+class RunBase {
 public:
-    virtual void ProcessEvent(const Event& event) = 0;
-    virtual void ProcessEventsGap(const EventGapReport& gap) = 0;
+    RunBase(): _start(false), _stop(false), _joined(false), _stopped(false) {}
+    virtual ~RunBase() {}
+
+    void Start();
+    void Stop();
+    void Stop(bool wait);
+    bool IsStopping();
+    void Wait();
 
 protected:
-    static void decode_hex(std::string& out, const std::string& in);
-    static void unescape(std::string& out, const std::string& in);
+    // Return true if _stop is true
+    bool _sleep(int millis);
+    bool _sleep_locked(std::unique_lock<std::mutex>& lock, int millis);
+
+    virtual void on_stop();
+    virtual void run() = 0;
+
+    std::mutex _run_mutex;
+    std::condition_variable _run_cond;
+    bool _start;
+    bool _stop;
+    bool _joined;
+    bool _stopped;
+    pthread_t _thread_id;
+
+private:
+    static void* thread_entry(void* ptr);
+    void thread_run();
 };
 
-#endif //AUOMS_EVENTTRANSFORMERBASE_H_H
+
+#endif //AUOMS_RUNBASE_H

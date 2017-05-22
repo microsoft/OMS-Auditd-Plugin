@@ -24,13 +24,39 @@ extern "C" {
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/file.h>
 #include <fcntl.h>
+#include <signal.h>
 }
+
+const QueueCursor QueueCursor::HEAD = QueueCursor(0xFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFF);
+const QueueCursor QueueCursor::TAIL = QueueCursor(0, 0xFFFFFFFFFFFFFF);
+
+void QueueCursor::to_data(std::array<uint8_t, DATA_SIZE>& data) const {
+    uint64_t* ptr = reinterpret_cast<uint64_t*>(data.data());
+    ptr[0] = id;
+    ptr[1] = index;
+}
+
+void QueueCursor::to_data(void* ptr, size_t size) const {
+    assert(ptr != nullptr);
+    assert(size >= DATA_SIZE);
+
+    reinterpret_cast<uint64_t*>(ptr)[0] = id;
+    reinterpret_cast<uint64_t*>(ptr)[1] = index;
+}
+
+void QueueCursor::from_data(const std::array<uint8_t, DATA_SIZE>& data) {
+    const uint64_t* ptr = reinterpret_cast<const uint64_t*>(data.data());
+    id = ptr[0];
+    index = ptr[1];
+}
+
 
 struct BlockHeader {
     uint64_t size;
-    queue_msg_type_t msg_type;
-    int64_t id;
+    uint64_t id;
+    uint64_t state;
 };
 
 #define FILE_DATA_OFFSET 512
@@ -38,9 +64,9 @@ struct FileHeader {
     uint64_t magic;
     uint64_t version;
     uint64_t size;
-    uint64_t widx;
-    uint64_t ridx;
-    int64_t next_id;
+    uint64_t head;
+    uint64_t tail;
+    uint64_t next_id;
 };
 
 struct _region {
@@ -55,8 +81,10 @@ void _pread(int fd, void* ptr, size_t size, off_t offset)
         auto nr = pread(fd, ptr, size, offset);
         if (nr < 0) {
             if (errno != EINTR) {
-                throw std::system_error(errno, std::system_category());
+                throw std::system_error(errno, std::system_category(), "read()");
             }
+        } else if (nr == 0) {
+            throw std::runtime_error("EOF");
         } else {
             ptr = reinterpret_cast<char*>(ptr)+nr;
             size -= nr;
@@ -71,7 +99,7 @@ void _pwrite(int fd, void* ptr, size_t size, off_t offset)
         auto nw = pwrite(fd, ptr, size, offset);
         if (nw < 0) {
             if (errno != EINTR) {
-                throw std::system_error(errno, std::system_category());
+                throw std::system_error(errno, std::system_category(), "write()");
             }
         } else {
             ptr = reinterpret_cast<char*>(ptr)+nw;
@@ -82,49 +110,75 @@ void _pwrite(int fd, void* ptr, size_t size, off_t offset)
 }
 
 Queue::Queue(size_t size):
-        _path(), _size(size), _fd(-1), _next_id(1), _closed(true)
+        _path(), _file_size(size), _fd(-1), _next_id(1), _closed(true), _save_active(false)
 {
-    if (_size < MIN_QUEUE_SIZE) {
-        _size = MIN_QUEUE_SIZE;
+    if (_file_size < MIN_QUEUE_SIZE) {
+        _file_size = MIN_QUEUE_SIZE;
     }
-    _ptr = new char[_size];
+    _data_size = _file_size-FILE_DATA_OFFSET;
+    _ptr = new char[_data_size];
 
-    _ridx = _widx = _index = _saved_size = 0;
+    memset(_ptr, 0, _data_size);
+
+    _tail = _head = _saved_size = 0;
 }
 
 Queue::Queue(const std::string& path, size_t size):
-        _path(path), _size(size), _fd(-1), _next_id(1), _closed(true)
+        _path(path), _file_size(size), _fd(-1), _next_id(1), _closed(true), _save_active(false)
 {
-    if (_size < MIN_QUEUE_SIZE) {
-        _size = MIN_QUEUE_SIZE;
+    if (_file_size < MIN_QUEUE_SIZE) {
+        _file_size = MIN_QUEUE_SIZE;
     }
-    _ptr = new char[_size];
+    _data_size = _file_size-FILE_DATA_OFFSET;
+    _ptr = new char[_data_size];
+    memset(_ptr, 0, _data_size);
 }
 
 Queue::~Queue()
 {
+    if (_fd > -1) {
+        close(_fd);
+    }
     delete[] _ptr;
 }
 
 void Queue::Open()
 {
-    if (_path.empty()) {
-        _closed = false;
+    std::unique_lock<std::mutex> lock(_lock);
+
+    if (!_closed) {
         return;
     }
 
-    _ridx = _widx = _index = _saved_size = 0;
+    if (_path.empty()) {
+        _closed = true;
+        return;
+    }
 
-    // TODO: Add mkdir
+    _tail = _head = _saved_size = 0;
 
     _fd = open(_path.c_str(), O_RDWR|O_CREAT|O_SYNC, 0600);
     if (_fd < 0) {
-        throw std::system_error(errno, std::system_category());
+        throw std::system_error(errno, std::system_category(), "Failed to open queue file");
     }
+
+    // SIGINT and SIGTERM are blocked at this point
+    // Unblock them so that the process can be terminated if it hangs while trying to lock the queue file
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+    sigaddset(&set, SIGTERM);
+    sigprocmask(SIG_UNBLOCK, &set, nullptr);
+    // Obtain an exclusive lock on the queue file.
+    if (flock(_fd, LOCK_EX) != 0) {
+        throw std::system_error(errno, std::system_category(), "Failed to lock queue file");
+    }
+    // Re-block the signals
+    sigprocmask(SIG_BLOCK, &set, nullptr);
 
     struct stat st;
     if (fstat(_fd, &st) < 0) {
-        throw std::system_error(errno, std::system_category());
+        throw std::system_error(errno, std::system_category(), "Failed to fstat queue file");
     }
 
     bool new_file = false;
@@ -134,7 +188,7 @@ void Queue::Open()
 
     if (st.st_size < FILE_DATA_OFFSET) {
         if (ftruncate(_fd, FILE_DATA_OFFSET) != 0) {
-            throw std::system_error(errno, std::system_category());
+            throw std::system_error(errno, std::system_category(), "ftruncate failed");
         }
     }
 
@@ -154,111 +208,80 @@ void Queue::Open()
             Logger::Warn(
                     "Queue file version mismatch, discarding existing contents: Expected version %d, found version %d",
                     VERSION, hdr.version);
-            hdr.size = _size;
+            hdr.size = _file_size;
+            hdr.size = 0;
+            hdr.tail = 0;
+            hdr.head = 0;
+            hdr.next_id = 1;
+        }
+
+        if (hdr.size != _file_size) {
+            Logger::Warn("Queue::Open: Requested queue size (%ld) does not match existing queue size (%ld). Ignoring requested file size and using actual file size.", _file_size, hdr.size);
+            _file_size = hdr.size;
+            _data_size = _file_size-FILE_DATA_OFFSET;
+            delete[] _ptr;
+            _ptr = new char[_data_size];
+            memset(_ptr, 0, _data_size);
         }
     } else {
-        hdr.size = 0;
-        hdr.ridx = 0;
-        hdr.widx = 0;
+        hdr.magic = HEADER_MAGIC;
+        hdr.version = VERSION;
+        hdr.size = _file_size;
+        hdr.tail = 0;
+        hdr.head = 0;
         hdr.next_id = 1;
+
+        // The size of the save file has changed.
+        if (ftruncate(_fd, _file_size) != 0) {
+            throw std::system_error(errno, std::system_category(), "ftruncate failed");
+        }
+        // Update header with new size
+        _pwrite(_fd, &hdr, sizeof(FileHeader), 0);
+        // Make sure all the file blocks are allocated on disk.
+        _pwrite(_fd, _ptr, _data_size, FILE_DATA_OFFSET);
     }
 
     _next_id = hdr.next_id;
 
-    if (hdr.ridx == hdr.widx) {
-        // There's no data in the save file.
-        if (hdr.size != _size) {
-            // The save file size needs to be changed
-            if (ftruncate(_fd, _size) != 0) {
-                throw std::system_error(errno, std::system_category());
-            }
-            // Save will update the size of the file in the header.
-            _closed = false;
-            Save();
-        }
+    if (hdr.tail == hdr.head) {
         _closed = false;
         return;
-    }
-
-    if (hdr.size > _size) {
-        // The new queue size is smaller than the save file size
-        // Make sure the data saved in the save file will fit in the new queue.
-        if (hdr.ridx < hdr.widx) {
-            if (hdr.widx-hdr.ridx > _size) {
-                throw std::runtime_error("Queue::Open: Saved data size exceeds requested queue size");
-            }
-        } else {
-            if (hdr.widx+(hdr.size-hdr.ridx) > _size) {
-                throw std::runtime_error("Queue::Open: Saved data size exceeds requested queue size");
-            }
-        }
-    }
-
-    if (hdr.size != _size) {
-        // The size of the save file has changed.
-        // The data needs to be relocated.
-        if (hdr.ridx < hdr.widx) {
-            regions[0].data = _ptr;
-            regions[0].size = hdr.widx - hdr.ridx;
-            regions[0].index = hdr.ridx + FILE_DATA_OFFSET;
-            nregions = 1;
-        } else {
-            regions[0].data = _ptr;
-            regions[0].size = hdr.size - hdr.ridx;
-            regions[0].index = hdr.ridx + FILE_DATA_OFFSET;
-            regions[1].data = _ptr + regions[0].size;
-            regions[1].size = hdr.widx;
-            regions[1].index = FILE_DATA_OFFSET;
-            nregions = 2;
-        }
-        for ( int i = 0; i < nregions; i++) {
-            _pread(_fd, regions[i].data, regions[i].size, regions[i].index);
-            _saved_size += regions[i].size;
-        }
-        _ridx = 0;
-        _index = 0;
-        _widx = _saved_size;
-        if (ftruncate(_fd, _size) != 0) {
-            throw std::system_error(errno, std::system_category());
-        }
-        _saved_size = 0;
-        _closed = false;
-        Save();
+    } else if (hdr.tail < hdr.head) {
+        regions[0].data = _ptr+hdr.tail;
+        regions[0].size = hdr.head - hdr.tail;
+        regions[0].index = hdr.tail + FILE_DATA_OFFSET;
+        nregions = 1;
     } else {
-        // The save file is the same size as the requested queue size
-        // Load the data in it's current location.
-        if (hdr.ridx < hdr.widx) {
-            regions[0].data = _ptr+hdr.ridx;
-            regions[0].size = hdr.widx - hdr.ridx;
-            regions[0].index = hdr.ridx + FILE_DATA_OFFSET;
-            nregions = 1;
-        } else {
-            regions[0].data = _ptr;
-            regions[0].size = hdr.widx;
-            regions[0].index = FILE_DATA_OFFSET;
-            regions[1].data = _ptr+hdr.ridx;
-            regions[1].size = hdr.size - hdr.ridx;
-            regions[1].index = hdr.ridx + FILE_DATA_OFFSET;
-            nregions = 2;
-        }
-        for ( int i = 0; i < nregions; i++) {
-            _pread(_fd, regions[i].data, regions[i].size, regions[i].index);
-            _saved_size += regions[i].size;
-        }
-        _ridx = hdr.ridx;
-        _widx = hdr.widx;
-        _index = _ridx;
+        regions[0].data = _ptr;
+        regions[0].size = hdr.head;
+        regions[0].index = FILE_DATA_OFFSET;
+        regions[1].data = _ptr+hdr.tail;
+        regions[1].size = hdr.size - FILE_DATA_OFFSET - hdr.tail;
+        regions[1].index = hdr.tail + FILE_DATA_OFFSET;
+        nregions = 2;
     }
+
+    for ( int i = 0; i < nregions; i++) {
+        _pread(_fd, regions[i].data, regions[i].size, regions[i].index);
+        _saved_size += regions[i].size;
+    }
+    _tail = hdr.tail;
+    _head = hdr.head;
 
     // There might have been an uncommitted block.
-    BlockHeader* bhdr = reinterpret_cast<BlockHeader*>(_ptr+_widx);
+    BlockHeader* bhdr = reinterpret_cast<BlockHeader*>(_ptr+_head);
     bhdr->size = 0;
-    bhdr->id = HEAD;
+    bhdr->id = 0;
+    bhdr->state = HEAD;
 
     _closed = false;
 }
 
-void Queue::Close()
+void Queue::Close() {
+    Close(true);
+}
+
+void Queue::Close(bool save)
 {
     std::unique_lock<std::mutex> lock(_lock);
     _closed = true;
@@ -267,7 +290,9 @@ void Queue::Close()
         return;
     }
 
-    save_locked(lock);
+    if (save) {
+        save_locked(lock);
+    }
 
     close(_fd);
     _fd = -1;
@@ -294,62 +319,64 @@ void Queue::save_locked(std::unique_lock<std::mutex>& lock)
         throw std::runtime_error("Queue::Save: Queue not opened");
     }
 
+    if (_save_active) {
+        return;
+    }
+
+    _save_active = true;
+
     FileHeader before;
     FileHeader after;
 
     before.magic = HEADER_MAGIC;
     before.version = VERSION;
-    before.size = _size;
-    before.ridx = _ridx;
+    before.size = _file_size;
+    before.tail = _tail;
     before.next_id = _next_id;
 
     after.magic = HEADER_MAGIC;
     after.version = VERSION;
-    after.size = _size;
+    after.size = _file_size;
     after.next_id = _next_id;
-    after.ridx = _ridx;
-    after.widx = _widx;
+    after.tail = _tail;
+    after.head = _head;
 
     struct _region regions[2];
     int nregions = 0;
 
-    if (_saved_size < 0) {
-        _saved_size = 0;
-    }
-
-    if (_ridx <= _widx) {
-        /* [----<ridx>====<widx>----] */
-        if (_widx-_ridx > _saved_size) {
-            regions[0].index = _ridx + _saved_size + FILE_DATA_OFFSET;
-            regions[0].size = _widx-_ridx - _saved_size;
-            regions[0].data = _ptr + _ridx + _saved_size;
+    if (_tail <= _head) {
+        /* [----<tail>====<head>----] */
+        if (_head-_tail > _saved_size) {
+            regions[0].index = _tail + _saved_size + FILE_DATA_OFFSET;
+            regions[0].size = _head-_tail - _saved_size;
+            regions[0].data = _ptr + _tail + _saved_size;
             nregions = 1;
         }
-        before.widx = _ridx + _saved_size;
+        before.head = _tail + _saved_size;
     } else {
-        /* [====<widx>----<ridx>====] */
-        uint64_t tail_size = _size-_ridx;
+        /* [====<head>----<tail>====] */
+        uint64_t tail_size = _data_size-_tail;
         if (tail_size > _saved_size) {
-            regions[0].index = _ridx + _saved_size + FILE_DATA_OFFSET;
+            regions[0].index = _tail + _saved_size + FILE_DATA_OFFSET;
             regions[0].size = tail_size - _saved_size;
-            regions[0].data = _ptr + _ridx + _saved_size;
+            regions[0].data = _ptr + _tail + _saved_size;
             nregions = 1;
-            if (_widx > 0) {
+            if (_head > 0) {
                 regions[1].index = FILE_DATA_OFFSET;
-                regions[1].size = _widx;
+                regions[1].size = _head;
                 regions[1].data = _ptr;
                 nregions = 2;
             }
-            before.widx = _ridx + _saved_size;
+            before.head = _tail + _saved_size;
         } else {
             uint64_t head_save_size = _saved_size - tail_size;
-            if (head_save_size < _widx) {
+            if (head_save_size < _head) {
                 regions[0].index = head_save_size + FILE_DATA_OFFSET;
-                regions[0].size = _widx - head_save_size;
+                regions[0].size = _head - head_save_size;
                 regions[0].data = _ptr + head_save_size;
                 nregions = 1;
             }
-            before.widx = head_save_size;
+            before.head = head_save_size;
         }
     }
 
@@ -371,50 +398,23 @@ void Queue::save_locked(std::unique_lock<std::mutex>& lock)
     lock.lock();
 
     _saved_size += save_size;
+    _save_active = false;
 }
 
 // Assumes queue is locked
 uint64_t Queue::unsaved_size()
 {
     uint64_t queue_size = 0;
-    if (_ridx <= _widx) {
-        queue_size = _widx - _ridx;
+    if (_tail <= _head) {
+        queue_size = _head - _tail;
     } else {
-        queue_size = _widx + (_size - _ridx);
+        queue_size = _head + (_data_size - _tail);
     }
 
     if (queue_size > _saved_size) {
         return queue_size - _saved_size;
     } else {
         return 0;
-    }
-}
-
-// Assumes queue is locked
-bool Queue::have_data()
-{
-    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+_index);
-    if (hdr->id == WRAP) {
-        _index = 0;
-    }
-
-    return this->_widx != this->_index;
-}
-
-// Assumes queue is locked
-bool Queue::check_fit(size_t size)
-{
-    size_t block_size = sizeof(BlockHeader)+size;
-    if (_ridx <= _widx) {
-        /* [----<ridx>====<widx>----] */
-        if (_size-_widx < block_size+sizeof(BlockHeader)) {
-            return block_size+sizeof(BlockHeader) < _ridx;
-        } else {
-            return true;
-        }
-    } else {
-        /* [====<widx>----<ridx>====] */
-        return (_widx+sizeof(BlockHeader)+block_size <= _ridx);
     }
 }
 
@@ -438,132 +438,130 @@ void Queue::Autosave(uint64_t min_save, int max_delay)
     }
 }
 
-int Queue::allocate_locked(std::unique_lock<std::mutex>& lock, void** ptr, size_t size, bool overwrite, int32_t milliseconds)
+// Assumes queue is locked
+bool Queue::check_fit(size_t size)
+{
+    size_t block_size = sizeof(BlockHeader)+size;
+    if (_tail <= _head) {
+        /* [----<tail>====<head>----] */
+        if (_data_size-_head < block_size+sizeof(BlockHeader)) {
+            // Would wrap
+            return block_size+sizeof(BlockHeader) < _tail;
+        } else {
+            return true;
+        }
+    } else {
+        /* [====<head>----<tail>====] */
+        return (_head+sizeof(BlockHeader)*2+block_size <= _tail);
+    }
+}
+
+int Queue::allocate_locked(std::unique_lock<std::mutex>& lock, void** ptr, size_t size)
 {
     assert(ptr != nullptr);
 
-    if (size+sizeof(BlockHeader) > _size) {
+    if (size+sizeof(BlockHeader) > _data_size-sizeof(BlockHeader)) {
         throw std::runtime_error("Queue: message size exceeds queue size");
     }
 
-    if (overwrite) {
-        uint64_t orig_ridx = _ridx;
+    uint64_t orig_tail = _tail;
 
-        while(!check_fit(size)) {
-            BlockHeader* rhdr = reinterpret_cast<BlockHeader*>(_ptr+_ridx);
-            BlockHeader* ihdr = reinterpret_cast<BlockHeader*>(_ptr+_index);
-            _ridx += rhdr->size + sizeof(BlockHeader);
-            rhdr = reinterpret_cast<BlockHeader*>(_ptr+_ridx);
+    while(!check_fit(size)) {
+        BlockHeader* thdr = reinterpret_cast<BlockHeader*>(_ptr+_tail);
+        _tail += thdr->size + sizeof(BlockHeader);
+        thdr = reinterpret_cast<BlockHeader*>(_ptr+_tail);
 
-            if (rhdr->id == WRAP) {
-                _ridx = 0;
-                rhdr = reinterpret_cast<BlockHeader*>(_ptr);
-            }
-
-            if (ihdr->id != HEAD && ihdr->id < rhdr->id) {
-                _index = _ridx;
-            }
+        if (thdr->state == WRAP) {
+            _tail = 0;
         }
+    }
 
-        uint64_t overwrite_size = 0;
+    uint64_t overwrite_size = 0;
 
-        if (orig_ridx <= _ridx) {
-            /* [----<ridx>====<idx>----] */
-            overwrite_size = _ridx - orig_ridx;
-        } else {
-            /* [====<idx>----<ridx>====] */
-            overwrite_size = _ridx + (_size - orig_ridx);
-        }
-
-        if (overwrite_size > 0) {
-            _saved_size -= overwrite_size;
-        }
+    if (orig_tail <= _tail) {
+        /* [----<tail>====<idx>----] */
+        overwrite_size = _tail - orig_tail;
     } else {
-        if (milliseconds > 0) {
-            if (!_cond.wait_for(lock, std::chrono::milliseconds(milliseconds),
-                                [this, size]() { return _closed || check_fit(size); })) {
-                return TIMEOUT;
-            } else if (_closed) {
-                return CLOSED;
-            }
-        } else if (milliseconds < 0) {
-            _cond.wait(lock, [this, size]() { return _closed || check_fit(size); });
-            if (_closed) {
-                return CLOSED;
-            }
-        } else if (!check_fit(size)) {
-            return TIMEOUT;
+        /* [====<idx>----<tail>====] */
+        overwrite_size = _tail + (_data_size - orig_tail);
+    }
+
+    if (overwrite_size > 0) {
+        if (_saved_size > overwrite_size) {
+            _saved_size -= overwrite_size;
+        } else {
+            _saved_size = 0;
         }
     }
 
     size_t block_size = size+sizeof(BlockHeader);
     BlockHeader* hdr;
-    if (_ridx <= _widx) {
-        /* [----<ridx>====<widx>----] */
-        if (_widx+block_size+sizeof(BlockHeader) > _size) {
-            hdr = reinterpret_cast<BlockHeader*>(_ptr+_widx);
-            if (hdr->id == UNCOMMITTED_PUT) {
-                if (hdr->size > size) {
-                    hdr->size = size;
-                }
-                memcpy(_ptr+sizeof(BlockHeader), _ptr+_widx+sizeof(BlockHeader), hdr->size);
-                BlockHeader* whdr = reinterpret_cast<BlockHeader*>(_ptr);
-                whdr->size = size;
-                whdr->id = UNCOMMITTED_PUT;
+    if (_tail <= _head) {
+        /* [----<tail>====<head>----] */
+        if (_head+block_size+sizeof(BlockHeader) > _data_size) {
+            hdr = reinterpret_cast<BlockHeader*>(_ptr+_head);
+            if (hdr->state == UNCOMMITTED_PUT) {
+                memcpy(_ptr+sizeof(BlockHeader), _ptr+_head+sizeof(BlockHeader), hdr->size);
             }
             hdr->size = 0;
-            hdr->id = WRAP;
-            _widx = 0;
+            hdr->id = 0;
+            hdr->state = WRAP;
+            _head = 0;
         }
     }
 
-    hdr = reinterpret_cast<BlockHeader*>(_ptr+_widx);
+    hdr = reinterpret_cast<BlockHeader*>(_ptr+_head);
     hdr->size = size;
-    hdr->id = UNCOMMITTED_PUT;
-    *ptr = _ptr+_widx+sizeof(BlockHeader);
+    hdr->id = 0;
+    hdr->state = UNCOMMITTED_PUT;
+    *ptr = _ptr+_head+sizeof(BlockHeader);
 
     return 1;
 }
 
-int Queue::Allocate(void** ptr, size_t size, bool overwrite, int32_t milliseconds)
+int Queue::Allocate(void** ptr, size_t size)
 {
+    if (size > MAX_ITEM_SIZE) {
+        return BUFFER_TOO_SMALL;
+    }
     std::unique_lock<std::mutex> lock(_lock);
 
     if (_closed) {
         return CLOSED;
     }
 
-    return allocate_locked(lock, ptr, size, overwrite, milliseconds);
+    return allocate_locked(lock, ptr, size);
 }
 
-int Queue::commit_locked(queue_msg_type_t msg_type)
+int Queue::commit_locked()
 {
-    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+_widx);
+    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+_head);
     size_t block_size = hdr->size+sizeof(BlockHeader);
 
-    hdr->msg_type = msg_type;
+    hdr->state = ITEM;
     hdr->id = _next_id;
 
-    _widx += block_size;
+    _head += block_size;
     _next_id++;
 
-    hdr = reinterpret_cast<BlockHeader*>(_ptr+_widx);
+    hdr = reinterpret_cast<BlockHeader*>(_ptr+_head);
     hdr->size = 0;
-    hdr->id = HEAD;
+    hdr->id = 0;
+    hdr->state = HEAD;
 
     _cond.notify_all();
 
     return 1;
 }
 
-int Queue::Commit(queue_msg_type_t msg_type) {
+int Queue::Commit() {
     std::unique_lock<std::mutex> lock(_lock);
 
     if (_closed) {
         return CLOSED;
     }
 
-    return commit_locked(msg_type);
+    return commit_locked();
 }
 
 int Queue::Rollback()
@@ -574,16 +572,20 @@ int Queue::Rollback()
         return CLOSED;
     }
 
-    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+_widx);
+    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+_head);
     hdr->size = 0;
-    hdr->id = HEAD;
+    hdr->id = 0;
+    hdr->state = HEAD;
 
     return 1;
 }
 
-int Queue::Put(void* ptr, size_t size, queue_msg_type_t msg_type, bool overwrite, int32_t milliseconds)
+int Queue::Put(void* ptr, size_t size)
 {
     assert(ptr != nullptr);
+    if (size > MAX_ITEM_SIZE) {
+        return BUFFER_TOO_SMALL;
+    }
 
     std::unique_lock<std::mutex> lock(_lock);
 
@@ -592,7 +594,7 @@ int Queue::Put(void* ptr, size_t size, queue_msg_type_t msg_type, bool overwrite
     }
 
     void * data;
-    auto ret = allocate_locked(lock, &data, size, overwrite, milliseconds);
+    auto ret = allocate_locked(lock, &data, size);
 
     if (ret != 1) {
         return ret;
@@ -600,261 +602,81 @@ int Queue::Put(void* ptr, size_t size, queue_msg_type_t msg_type, bool overwrite
 
     memcpy(data, ptr, size);
 
-    return commit_locked(msg_type);
+    return commit_locked();
 }
 
-// Get the id and size of the next message
-// Return slot Id on success, 0 on Timeout, -1 if queue closed
-int64_t Queue::Peek(size_t* size, queue_msg_type_t* msg_type, int32_t milliseconds)
+// Assumes queue is locked
+bool Queue::have_data(uint64_t *index)
 {
-    assert(size != nullptr);
-    assert(msg_type != nullptr);
-
-    std::unique_lock<std::mutex> lock(_lock);
-
-    if (_closed) {
-        return CLOSED;
+    assert(index != nullptr);
+    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+(*index));
+    if (hdr->state == WRAP) {
+        *index = 0;
     }
 
-    if (milliseconds > 0) {
-        if (!_cond.wait_for(lock, std::chrono::milliseconds(milliseconds),
-                            [this]() { return _closed || have_data(); })) {
-            return TIMEOUT;
-        } else if (_closed) {
-            return CLOSED;
-        }
-    } else if (milliseconds < 0) {
-        _cond.wait(lock, [this]() { return _closed || have_data(); });
-        if (_closed) {
-            return CLOSED;
-        }
-    } else if (!have_data()) {
-        return TIMEOUT;
-    }
-
-    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+_index);
-    *size = hdr->size;
-    *msg_type = hdr->msg_type;
-
-    return hdr->id;
+    return this->_head != *index;
 }
 
-// Try to get the message previously peeked
-// Return 1 on success, 0 on if msg has already been deleted, -1 if queue closed
-int Queue::TryGet(int64_t msg_id, void* ptr, size_t size, bool auto_checkpoint)
-{
-    std::unique_lock<std::mutex> lock(_lock);
-
-    if (_closed) {
-        return CLOSED;
-    }
-
-    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+_index);
-    if (hdr->id != msg_id) {
-        return 0;
-    }
-
-    char* data = _ptr+_index+sizeof(BlockHeader);
-    _index += sizeof(BlockHeader)+hdr->size;
-
-    if (hdr->size > size) {
-        return BUFFER_TOO_SMALL;
-    }
-
-    memcpy(ptr, data, hdr->size);
-
-    // Make sure _index is wrapped before we return.
-    if (reinterpret_cast<BlockHeader*>(_ptr+_index)->id == WRAP) {
-        _index = 0;
-    }
-
-    if (auto_checkpoint) {
-        uint64_t checkpoint_size = 0;
-
-        if (_ridx <= _index) {
-            /* [----<ridx>====<idx>----] */
-            checkpoint_size = _index - _ridx;
-        } else {
-            /* [====<idx>----<ridx>====] */
-            checkpoint_size = _index + (_size - _ridx);
-        }
-
-        _ridx = _index;
-
-        if (checkpoint_size > 0) {
-            _saved_size -= checkpoint_size;
-        }
-    }
-
-    return 1;
-
-}
-
-int64_t Queue::Get(void*ptr, size_t* size, queue_msg_type_t* msg_type, bool auto_checkpoint, int32_t milliseconds)
-{
+int Queue::Get(QueueCursor last, void*ptr, size_t* size, QueueCursor *item_cursor, int32_t milliseconds) {
     assert(ptr != nullptr);
     assert(size != nullptr);
-    assert(msg_type != nullptr);
+    assert(item_cursor != nullptr);
 
     if (*size == 0) {
         return BUFFER_TOO_SMALL;
     }
 
-    bool bts = false;
-    int64_t id;
-
-    int ret = ZeroCopyGet(milliseconds, auto_checkpoint, [&bts,&id,ptr,size,msg_type](int64_t msg_id, void* zcptr, size_t zcsize, queue_msg_type_t zcmsg_type) -> bool {
-        if (zcsize > *size) {
-            bts = true;
-            return false;
-        }
-
-        id = msg_id;
-        memcpy(ptr, zcptr, zcsize);
-        *msg_type = zcmsg_type;
-        *size = zcsize;
-
-        return true;
-    });
-
-    if (bts) {
-        return BUFFER_TOO_SMALL;
-    }
-
-    if (ret != 1) {
-        return ret;
-    }
-
-    return id;
-}
-
-int Queue::ZeroCopyGet(int32_t milliseconds, bool auto_checkpoint,
-                       std::function<bool(int64_t msg_id, void* ptr, size_t size, queue_msg_type_t msg_type)> fn)
-{
-    assert(fn);
-
     std::unique_lock<std::mutex> lock(_lock);
 
     if (_closed) {
         return CLOSED;
     }
 
+    uint64_t index = last.index;
+
+    if (last.IsHead()) {
+        index = _head;
+    } else if (last.IsTail() || index > _data_size-sizeof(BlockHeader)) {
+        index = _tail;
+    } else {
+        BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+index);
+        if (hdr->id != last.id || hdr->state != ITEM) {
+            index = _tail;
+        } else {
+            index += sizeof(BlockHeader)+hdr->size;
+        }
+    }
+    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+index);
+    if (hdr->state == WRAP) {
+        index = 0;
+    }
+
     if (milliseconds > 0) {
         if (!_cond.wait_for(lock, std::chrono::milliseconds(milliseconds),
-                            [this]() { return _closed || have_data(); })) {
+                            [this,&index]() { return _closed || have_data(&index); })) {
             return TIMEOUT;
         } else if (_closed) {
             return CLOSED;
         }
     } else if (milliseconds < 0) {
-        _cond.wait(lock, [this]() { return _closed || have_data(); });
+        _cond.wait(lock, [this,&index]() { return _closed || have_data(&index); });
         if (_closed) {
             return CLOSED;
         }
-    } else if (!have_data()) {
+    } else if (!have_data(&index)) {
         return TIMEOUT;
     }
 
-    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+_index);
+    hdr = reinterpret_cast<BlockHeader*>(_ptr+index);
 
-    char* data = _ptr+_index+sizeof(BlockHeader);
-
-    if (!fn(hdr->id, data, hdr->size, hdr->msg_type)) {
-        return TIMEOUT;
+    if (hdr->size > *size) {
+        return BUFFER_TOO_SMALL;
     }
 
-    _index += sizeof(BlockHeader)+hdr->size;
-
-    // Make sure _index is wrapped before we return.
-    if (reinterpret_cast<BlockHeader*>(_ptr+_index)->id == WRAP) {
-        _index = 0;
-    }
-
-    if (auto_checkpoint) {
-        uint64_t checkpoint_size = 0;
-
-        if (_ridx <= _index) {
-            /* [----<ridx>====<idx>----] */
-            checkpoint_size = _index - _ridx;
-        } else {
-            /* [====<idx>----<ridx>====] */
-            checkpoint_size = _index + (_size - _ridx);
-        }
-
-        _ridx = _index;
-
-        if (checkpoint_size > 0) {
-            _saved_size -= checkpoint_size;
-        }
-    }
+    memcpy(ptr, _ptr+index+sizeof(BlockHeader), hdr->size);
+    *size = hdr->size;
+    item_cursor->id = hdr->id;
+    item_cursor->index = index;
 
     return 1;
-}
-
-void Queue::Checkpoint(uint64_t id)
-{
-    std::lock_guard<std::mutex> lock(_lock);
-
-    if (_closed) {
-        return;
-    }
-
-    uint64_t idx = _ridx;
-    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+idx);
-    if (hdr->id == WRAP) {
-        idx = 0;
-        hdr = reinterpret_cast<BlockHeader*>(_ptr+idx);
-    }
-
-    if (hdr->id > id || id >= _next_id) {
-        throw std::runtime_error("Queue::Checkpoint: Invalid id");
-    }
-
-    while (hdr->id != HEAD && hdr->id != UNCOMMITTED_PUT && hdr->id < id) {
-        if (hdr->id != WRAP) {
-            idx += hdr->size + sizeof(BlockHeader);
-        } else {
-            idx = 0;
-        }
-        hdr = reinterpret_cast<BlockHeader*>(_ptr+idx);
-    }
-
-    if (hdr->id != id) {
-        throw std::runtime_error("Queue::Checkpoint: Invalid id");
-    }
-
-    idx += hdr->size + sizeof(BlockHeader);
-    hdr = reinterpret_cast<BlockHeader*>(_ptr+idx);
-    if (hdr->id == WRAP) {
-        idx = 0;
-    }
-
-    uint64_t checkpoint_size = 0;
-
-    if (_ridx <= idx) {
-        /* [----<ridx>====<idx>----] */
-        checkpoint_size = idx - _ridx;
-    } else {
-        /* [====<idx>----<ridx>====] */
-        checkpoint_size = idx + (_size - _ridx);
-    }
-
-    _ridx = idx;
-
-    if (checkpoint_size > 0) {
-        _saved_size -= checkpoint_size;
-    }
-
-    _cond.notify_all();
-}
-
-void Queue::Revert()
-{
-    std::lock_guard<std::mutex> lock(_lock);
-
-    if (_closed) {
-        return;
-    }
-
-    _index = _ridx;
 }
