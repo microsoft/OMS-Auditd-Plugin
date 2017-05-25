@@ -15,29 +15,51 @@
 */
 #include "Signals.h"
 
+#include <thread>
+
 extern "C" {
 #include <signal.h>
 }
 
 std::atomic<bool> Signals::_exit(false);
+std::function<void()> Signals::_hup_fn;
+pthread_t Signals::_main_id;
 
+void handle_sigquit(int sig) {
+    // Do nothing
+}
+
+// This must be called by the main thread before any other threads are started
 void Signals::Init()
 {
-    sigset_t ss;
-    sigemptyset(&ss);
-    sigaddset(&ss, SIGHUP);
-    sigaddset(&ss, SIGALRM);
-    sigprocmask(SIG_BLOCK, &ss, nullptr);
+    _main_id = pthread_self();
 
+    // Just ignore these signals
+    signal(SIGALRM, SIG_IGN);
+    signal(SIGPIPE, SIG_IGN);
+
+    // SIGQUIT is used to interrupt threads blocked in syscalls
     struct sigaction sa;
-    sa.sa_handler = handle_signal;
+    sa.sa_handler = handle_sigquit;
     sigfillset(&sa.sa_mask);
     sa.sa_flags = 0;
-    sigaction(SIGINT, &sa, 0);
-    sigaction(SIGTERM, &sa, 0);
     sigaction(SIGQUIT, &sa, 0);
 
-    signal(SIGPIPE, SIG_IGN);
+    // Block these signals in the main and all other threads.
+    // These signals will be handled in the sig handler thread
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGHUP);
+    sigaddset(&set, SIGINT);
+    sigaddset(&set, SIGTERM);
+    sigprocmask(SIG_BLOCK, &set, nullptr);
+}
+
+void Signals::Start()
+{
+    // Start sig handler thread
+    std::thread thread(Signals::run);
+    thread.detach();
 }
 
 bool Signals::IsExit()
@@ -45,7 +67,35 @@ bool Signals::IsExit()
     return _exit.load();
 }
 
-void Signals::handle_signal(int signal)
-{
-    _exit.store(true);
+void Signals::run() {
+    sigset_t set;
+
+    // Block SIGQUIT
+    sigemptyset(&set);
+    sigaddset(&set, SIGQUIT);
+    sigprocmask(SIG_BLOCK, &set, nullptr);
+
+    // Wait for these threads
+    sigemptyset(&set);
+    sigaddset(&set, SIGHUP);
+    sigaddset(&set, SIGINT);
+    sigaddset(&set, SIGTERM);
+
+    for (;;) {
+        int sig = 0;
+        auto ret = sigwait(&set, &sig);
+        if (ret != 0) {
+            return;
+        }
+        if (sig == SIGHUP) {
+            if (_hup_fn) {
+                _hup_fn();
+            }
+        } else {
+            _exit.store(true);
+            // Break main thread out of blocking syscall
+            pthread_kill(_main_id, SIGQUIT);
+            return;
+        }
+    }
 }

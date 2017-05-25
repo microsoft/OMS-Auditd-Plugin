@@ -18,9 +18,9 @@
 
 #include "Config.h"
 
-class OMSEventTransformerConfig {
+class OMSEventWriterConfig {
 public:
-    explicit OMSEventTransformerConfig()
+    explicit OMSEventWriterConfig()
     {
         IncludeFullRawText = true;
         RawTextFieldName = "raw";
@@ -29,9 +29,7 @@ public:
         MsgTypeFieldName = "MessageType";
         RecordTypeFieldName = "RecordTypeCode";
         RecordTypeNameFieldName = "RecordType";
-        RecordCountFieldName = "record-count";
-        RecordIndexFieldName = "record-index";
-        RecordDataFieldNamePrefix = "record-data-";
+        RecordsFieldName = "records";
         FieldSuffix = "_r";
     }
 
@@ -45,9 +43,7 @@ public:
     std::string MsgTypeFieldName;
     std::string RecordTypeFieldName;
     std::string RecordTypeNameFieldName;
-    std::string RecordCountFieldName;
-    std::string RecordIndexFieldName;
-    std::string RecordDataFieldNamePrefix;
+    std::string RecordsFieldName;
 
     std::string FieldSuffix; // The suffix to add to the interpreted field name
 

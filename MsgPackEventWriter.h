@@ -13,46 +13,23 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_OMSEVENTTRANSFORMER_H
-#define AUOMS_OMSEVENTTRANSFORMER_H
 
-#include "OMSEventTransformerConfig.h"
-#include "EventTransformerBase.h"
-#include "MessageSinkBase.h"
-#include "JSONMessageBuffer.h"
-#include "Event.h"
+#ifndef AUOMS_MSGPACKEVENTWRITER_H
+#define AUOMS_MSGPACKEVENTWRITER_H
 
-#include <string>
-#include <memory>
+#include "IEventWriter.h"
 
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
+#include <msgpack.hpp>
 
-
-class OMSEventTransformer: public EventTransformerBase {
+class MsgPackEventWriter: public IEventWriter {
 public:
-    OMSEventTransformer(OMSEventTransformerConfig config, const std::string& tag, std::shared_ptr<MessageSinkBase>& sink):
-    _config(config), _tag(tag), _sink(sink)
-    {}
+    MsgPackEventWriter(): _buffer(256*1024), _packer(&_buffer) {}
 
-    virtual void ProcessEvent(const Event& event);
-    virtual void ProcessEventsGap(const EventGapReport& gap);
-
+    virtual bool WriteEvent(const Event& event, IWriter* writer);
 private:
-    void process_record(const EventRecord& rec, int record_idx, int record_type, const std::string& record_name);
-    void process_field(const EventRecordField& field);
-
-    OMSEventTransformerConfig _config;
-    std::string _tag;
-    std::shared_ptr<MessageSinkBase> _sink;
-    std::string _field_name;
-    std::string _raw_name;
-    std::string _interp_name;
-    std::string _raw_value;
-    std::string _interp_value;
-
-    JSONMessageBuffer _json_buffer;
+    msgpack::sbuffer _buffer;
+    msgpack::packer<msgpack::sbuffer> _packer;
 };
 
 
-#endif //AUOMS_OMSEVENTTRANSFORMER_H
+#endif //AUOMS_MSGPACKEVENTWRITER_H

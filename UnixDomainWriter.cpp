@@ -54,36 +54,3 @@ bool UnixDomainWriter::Open()
 
     return true;
 }
-
-bool UnixDomainWriter::CanRead()
-{
-    return true;
-}
-
-int UnixDomainWriter::Read(void *buf, size_t size)
-{
-    int fd = _fd.load();
-    size_t nleft = size;
-    do
-    {
-        errno = 0;
-        ssize_t nr = read(fd, reinterpret_cast<char*>(buf) + (size - nleft), nleft);
-        if (nr < 0)
-        {
-            if (errno != EINTR) {
-                return OutputBase::FAILED;
-            }
-        }
-        else
-        {
-            nleft -= nr;
-
-            if (nleft > 0 && nr == 0)
-            {
-                return OutputBase::CLOSED;
-            }
-        }
-    } while (nleft > 0);
-
-    return OutputBase::OK;
-}

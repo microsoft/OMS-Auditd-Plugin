@@ -627,6 +627,10 @@ void EventRecord::move(int32_t n) {
  ** Event
  *****************************************************************************/
 
+const void* Event::Data() const {
+    return _data;
+}
+
 uint32_t Event::Size() const {
     return EVENT_SIZE(_data);
 }

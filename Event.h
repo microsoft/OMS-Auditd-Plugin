@@ -62,20 +62,7 @@ typedef enum:uint16_t {
 constexpr event_field_type_t MIN_FIELD_TYPE = FIELD_TYPE_UNCLASSIFIED;
 constexpr event_field_type_t MAX_FIELD_TYPE = FIELD_TYPE_PROCTITLE;
 
-constexpr uint32_t EVENT_FLAG_HAS_EXE_FIELD = 1;
-constexpr uint32_t EVENT_FLAG_HAS_COMM_FIELD = 2;
-constexpr uint32_t EVENT_FLAG_HAS_PROCTITLE_FIELD = 4;
-
-struct EventGapReport {
-    uint64_t sec;
-    uint32_t msec;
-    uint64_t start_sec;
-    uint32_t start_msec;
-    uint64_t start_serial;
-    uint64_t end_sec;
-    uint32_t end_msec;
-    uint64_t end_serial;
-};
+constexpr uint32_t EVENT_FLAG_IS_AUOMS_EVENT = 1;
 
 class IEventBuilderAllocator {
 public:
@@ -278,6 +265,7 @@ public:
     Event& operator=(const Event& other) = default;
     Event& operator=(Event&& other) = default;
 
+    const void* Data() const;
     uint32_t Size() const;
     uint64_t Seconds() const;
     uint32_t Milliseconds() const;

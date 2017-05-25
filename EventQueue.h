@@ -20,21 +20,14 @@
 
 class EventQueue: public IEventBuilderAllocator {
 public:
-    EventQueue(std::shared_ptr<Queue> queue): _queue(queue), _data(nullptr), _size(0) {}
+    EventQueue(std::shared_ptr<Queue> queue): _queue(queue) {}
 
     virtual int Allocate(void** data, size_t size) {
-        int ret = _queue->Allocate(data, size, true, 0);
-        if (ret != 1) {
-            return ret;
-        }
-        _data = *data;
-        _size = size;
-        return 1;
+        return _queue->Allocate(data, size);
     }
 
     virtual int Commit() {
-        Event event(_data, _size);
-        return _queue->Commit(queue_msg_type_t::EVENT);
+        return _queue->Commit();
     }
 
     virtual int Rollback() {
@@ -43,8 +36,6 @@ public:
 
 private:
     std::shared_ptr<Queue> _queue;
-    void* _data;
-    size_t _size;
 };
 
 

@@ -13,30 +13,16 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#include "JSONMessageBuffer.h"
 
-void JSONMessageBuffer::BeginMessage()
-{
-    reset();
-    _writer.StartObject();
-}
+#ifndef AUOMS_IEVENTWRITER_H
+#define AUOMS_IEVENTWRITER_H
 
-void JSONMessageBuffer::EndMessage()
-{
-    _writer.EndObject();
-}
+#include "IWriter.h"
+#include "Event.h"
 
-void JSONMessageBuffer::Reset()
-{
-    reset();
-}
+class IEventWriter {
+public:
+    virtual bool WriteEvent(const Event& event, IWriter* writer) = 0;
+};
 
-const char* JSONMessageBuffer::GetString()
-{
-    return _buffer.GetString();
-}
-
-size_t JSONMessageBuffer::GetSize()
-{
-    return _buffer.GetSize();
-}
+#endif //AUOMS_IEVENTWRITER_H

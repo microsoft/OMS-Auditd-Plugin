@@ -32,6 +32,9 @@ public:
     std::string GetString(const std::string& name) const;
     rapidjson::Document GetJSON(const std::string& name) const;
 
+    bool operator==(const Config& other) { return _map == other._map; }
+    bool operator!=(const Config& other) { return _map != other._map; }
+
 private:
     std::unordered_map<std::string, std::string> _map;
 };

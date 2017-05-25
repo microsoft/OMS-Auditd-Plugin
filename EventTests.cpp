@@ -31,7 +31,7 @@ public:
     }
 
     virtual int Allocate(void** data, size_t size) {
-        int ret = _queue->Allocate(data, size, true, 0);
+        int ret = _queue->Allocate(data, size);
         if (ret != 1) {
             return ret;
         }
@@ -41,7 +41,7 @@ public:
     }
 
     virtual int Commit() {
-        return _queue->Commit(queue_msg_type_t::EVENT);
+        return _queue->Commit();
     }
 
     virtual int Rollback() {
@@ -116,12 +116,10 @@ BOOST_AUTO_TEST_CASE( test )
     char buffer[64*1024];
     void* data = reinterpret_cast<void*>(buffer);
     size_t size = sizeof(buffer);
-    queue_msg_type_t msg_type;
-    if (queue->Get(data, &size, &msg_type, true, 0) <= 0) {
+    QueueCursor cursor = QueueCursor::TAIL;
+    if (queue->Get(cursor, data, &size, &cursor, 10) <= 0) {
         BOOST_FAIL("Queue didn't have any data in it!");
     }
-
-    BOOST_REQUIRE_EQUAL(static_cast<uint64_t>(msg_type), static_cast<uint64_t>(queue_msg_type_t::EVENT));
 
     Event event(data, size);
 
@@ -257,10 +255,9 @@ BOOST_AUTO_TEST_CASE( test )
     }
 
     size = sizeof(buffer);
-    if (queue->Get(data, &size, &msg_type, true, 0) <= 0) {
+    if (queue->Get(cursor, data, &size, &cursor, 10) <= 0) {
         BOOST_FAIL("Queue didn't have any data in it!");
     }
-    BOOST_REQUIRE_EQUAL(static_cast<uint64_t>(msg_type), static_cast<uint64_t>(queue_msg_type_t::EVENT));
     event = Event(data, size);
 
     BOOST_CHECK_EQUAL(event.Pid(), -1);

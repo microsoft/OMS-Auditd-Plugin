@@ -148,7 +148,7 @@ check_version_installable() {
         return 1
     fi
 
-    # Version available is idential to installed version, so don't install
+    # Version available is identical to installed version, so don't install
     return 1
 }
 

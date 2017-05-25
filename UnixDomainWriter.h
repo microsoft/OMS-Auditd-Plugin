@@ -16,20 +16,15 @@
 #ifndef AUOMS_UNIXDOMAINWRITER_H
 #define AUOMS_UNIXDOMAINWRITER_H
 
-#include "OutputBase.h"
+#include "WriterBase.h"
 
 #include <string>
 
-class UnixDomainWriter: public OutputBase {
+class UnixDomainWriter: public WriterBase {
 public:
-    UnixDomainWriter(const std::string& addr): _addr(addr) {
-        _fd.store(-1);
-    }
+    UnixDomainWriter(const std::string& addr): WriterBase(-1), _addr(addr) {}
 
     virtual bool Open();
-
-    virtual bool CanRead();
-    virtual int Read(void *buf, size_t size);
 
 private:
     std::string _addr;

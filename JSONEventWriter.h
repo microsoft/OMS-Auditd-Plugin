@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,19 +13,27 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_IREADER_H
-#define AUOMS_IREADER_H
 
-#include <cstdint>
-#include <cstddef>
+#ifndef AUOMS_JSONEVENTWRITER_H
+#define AUOMS_JSONEVENTWRITER_H
 
-class IReader {
+#include "IEventWriter.h"
+
+#include <array>
+
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
+
+
+class JSONEventWriter: public IEventWriter {
 public:
-    // Return number of bytes actually read.
-    // Return 0 on timeout
-    // Return -1 on non-recoverable error, EOF or Signal
-    virtual int64_t Read(void *buf, size_t buf_size) = 0;
+    virtual bool WriteEvent(const Event& event, IWriter* writer);
+
+private:
+    std::array<char, 1024> _header;
+    rapidjson::StringBuffer _buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> _writer;
 };
 
 
-#endif //AUOMS_IREADER_H
+#endif //AUOMS_JSONEVENTWRITER_H

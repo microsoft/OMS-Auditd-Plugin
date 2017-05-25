@@ -227,7 +227,10 @@ void parse_file(const std::string& path, std::unordered_map<int, std::string>& d
         } catch (...) {
             continue;
         }
-        db.emplace(std::make_pair(id, name));
+        // Just in case there are multiple entries, only the first id->name is used
+        if (db.count(id) == 0) {
+            db.emplace(std::make_pair(id, name));
+        }
     }
 }
 

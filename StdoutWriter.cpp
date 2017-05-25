@@ -15,41 +15,17 @@
 */
 #include "StdoutWriter.h"
 
-extern "C" {
-#include <unistd.h>
-}
-
-bool StdoutWriter::IsOpen()
-{
-    return _fd >= 0;
-}
-
 bool StdoutWriter::Open()
 {
     return false;
 }
 
-void StdoutWriter::Close()
+bool StdoutWriter::CanRead()
 {
-    if (_fd >= 0) {
-        close(_fd);
-        _fd = -1;
-    }
+    return false;
 }
 
-int StdoutWriter::Write(const void * buf, size_t size)
+int StdoutWriter::Read(void *buf, size_t buf_size)
 {
-    if (_fd < 0) {
-        return CLOSED;
-    }
-
-    auto nw = write(_fd, buf, size);
-    if (nw != size) {
-        if (errno != EINTR) {
-            return FAILED;
-        }
-        return INTERRUPTED;
-    }
-
-    return OutputBase::OK;
+    throw std::runtime_error("StdoutWriter::Read: Operation Not Supported");
 }

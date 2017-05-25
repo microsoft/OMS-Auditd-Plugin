@@ -36,26 +36,35 @@ StdinReader::StdinReader()
     }
 }
 
-int64_t StdinReader::Read(void *buf, size_t buf_size)
+int StdinReader::Read(void *buf, size_t buf_size, int timeout)
 {
     struct pollfd fds;
     fds.fd = _fd;
     fds.events = POLLIN;
     fds.revents = 0;
 
-    auto ret = poll(&fds, 1, 1000);
+    auto ret = poll(&fds, 1, timeout);
     if (ret < 0) {
         if (errno != EINTR) {
             throw std::system_error(errno, std::system_category());
         }
-        return 0;
+        return StdinReader::INTERRUPTED;
     } else if (ret == 0) {
-        return 0;
+        return StdinReader::TIMEOUT;
     }
 
     if ((fds.revents & POLLIN) != 0) {
-        return read(_fd, buf, buf_size);
+        auto ret = read(_fd, buf, buf_size);
+        if (ret == 0) {
+            return StdinReader::CLOSED;
+        } else if (ret < 0) {
+            if (errno != EINTR) {
+                throw std::system_error(errno, std::system_category());
+            }
+            return StdinReader::INTERRUPTED;
+        }
+        return ret;
     }
 
-    return -1;
+    throw std::runtime_error("Poll returned a fd status other than POLLIN");
 }
