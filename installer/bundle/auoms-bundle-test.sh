@@ -18,7 +18,7 @@
 
 ISSUE_WARNING=0
 
-echo "Checking if required dependencies are installed..." 1>&2
+echo "Checking if required dependencies for auoms are installed..." 1>&2
 if [ ! -e /sbin/auditd ]; then
         echo "  /sbin/auditd isn't installed" 1>&2
         ISSUE_WARNING=1
@@ -39,7 +39,7 @@ if [ $? -ne 0 ]; then
 fi
 
 if [ $ISSUE_WARNING -ne 0 ]; then
-    echo "  Because the necessary dependencies are not installed, the auoms auditd plugin cannot be installed." 1>&2
+    echo "  Because the necessary dependencies are not installed, the auoms auditd plugin will not be installed." 1>&2
     echo "      For Debian & Ubuntu, install the 'auditd' package." 1>&2
     echo "      For CentOS, RHEL & SLES, install the 'audit' package." 1>&2
     exit 1
