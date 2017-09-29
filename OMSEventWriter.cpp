@@ -97,11 +97,8 @@ bool OMSEventWriter::unescape(std::string& out, const std::string& in)
     }
 }
 
-bool OMSEventWriter::write_event(IWriter* writer) {
-    if (writer->Write(_buffer.GetString(), _buffer.GetSize()) != IWriter::OK) {
-        return false;
-    }
-    return true;
+ssize_t OMSEventWriter::write_event(IWriter* writer) {
+    return writer->WriteAll(_buffer.GetString(), _buffer.GetSize());
 }
 
 void OMSEventWriter::reset()
@@ -160,7 +157,7 @@ void OMSEventWriter::add_string_field(const std::string& name, const char* value
     _writer.String(value_data, value_size, true);
 }
 
-bool OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
+ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
 {
     std::ostringstream timestamp_str;
 

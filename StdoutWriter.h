@@ -16,15 +16,11 @@
 #ifndef AUOMS_STDOUTWRITER_H
 #define AUOMS_STDOUTWRITER_H
 
-#include "WriterBase.h"
+#include "IO.h"
 
-class StdoutWriter: public WriterBase {
+class StdoutWriter: public IOBase {
 public:
-    StdoutWriter(): WriterBase(1) {}
-
-    virtual bool Open();
-    virtual bool CanRead();
-    virtual int Read(void *buf, size_t buf_size);
+    StdoutWriter(): IOBase(1) {}
 };
 
 

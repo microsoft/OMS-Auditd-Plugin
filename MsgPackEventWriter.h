@@ -25,7 +25,8 @@ class MsgPackEventWriter: public IEventWriter {
 public:
     MsgPackEventWriter(): _buffer(256*1024), _packer(&_buffer) {}
 
-    virtual bool WriteEvent(const Event& event, IWriter* writer);
+    virtual ssize_t WriteEvent(const Event& event, IWriter* writer);
+    virtual ssize_t ReadAck(EventId& event_id, IReader* reader);
 private:
     msgpack::sbuffer _buffer;
     msgpack::packer<msgpack::sbuffer> _packer;

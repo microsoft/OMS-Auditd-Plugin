@@ -20,43 +20,135 @@
 #include "RunBase.h"
 #include "Queue.h"
 #include "Config.h"
+#include "EventId.h"
 #include "OMSEventWriter.h"
-#include "WriterBase.h"
+#include "IO.h"
 
 #include <string>
 #include <mutex>
 #include <memory>
 #include <vector>
 
+/****************************************************************************
+ *
+ ****************************************************************************/
+
+class AckQueue {
+public:
+    AckQueue(size_t max_size);
+
+    size_t MaxSize() {
+        return _max_size;
+    }
+
+    void Close();
+
+    bool Add(const EventId& event_id, const QueueCursor& cursor);
+
+    // Returns false on timeout, true is queue is empty
+    bool Wait(int millis);
+
+    bool Ack(const EventId& event_id, QueueCursor& cursor);
+
+private:
+    std::mutex _mutex;
+    std::condition_variable _cond;
+    std::vector<std::pair<EventId, QueueCursor>> _ring;
+    size_t _max_size;
+    bool _closed;
+    size_t _head;
+    size_t _tail;
+    size_t _size;
+};
+
+/****************************************************************************
+ *
+ ****************************************************************************/
+
+class CursorWriter: public RunBase {
+public:
+
+    CursorWriter(const std::string& name, const std::string& path): _name(name), _path(path), _cursor_updated(false)
+    {}
+
+    bool Read();
+    bool Write();
+    bool Delete();
+
+    QueueCursor GetCursor();
+    void UpdateCursor(const QueueCursor& cursor);
+
+protected:
+    virtual void on_stopping();
+    virtual void run();
+
+private:
+    std::string _name;
+    std::string _path;
+    std::mutex _mutex;
+    std::condition_variable _cond;
+    bool _cursor_updated;
+    QueueCursor _cursor;
+};
+
+/****************************************************************************
+ *
+ ****************************************************************************/
+
+class Output;
+
+class AckReader: public RunBase {
+public:
+
+    AckReader(const std::string& name): _name(name)
+    {}
+
+    void Init(std::shared_ptr<IEventWriter> event_writer,
+              std::shared_ptr<IOBase> writer,
+              std::shared_ptr<AckQueue> ack_queue,
+              std::shared_ptr<CursorWriter> cursor_writer);
+
+protected:
+    virtual void run();
+
+    std::string _name;
+    std::shared_ptr<IEventWriter> _event_writer;
+    std::shared_ptr<IOBase> _writer;
+    std::shared_ptr<AckQueue> _queue;
+    std::shared_ptr<CursorWriter> _cursor_writer;
+};
+
+/****************************************************************************
+ *
+ ****************************************************************************/
+
 class Output: public RunBase {
 public:
     static constexpr int START_SLEEP_PERIOD = 1;
     static constexpr int MAX_SLEEP_PERIOD = 60;
+    static constexpr int DEFAULT_ACK_QUEUE_SIZE = 1000;
 
-    Output(const std::string& name, const std::string& conf_path, const std::string& cursor_path, const std::vector<std::string>& allowed_socket_dirs, std::shared_ptr<Queue>& queue):
-            _name(name), _conf_path(conf_path), _cursor_path(cursor_path), _allowed_socket_dirs(allowed_socket_dirs), _queue(queue), _config_valid(false), _reload_pending(false)
-    {}
+    Output(const std::string& name, const std::string& cursor_path, std::shared_ptr<Queue>& queue):
+            _name(name), _cursor_path(cursor_path), _queue(queue), _ack_mode(false)
+    {
+        _cursor_writer = std::make_shared<CursorWriter>(name, cursor_path);
+        _ack_reader = std::unique_ptr<AckReader>(new AckReader(name));
+    }
 
-    // Return false if the output isn't valid
-    bool IsValid();
+    bool IsConfigDifferent(const Config& config);
 
-    // Trigger config reload
-    void Reload();
+    // Return false if load failed
+    bool Load(std::unique_ptr<Config>& config);
 
     // Delete any resources associated with the output
     void Delete();
 
 protected:
+    friend class AckReader;
+
+    virtual void on_stopping();
     virtual void on_stop();
     virtual void run();
-
-    // Return true on success, false on failure
-    bool read_cursor_file();
-    bool write_cursor_file();
-    bool delete_cursor_file();
-
-    // Return true on success, false if Output should stop.
-    bool configure();
 
     // Return true on success, false if Output should stop.
     bool check_open();
@@ -64,22 +156,20 @@ protected:
     // Return true if writer closed and Output should reconnect, false if Output should stop.
     bool handle_events();
 
-    bool is_reload_pending();
-    void clear_reload_pending();
-
     std::mutex _mutex;
     std::string _name;
-    std::string _conf_path;
     std::string _cursor_path;
-    std::vector<std::string> _allowed_socket_dirs;
     std::string _socket_path;
     std::shared_ptr<Queue> _queue;
-    bool _config_valid;
-    bool _reload_pending;
+    bool _ack_mode;
     std::unique_ptr<Config> _config;
     QueueCursor _cursor;
-    std::unique_ptr<IEventWriter> _event_writer;
-    std::unique_ptr<WriterBase> _writer;
+    QueueCursor _ack_cursor;
+    std::shared_ptr<IEventWriter> _event_writer;
+    std::shared_ptr<IOBase> _writer;
+    std::shared_ptr<AckQueue> _ack_queue;
+    std::unique_ptr<AckReader> _ack_reader;
+    std::shared_ptr<CursorWriter> _cursor_writer;
 };
 
 

@@ -101,6 +101,10 @@ int main(int argc, char**argv) {
         }
     }
 
+    if (data_file.empty() || socket_path.empty()) {
+        usage();
+    }
+
     int fd = -1;
     if (data_file == "-") {
         fd = 1;

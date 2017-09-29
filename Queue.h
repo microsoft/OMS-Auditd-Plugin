@@ -56,6 +56,7 @@ public:
     static constexpr int TIMEOUT = 0;
     static constexpr int CLOSED = -1;
     static constexpr int BUFFER_TOO_SMALL = -2;
+    static constexpr int INTERRUPTED = -3;
     static constexpr uint64_t ITEM = 1;
     static constexpr uint64_t WRAP = 2;
     static constexpr uint64_t HEAD = 3;
@@ -74,6 +75,8 @@ public:
     void Close();
     void Close(bool save); // Only required for unit tests
     void Save();
+
+    void Interrupt();
 
     // Does not return until queue is closed.
     void Autosave(uint64_t min_save, int max_delay);
@@ -125,6 +128,7 @@ private:
     bool _save_active; // Amount currently saved
     std::mutex _lock;
     std::condition_variable _cond;
+    uint64_t _int_id;
 };
 
 

@@ -110,7 +110,7 @@ void _pwrite(int fd, void* ptr, size_t size, off_t offset)
 }
 
 Queue::Queue(size_t size):
-        _path(), _file_size(size), _fd(-1), _next_id(1), _closed(true), _save_active(false)
+        _path(), _file_size(size), _fd(-1), _next_id(1), _closed(true), _save_active(false), _int_id(0)
 {
     if (_file_size < MIN_QUEUE_SIZE) {
         _file_size = MIN_QUEUE_SIZE;
@@ -312,6 +312,12 @@ void Queue::Save() {
     save_locked(lock);
 }
 
+void Queue::Interrupt() {
+    std::unique_lock<std::mutex> lock(_lock);
+    _int_id++;
+    _cond.notify_all();
+}
+
 // Assumes queue is locked
 void Queue::save_locked(std::unique_lock<std::mutex>& lock)
 {
@@ -425,12 +431,9 @@ void Queue::Autosave(uint64_t min_save, int max_delay)
     }
     std::unique_lock<std::mutex> lock(_lock);
     while (!_closed) {
-        if (!_cond.wait_for(lock, std::chrono::milliseconds(max_delay),
-                            [this, min_save]() { return _closed || this->unsaved_size() >= min_save; })) {
-            lock.unlock();
-            Save();
-            lock.lock();
-        } else if (!_closed) {
+        _cond.wait_for(lock, std::chrono::milliseconds(max_delay),
+                       [this, min_save]() { return _closed || this->unsaved_size() >= min_save; });
+        if (!_closed) {
             lock.unlock();
             Save();
             lock.lock();
@@ -651,17 +654,22 @@ int Queue::Get(QueueCursor last, void*ptr, size_t* size, QueueCursor *item_curso
         index = 0;
     }
 
+    auto int_id = _int_id;
     if (milliseconds > 0) {
         if (!_cond.wait_for(lock, std::chrono::milliseconds(milliseconds),
-                            [this,&index]() { return _closed || have_data(&index); })) {
+                            [this,&index,&int_id]() { return _closed || have_data(&index) || _int_id != int_id; })) {
             return TIMEOUT;
         } else if (_closed) {
             return CLOSED;
+        } else if (int_id != _int_id) {
+            return INTERRUPTED;
         }
     } else if (milliseconds < 0) {
-        _cond.wait(lock, [this,&index]() { return _closed || have_data(&index); });
+        _cond.wait(lock, [this,&index,&int_id]() { return _closed || have_data(&index) || _int_id != int_id; });
         if (_closed) {
             return CLOSED;
+        } else if (int_id != _int_id) {
+            return INTERRUPTED;
         }
     } else if (!have_data(&index)) {
         return TIMEOUT;

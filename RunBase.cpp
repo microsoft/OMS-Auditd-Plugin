@@ -29,11 +29,8 @@ void* RunBase::thread_entry(void* ptr) {
 void RunBase::thread_run() {
     sigset_t set;
 
-    // Make sure these signals don't interrupt the thread
-    sigemptyset(&set);
-    sigaddset(&set, SIGHUP);
-    sigaddset(&set, SIGINT);
-    sigaddset(&set, SIGTERM);
+    // Make sure no signals interrupt the thread
+    sigfillset(&set);
     pthread_sigmask(SIG_BLOCK, &set, NULL);
 
     // Make sure the thread will get interrupted by SIGQUIT
@@ -48,21 +45,29 @@ void RunBase::thread_run() {
     }
 
     {
-        std::unique_lock<std::mutex> lock(_run_mutex);
+        std::lock_guard<std::mutex> lock(_run_mutex);
         if (!_stop) {
             _stop = true;
             _run_cond.notify_all();
         }
 
         _stopped = true;
-        lock.unlock();
+    }
+
+    try {
         on_stop();
+    } catch (std::exception& ex) {
+        Logger::Error("RunBase::thread_run: Unexpected exception thrown from on_stop(): %s", ex.what());
     }
 }
 
 void RunBase::Start() {
     std::lock_guard<std::mutex> lock(_run_mutex);
     if (!_start) {
+        _stop = false;
+        _stopped = false;
+        _joined = false;
+        _joining = false;
         auto err = pthread_create(&_thread_id, nullptr, RunBase::thread_entry, this);
         if (err != 0) {
             throw std::system_error(err, std::system_category());
@@ -79,8 +84,13 @@ void RunBase::Stop(bool wait) {
     std::unique_lock<std::mutex> lock(_run_mutex);
     if (!_stop) {
         _stop = true;
-        _run_cond.notify_all();
         lock.unlock();
+        try {
+            on_stopping();
+        } catch (std::exception& ex) {
+            Logger::Error("RunBase::Stop: Unexpected exception thrown from on_stopping(): %s", ex.what());
+        }
+        _run_cond.notify_all();
         // Make sure syscalls (e.g. sleep, read, write) get interrupted
         pthread_kill(_thread_id, SIGQUIT);
         lock.lock();
@@ -96,12 +106,20 @@ bool RunBase::IsStopping() {
     return _stop;
 }
 
+bool RunBase::IsStopped() {
+    std::lock_guard<std::mutex> lock(_run_mutex);
+    return _stopped && _joined;
+}
+
 void RunBase::Wait() {
     std::unique_lock<std::mutex> lock(_run_mutex);
-    if (!_joined) {
-        _joined = true;
+    if (!_joining) {
+        _joining = true;
         lock.unlock();
         pthread_join(_thread_id, nullptr);
+        lock.lock();
+        _joined = true;
+        _start = false;
         _run_cond.notify_all();
     } else {
         return _run_cond.wait(lock, [this]() { return _stopped; });
@@ -117,6 +135,10 @@ bool RunBase::_sleep_locked(std::unique_lock<std::mutex>& lock, int millis) {
     auto now = std::chrono::steady_clock::now();
     _run_cond.wait_until(lock, now + (std::chrono::milliseconds(1) * millis), [this]() { return _stop; });
     return _stop;
+}
+
+void RunBase::on_stopping() {
+    return;
 }
 
 void RunBase::on_stop() {

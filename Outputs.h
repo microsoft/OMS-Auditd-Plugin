@@ -33,7 +33,7 @@ public:
     Outputs(std::shared_ptr<Queue>& queue, const std::string& conf_dir, const std::string& cursor_dir, const std::vector<std::string>& allowed_socket_dirs):
             _queue(queue), _conf_dir(conf_dir), _cursor_dir(cursor_dir), _allowed_socket_dirs(allowed_socket_dirs), _do_reload(false) {}
 
-    void Reload();
+    void Reload(const std::vector<std::string>& allowed_socket_dirs);
 
 protected:
     virtual void on_stop();
@@ -41,6 +41,8 @@ protected:
 
 private:
     void do_conf_sync();
+
+    std::unique_ptr<Config> read_and_validate_config(const std::string& name, const std::string& path);
 
     std::shared_ptr<Queue> _queue;
     std::string _conf_dir;
