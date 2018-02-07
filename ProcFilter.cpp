@@ -85,20 +85,22 @@ ProcFilter::~ProcFilter()
 {
 }
 
-void ProcFilter::ProcFilter()
-{
-    Initialize()
-}
-
 void ProcFilter::Initialize()
 {
     _proc_list.clear();
     // TODO: scan existing processes and choose those in the names list and children
 }
 
+void ProcFilter::ProcFilter()
+{
+    Initialize();
+}
+
+
+
 bool ProcFilter::ShouldBlock(int pid)
 {
-    return (_proc_list.find(pid) != _proc_list.end())
+    return (_proc_list.find(pid) != _proc_list.end());
 }
 
 void ProcFilter::AddProcess(int pid, int ppid)
