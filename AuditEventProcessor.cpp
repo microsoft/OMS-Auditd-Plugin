@@ -97,7 +97,7 @@ void AuditEventProcessor::Initialize()
     _state_ptr = auparse_init(AUSOURCE_FEED, nullptr);
     assert(_state != nullptr);
     auparse_add_callback(_state, reinterpret_cast<void (*)(auparse_state_t *au, auparse_cb_event_t cb_event_type, void *user_data)>(static_callback), this, nullptr);
-    _procFilter = ProcFilter.GetInstance(); 
+    _procFilter = ProcFilter::GetInstance(); 
 }
 
 void AuditEventProcessor::ProcessData(const char* data, size_t data_len)
