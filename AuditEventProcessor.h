@@ -46,6 +46,9 @@ private:
     bool begin_event();
     void end_event();
     void cancel_event();
+    bool is_execve();
+    void process_execve();
+    bool process_field(char *name_ptr);
     bool process_field();
 
     std::shared_ptr<EventBuilder> _builder;
