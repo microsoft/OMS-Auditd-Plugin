@@ -63,30 +63,31 @@ extern "C" {
 
 ProcFilter* ProcFilter::_instance = NULL;
 
-set<string> ProcFilter::_blocked_process_names;
+std::set<std::string> ProcFilter::_blocked_process_names;
 
 void ProcFilter::static_init()
 {
+    _blocked_process_names.clear();
     _blocked_process_names.insert("waagent");
     _blocked_process_names.insert("omsconfig");
     _blocked_process_names.insert("omsagent");
 
 }
 
-list<ProcessInfo>* ProcFilter::get_all_processes()
+std::list<ProcessInfo>* ProcFilter::get_all_processes()
 {
-    list<ProcessInfo>* list = new list<ProcessInfo>();
+    std::list<ProcessInfo>* procList = new std::list<ProcessInfo>();
 
     // TODO: implement
 
-    return list;
+    return procList;
 }
-void ProcFilter::compile_proc_list(list<ProcessInfo>* allProcs)
+void ProcFilter::compile_proc_list(std::list<ProcessInfo>* allProcs)
 {
         // add root blocking processes
         for (const ProcessInfo& proc : allProcs)
         {
-            for (const string& blockedName : ProcFilter::_blocked_process_names)
+            for (const std::string& blockedName : ProcFilter::_blocked_process_names)
             {
                 if (proc.name.find(blockedName) != std::string::npos)
                 {
@@ -114,6 +115,7 @@ ProcFilter* ProcFilter::GetInstance()
 {
     if (_instance == NULL)
     {
+        static_init();
         _instance = new ProcFilter();
     }
 
@@ -128,9 +130,9 @@ void ProcFilter::Initialize()
 {
     _proc_list.clear();
     // TODO: scan existing processes and choose those in the names list and children
-    list<ProcessInfo>* list = get_all_processes();
-    compile_proc_list(list);
-    delete list;
+    std::list<ProcessInfo>* listOfProcesses = get_all_processes();
+    compile_proc_list(listOfProcesses);
+    delete listOfProcesses;
 }
 
 ProcFilter::ProcFilter()

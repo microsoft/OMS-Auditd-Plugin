@@ -22,11 +22,10 @@
 #include <string>
 #include <memory>
 #include <set>
-
-using namespace std;
+#include <list>
 
 struct ProcessInfo {
-    string name;
+    std::string name;
     int pid;
     int ppid;
 };
@@ -42,14 +41,14 @@ public:
 
 private:    
     static ProcFilter* _instance;
-    set<int> _proc_list;
-    static set<string> _blocked_process_names;
+    std::set<int> _proc_list;
+    static std::set<std::string> _blocked_process_names;
+    
     static void static_init();
     ProcFilter();
     void Initialize();
-    list<ProcessInfo>* get_all_processes();
-    void compile_proc_list(list<ProcessInfo>* allProcs);
-
+    std::list<ProcessInfo>* get_all_processes();
+    void compile_proc_list(std::list<ProcessInfo>* allProcs);
 };
 
 #endif //AUOMS_PROC_FILTER_H
