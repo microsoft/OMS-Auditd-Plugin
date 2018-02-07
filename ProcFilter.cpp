@@ -71,7 +71,7 @@ void ProcFilter::static_init()
 
 }
 
-ProcFilter* ProcFilter::getInstance()
+ProcFilter* ProcFilter::GetInstance()
 {
     if (_instance == NULL)
     {
@@ -103,10 +103,12 @@ bool ProcFilter::ShouldBlock(int pid)
     return (_proc_list.find(pid) != _proc_list.end());
 }
 
-void ProcFilter::AddProcess(int pid, int ppid)
+bool ProcFilter::AddProcess(int pid, int ppid)
 {
     if(_proc_list.find(ppid) != _proc_list.end())
     {
         _proc_list.insert(pid);
+        return true;
     }
+    return false;
 }

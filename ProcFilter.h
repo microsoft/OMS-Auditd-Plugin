@@ -40,7 +40,7 @@ private:
     static set<string> _blocked_process_names;
     static void static_init();
     ProcFilter();
-    void Initialize(const char* data, size_t data_len);
+    void Initialize();
 };
 
 #endif //AUOMS_PROC_FILTER_H
