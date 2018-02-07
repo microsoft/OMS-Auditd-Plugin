@@ -17,6 +17,7 @@
 
 #include "Queue.h"
 #include "Logger.h"
+#include "ProcFilter.h"
 
 #include <stdexcept>
 #include <cassert>
@@ -208,7 +209,7 @@ void AuditEventProcessor::callback(void *ptr)
         }
     } while (auparse_next_record(_state) == 1);
 
-    bool shouldBeBlocked = (_pid_found && _procFilter->ShouldBlock(_builder.GetEventPid()));
+    bool shouldBeBlocked = (_pid_found && _procFilter->ShouldBlock(_builder->GetEventPid()));
 
     // Sometimes the event will only have the EOE record
     // Only end/emit the event if it's not empty
