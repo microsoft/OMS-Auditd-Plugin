@@ -35,7 +35,7 @@ public:
     bool AddProcess(int pid, int ppid);
 
 private:    
-    static ProcFilter _instance;
+    static ProcFilter* _instance;
     set<int> _proc_list;
     static set<string> _blocked_process_names;
     static void static_init();

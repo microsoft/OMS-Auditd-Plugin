@@ -59,7 +59,7 @@ extern "C" {
  ** ProcFilter
  *****************************************************************************/
 
-ProcFilter ProcFilter::_instance = NULL;
+ProcFilter* ProcFilter::_instance = NULL;
 
 set<string> ProcFilter::_blocked_process_names;
 
@@ -93,6 +93,7 @@ void ProcFilter::ProcFilter()
 void ProcFilter::Initialize()
 {
     _proc_list.clear();
+    // TODO: scan existing processes and choose those in the names list and children
 }
 
 bool ProcFilter::ShouldBlock(int pid)
