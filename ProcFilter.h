@@ -25,6 +25,12 @@
 
 using namespace std;
 
+struct ProcessInfo {
+    string name;
+    int pid;
+    int ppid;
+};
+
 class ProcFilter {
 public:
     
@@ -41,6 +47,9 @@ private:
     static void static_init();
     ProcFilter();
     void Initialize();
+    list<ProcessInfo>* get_all_processes();
+    void compile_proc_list(list<ProcessInfo>* allProcs);
+
 };
 
 #endif //AUOMS_PROC_FILTER_H
