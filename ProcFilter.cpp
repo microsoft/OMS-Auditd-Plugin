@@ -31,6 +31,7 @@
 #include <fstream>
 #include <system_error>
 #include <sys/types.h>
+#include <sys/stat.h> /* for stat() */
 #include <dirent.h>
 #include <algorithm>
 #include <cctype>
@@ -73,7 +74,7 @@ ProcessInfo::ProcessInfo(std::string description, int processId, int parentProce
     ppid = parentProcessId;
 }
 
-ProcessInfo::ProcessInfo Empty("0",0,0);
+ProcessInfo ProcessInfo::Empty("0",0,0);
 
 ProcFilter* ProcFilter::_instance = NULL;
 
@@ -85,15 +86,14 @@ void ProcFilter::static_init()
     _blocked_process_names.insert("waagent");
     _blocked_process_names.insert("omsconfig");
     _blocked_process_names.insert("omsagent");
-
 }
 
-int is_dir(string path)
+int is_dir(std:string path)
 {
     struct stat stat_buf;
-    stat( path.c_str(), &stat_buf);
-    int is_dir = S_ISDIR( stat_buf.st_mode);
-    return ( is_dir ? 1: 0);
+    stat(path.c_str(), &stat_buf);
+    int is_dir = S_ISDIR(stat_buf.st_mode);
+    return (is_dir ? 1: 0);
 }
 
 bool is_number(const std::string& s)
@@ -104,7 +104,7 @@ bool is_number(const std::string& s)
 
 ProcessInfo read_proc_data_from_stat(const std::string& fileName)
 {
-    ProcessInfo ProcessInfo::Empty;
+    ProcessInfo procData = ProcessInfo::Empty;
     std::ifstream infile("thefile.txt", std::ifstream::in);
 
     if(!infile) {
@@ -116,10 +116,10 @@ ProcessInfo read_proc_data_from_stat(const std::string& fileName)
     char state;
     int ppid;
     int pgrp;
-    int session
+    int session;
     char c;
 
-    while (infile >> pid >> comm >> state >> ppid >> pgrp >> session)
+    if (infile >> pid >> comm >> state >> ppid >> pgrp >> session)
     {
         procData.pid = pid;
         procData.ppid = ppid;
@@ -132,20 +132,19 @@ ProcessInfo read_proc_data_from_stat(const std::string& fileName)
 std::list<ProcessInfo>* ProcFilter::get_all_processes()
 {
     std::list<ProcessInfo>* procList = new std::list<ProcessInfo>();
-    std::string dir = "/proc/"
+    std::string dir = "/proc/";
  
     DIR *dp;
     struct dirent *dirp, *dirFp ;
-    if((dp  = opendir(dir.c_str())) == NULL) {
-        return;
+    if ((dp = opendir(dir.c_str())) == NULL) {
+        return procList;
     }
 
     while ((dirp = readdir(dp)) != NULL) {
-        string Tmp = dir.c_str() + string("/") + string(dirp->d_name);
-        if(isDir(Tmp) && is_number(string(dirp->d_name)) {
-            ProcessInfo procData = read_proc_data_from_stat(Tmp + string("/stat"));
-            if(procData != ProcessInfo::Empty)
-            {
+        std::string Tmp = dir.c_str() + std::string("/") + std::string(dirp->d_name);
+        if (is_number(std::string(dirp->d_name)) && is_dir(Tmp)) {
+            ProcessInfo procData = read_proc_data_from_stat(Tmp + std::string("/stat"));
+            if (procData != ProcessInfo::Empty) {
                 procList.insert(procData);
             } 
         }
@@ -180,7 +179,6 @@ void ProcFilter::compile_proc_list(std::list<ProcessInfo>* allProcs)
             }
 
         } while (newProcFound && (depth < MAX_ITERATION_DEPTH));
-
 }
 
 ProcFilter* ProcFilter::GetInstance()

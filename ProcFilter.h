@@ -25,9 +25,9 @@
 #include <list>
 
 struct ProcessInfo {
-    std::string name;
     int pid;
     int ppid;
+    std::string name;
 
     ProcessInfo(std::string description, int processId, int parentProcessId);
     static const ProcessInfo Empty;  
