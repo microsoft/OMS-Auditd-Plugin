@@ -28,7 +28,12 @@
 #include <vector>
 #include <unordered_map>
 #include <iostream>
+#include <fstream>
 #include <system_error>
+#include <sys/types.h>
+#include <dirent.h>
+#include <algorithm>
+#include <cctype>
 
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
@@ -61,6 +66,15 @@ extern "C" {
  ** ProcFilter
  *****************************************************************************/
 
+ProcessInfo::ProcessInfo(std::string description, int processId, int parentProcessId)
+{
+    name = description;
+    pid = processId;
+    ppid = parentProcessId;
+}
+
+ProcessInfo::ProcessInfo Empty("0",0,0);
+
 ProcFilter* ProcFilter::_instance = NULL;
 
 std::set<std::string> ProcFilter::_blocked_process_names;
@@ -74,18 +88,76 @@ void ProcFilter::static_init()
 
 }
 
+int is_dir(string path)
+{
+    struct stat stat_buf;
+    stat( path.c_str(), &stat_buf);
+    int is_dir = S_ISDIR( stat_buf.st_mode);
+    return ( is_dir ? 1: 0);
+}
+
+bool is_number(const std::string& s)
+{
+    return !s.empty() && std::find_if(s.begin(), 
+        s.end(), [](char c) { return !std::isdigit(c); }) == s.end();
+}
+
+ProcessInfo read_proc_data_from_stat(const std::string& fileName)
+{
+    ProcessInfo ProcessInfo::Empty;
+    std::ifstream infile("thefile.txt", std::ifstream::in);
+
+    if(!infile) {
+        return ProcessInfo::Empty;
+    }
+
+    int pid;
+    std::string comm;
+    char state;
+    int ppid;
+    int pgrp;
+    int session
+    char c;
+
+    while (infile >> pid >> comm >> state >> ppid >> pgrp >> session)
+    {
+        procData.pid = pid;
+        procData.ppid = ppid;
+        procData.name = comm;
+        return procData;
+    }
+    return ProcessInfo::Empty;
+}
+
 std::list<ProcessInfo>* ProcFilter::get_all_processes()
 {
     std::list<ProcessInfo>* procList = new std::list<ProcessInfo>();
+    std::string dir = "/proc/"
+ 
+    DIR *dp;
+    struct dirent *dirp, *dirFp ;
+    if((dp  = opendir(dir.c_str())) == NULL) {
+        return;
+    }
 
-    // TODO: implement
+    while ((dirp = readdir(dp)) != NULL) {
+        string Tmp = dir.c_str() + string("/") + string(dirp->d_name);
+        if(isDir(Tmp) && is_number(string(dirp->d_name)) {
+            ProcessInfo procData = read_proc_data_from_stat(Tmp + string("/stat"));
+            if(procData != ProcessInfo::Empty)
+            {
+                procList.insert(procData);
+            } 
+        }
+    }
+    closedir(dp);
 
     return procList;
 }
 void ProcFilter::compile_proc_list(std::list<ProcessInfo>* allProcs)
 {
         // add root blocking processes
-        for (const ProcessInfo& proc : allProcs)
+        for (const ProcessInfo& proc : *allProcs)
         {
             for (const std::string& blockedName : ProcFilter::_blocked_process_names)
             {
@@ -102,12 +174,12 @@ void ProcFilter::compile_proc_list(std::list<ProcessInfo>* allProcs)
         do {
             newProcFound = false;
             ++depth;
-            for (const ProcessInfo& proc : allProcs)
+            for (const ProcessInfo& proc : *allProcs)
             {
                 newProcFound = newProcFound | AddProcess(proc.pid, proc.ppid);
             }
 
-        } while (newProcfound && (depth < MAX_ITERATION_DEPTH)
+        } while (newProcFound && (depth < MAX_ITERATION_DEPTH));
 
 }
 

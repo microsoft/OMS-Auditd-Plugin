@@ -28,6 +28,9 @@ struct ProcessInfo {
     std::string name;
     int pid;
     int ppid;
+
+    ProcessInfo(std::string description, int processId, int parentProcessId);
+    static const ProcessInfo Empty;  
 };
 
 class ProcFilter {
@@ -44,6 +47,7 @@ private:
     std::set<int> _proc_list;
     static std::set<std::string> _blocked_process_names;
     
+
     static void static_init();
     ProcFilter();
     void Initialize();
