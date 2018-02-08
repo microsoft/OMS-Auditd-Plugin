@@ -64,7 +64,7 @@ extern "C" {
 
 
 /*****************************************************************************
- ** ProcFilter
+ ** ProcessInfo
  *****************************************************************************/
 
 ProcessInfo::ProcessInfo(std::string description, int processId, int parentProcessId)
@@ -74,7 +74,22 @@ ProcessInfo::ProcessInfo(std::string description, int processId, int parentProce
     ppid = parentProcessId;
 }
 
-ProcessInfo ProcessInfo::Empty("0",0,0);
+const ProcessInfo ProcessInfo::Empty("0",0,0);
+
+inline bool ProcessInfo::operator==(const ProcessInfo& x) const
+{
+    return (pid == x.pid) && (ppid == x.ppid) && (name == x.name);
+}
+
+inline bool ProcessInfo::operator!=(const ProcessInfo& x) const
+{
+    return !(*this==x);
+}
+
+
+/*****************************************************************************
+ ** ProcFilter
+ *****************************************************************************/
 
 ProcFilter* ProcFilter::_instance = NULL;
 
@@ -88,12 +103,12 @@ void ProcFilter::static_init()
     _blocked_process_names.insert("omsagent");
 }
 
-int is_dir(std:string path)
+int is_dir(std::string path)
 {
     struct stat stat_buf;
     stat(path.c_str(), &stat_buf);
-    int is_dir = S_ISDIR(stat_buf.st_mode);
-    return (is_dir ? 1: 0);
+    int is_directory = S_ISDIR(stat_buf.st_mode);
+    return (is_directory ? 1: 0);
 }
 
 bool is_number(const std::string& s)
@@ -145,7 +160,7 @@ std::list<ProcessInfo>* ProcFilter::get_all_processes()
         if (is_number(std::string(dirp->d_name)) && is_dir(Tmp)) {
             ProcessInfo procData = read_proc_data_from_stat(Tmp + std::string("/stat"));
             if (procData != ProcessInfo::Empty) {
-                procList.insert(procData);
+                procList->insert(procData);
             } 
         }
     }

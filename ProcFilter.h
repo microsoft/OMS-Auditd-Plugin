@@ -31,6 +31,9 @@ struct ProcessInfo {
 
     ProcessInfo(std::string description, int processId, int parentProcessId);
     static const ProcessInfo Empty;  
+
+    inline bool operator==(const ProcessInfo& x) const;
+    inline bool operator!=(const ProcessInfo& x) const;
 };
 
 class ProcFilter {
