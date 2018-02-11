@@ -15,9 +15,6 @@
 */
 #include "ProcFilter.h"
 
-#include "Queue.h"
-#include "Logger.h"
-
 #include <stdexcept>
 #include <cassert>
 #include <cctype>
@@ -113,14 +110,14 @@ int is_dir(std::string path)
 
 bool is_number(const std::string& s)
 {
-    return !s.empty() && std::find_if(s.begin(), 
-        s.end(), [](char c) { return !std::isdigit(c); }) == s.end();
+    return !s.empty() &&
+           std::find_if(s.begin(), s.end(), [](char c) { return !std::isdigit(c); }) == s.end();
 }
 
 ProcessInfo read_proc_data_from_stat(const std::string& fileName)
 {
     ProcessInfo procData = ProcessInfo::Empty;
-    std::ifstream infile("thefile.txt", std::ifstream::in);
+    std::ifstream infile(fileName, std::ifstream::in);
 
     if(!infile) {
         return ProcessInfo::Empty;
@@ -156,11 +153,11 @@ std::list<ProcessInfo>* ProcFilter::get_all_processes()
     }
 
     while ((dirp = readdir(dp)) != NULL) {
-        std::string Tmp = dir.c_str() + std::string("/") + std::string(dirp->d_name);
+        std::string Tmp = dir.c_str() + std::string(dirp->d_name);
         if (is_number(std::string(dirp->d_name)) && is_dir(Tmp)) {
             ProcessInfo procData = read_proc_data_from_stat(Tmp + std::string("/stat"));
             if (procData != ProcessInfo::Empty) {
-                procList->insert(procData);
+                procList->push_front(procData);
             } 
         }
     }
@@ -235,6 +232,17 @@ bool ProcFilter::AddProcess(int pid, int ppid)
     if(_proc_list.find(ppid) != _proc_list.end())
     {
         _proc_list.insert(pid);
+        return true;
+    }
+    return false;
+}
+
+// Shalow delete. The children may remain
+bool ProcFilter::RemoveProcess(int pid)
+{
+    if(_proc_list.find(pid) != _proc_list.end())
+    {
+        _proc_list.erase(pid);
         return true;
     }
     return false;

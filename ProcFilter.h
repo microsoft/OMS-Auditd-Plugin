@@ -16,9 +16,6 @@
 #ifndef AUOMS_PROC_FILTER_H
 #define AUOMS_PROC_FILTER_H
 
-#include "Event.h"
-#include "UserDB.h"
-
 #include <string>
 #include <memory>
 #include <set>
@@ -44,6 +41,7 @@ public:
     static ProcFilter* GetInstance();     
     bool ShouldBlock(int pid);
     bool AddProcess(int pid, int ppid);
+    bool RemoveProcess(int pid);
 
 private:    
     static ProcFilter* _instance;
