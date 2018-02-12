@@ -277,7 +277,8 @@ void AuditEventProcessor::callback(void *ptr)
     assert(audit_msg_type_to_name != nullptr);
 
     // Process the event
-    _pid_found = false;
+    _pid = 0;
+    _ppid = 0;
     _event_flags = 0;
     const au_event_t *e = auparse_get_timestamp(_state);
     _current_event_sec = static_cast<uint64_t>(e->sec);
@@ -403,6 +404,9 @@ void AuditEventProcessor::cancel_event()
 inline bool NAME_EQUAL_PID(const char *name) {
     return *reinterpret_cast<const uint32_t*>(name) == 0x00646970;
 }
+inline bool NAME_EQUAL_PPID(const char *name) {
+    return *reinterpret_cast<const uint32_t*>(name) == 0x64697070 && name[4] == '\0';
+}
 
 bool AuditEventProcessor::process_field(const char *name_ptr)
 {
@@ -420,11 +424,14 @@ bool AuditEventProcessor::process_field(const char *name_ptr)
         case FIELD_TYPE_UNCLASSIFIED: {
             interp_ptr = auparse_interpret_field(_state);
 
-            if (!_pid_found && NAME_EQUAL_PID(name_ptr)) {
-                int64_t pid = atoll(val_ptr);
-                if (pid != 0) {
-                    _builder->SetEventPid(pid);
+            if (_pid == 0 && NAME_EQUAL_PID(name_ptr)) {
+                _pid = atoi(val_ptr);
+                if (_pid != 0) {
+                    _builder->SetEventPid(_pid);
                 }
+            }
+            else if (_ppid == 0 && NAME_EQUAL_PPID(name_ptr)) {
+                _ppid = atoi(val_ptr);
             }
 
             if (strcmp(val_ptr, interp_ptr) == 0) {

@@ -21,6 +21,7 @@
 
 #include <string>
 #include <memory>
+#include <sys/types.h>
 
 typedef enum {DUMMY_ENUM} dummy_enum_t;
 
@@ -58,8 +59,9 @@ private:
     uint64_t _current_event_sec;
     uint32_t _current_event_msec;
     uint64_t _current_event_serial;
-    bool _pid_found;
     uint32_t _event_flags;
+    pid_t _pid;
+    pid_t _ppid;
 };
 
 #endif //AUOMS_AUDIT_EVENT_PROCESSOR_H
