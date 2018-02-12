@@ -17,7 +17,7 @@
 #ifndef AUOMS_JSONEVENTWRITER_H
 #define AUOMS_JSONEVENTWRITER_H
 
-#include "IEventWriter.h"
+#include "TextEventWriter.h"
 
 #include <array>
 
@@ -25,9 +25,9 @@
 #include <rapidjson/writer.h>
 
 
-class JSONEventWriter: public IEventWriter {
+class JSONEventWriter: public TextEventWriter {
 public:
-    virtual bool WriteEvent(const Event& event, IWriter* writer);
+    virtual ssize_t WriteEvent(const Event& event, IWriter* writer);
 
 private:
     std::array<char, 1024> _header;

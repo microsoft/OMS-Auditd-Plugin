@@ -16,7 +16,7 @@
 
 #include "MsgPackEventWriter.h"
 
-bool MsgPackEventWriter::WriteEvent(const Event& event, IWriter* writer) {
+ssize_t MsgPackEventWriter::WriteEvent(const Event& event, IWriter* writer) {
     _buffer.clear();
 
     // Added event
@@ -72,8 +72,17 @@ bool MsgPackEventWriter::WriteEvent(const Event& event, IWriter* writer) {
         }
     }
 
-    if (writer->Write(_buffer.data(), _buffer.size()) != IWriter::OK) {
-        return false;
+    return writer->WriteAll(_buffer.data(), _buffer.size());
+}
+
+ssize_t MsgPackEventWriter::ReadAck(EventId& event_id, IReader* reader) {
+    std::array<uint8_t, 8+4+8> data;
+    auto ret = reader->ReadAll(data.data(), data.size());
+    if (ret != IO::OK) {
+        return ret;
     }
-    return true;
+    event_id = EventId(*reinterpret_cast<uint64_t*>(data.data()),
+                       *reinterpret_cast<uint32_t*>(data.data()+8),
+                       *reinterpret_cast<uint64_t*>(data.data()+12));
+    return IO::OK;
 }

@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,51 +13,41 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_WRITER_BASE_H
-#define AUOMS_WRITER_BASE_H
 
-#include "IWriter.h"
+#include "TextEventWriter.h"
 
-#include <cstdint>
-#include <cstddef>
-#include <stdexcept>
-#include <atomic>
+#include <cstdlib>
+#include <climits>
 
-extern "C" {
-#include <sys/uio.h>
-};
-
-class operation_interrupted_exception : public std::runtime_error {
-public:
-    operation_interrupted_exception()
-            : std::runtime_error("Operation Interrupted")
-    {}
-};
-
-class WriterBase: public IWriter {
-public:
-    WriterBase(int fd) {
-        _fd.store(fd);
+// ACK format: Sec:Msec:Serial\n all in fixed size HEX
+ssize_t TextEventWriter::ReadAck(EventId& event_id, IReader* reader) {
+    std::array<char, ((8+8+4)*2)+3> data;
+    auto ret = reader->ReadAll(data.data(), data.size());
+    if (ret != IO::OK) {
+        return ret;
     }
 
-    virtual ~WriterBase() {
-        Close();
+    if (data[8*2] != ':' || data[(12*2)+1] != ':' || data[data.size()-1] != '\n') {
+        return IO::FAILED;
     }
 
-    virtual bool IsOpen();
-    virtual bool Open();
-    virtual void Close();
+    data[8*2] = 0;
+    data[(12*2)+1] = 0;
+    data[data.size()-1] = 0;
 
-    virtual bool CanRead();
-    virtual int Read(void *buf, size_t buf_size);
+    uint64_t sec;
+    uint32_t msec;
+    uint64_t serial;
 
-    // Return OK if all bytes written.
-    // Return FAILED on non-recoverable error
-    // Return CLOSED is fd is closed
-    virtual int Write(const void *buf, size_t size);
+    sec = strtoull(data.data(), nullptr, 16);
+    msec = static_cast<uint32_t>(strtoul(&data[(8*2)+1], nullptr, 16));
+    serial = strtoull(&data[(12*2)+2], nullptr, 16);
 
-protected:
-    std::atomic<int> _fd;
-};
+    if (sec == 0 || sec == ULLONG_MAX || msec == ULONG_MAX || serial == ULLONG_MAX) {
+        return IO::FAILED;
+    }
 
-#endif //AUOMS_WRITER_BASE_H
+    event_id = EventId(sec, msec, serial);
+
+    return IO::OK;
+}

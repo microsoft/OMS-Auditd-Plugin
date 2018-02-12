@@ -17,12 +17,14 @@
 #ifndef AUOMS_IEVENTWRITER_H
 #define AUOMS_IEVENTWRITER_H
 
-#include "IWriter.h"
+#include "IO.h"
 #include "Event.h"
+#include "EventId.h"
 
 class IEventWriter {
 public:
-    virtual bool WriteEvent(const Event& event, IWriter* writer) = 0;
+    virtual ssize_t WriteEvent(const Event& event, IWriter* writer) = 0;
+    virtual ssize_t ReadAck(EventId& event_id, IReader* reader) = 0;
 };
 
 #endif //AUOMS_IEVENTWRITER_H

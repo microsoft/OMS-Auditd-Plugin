@@ -25,18 +25,17 @@ include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include)
 
 set(SOURCE_FILES
         main.cpp
+        IO.cpp
         Event.cpp
         OMSEventWriterConfig.cpp
         OMSEventWriter.cpp
         JSONEventWriter.cpp
         MsgPackEventWriter.cpp
+        TextEventWriter.cpp
         AuditEventProcessor.cpp
-        StdinReader.cpp
         Signals.cpp
         Queue.cpp
-        WriterBase.cpp
         UnixDomainWriter.cpp
-        StdoutWriter.cpp
         Logger.cpp
         Config.cpp
         UserDB.cpp
@@ -65,14 +64,16 @@ install(TARGETS
         RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 
-add_executable(fakefluentd
-        fakefluentd.cpp
+add_executable(fakereceiver
+        Event.cpp
+        Logger.cpp
+        fakereceiver.cpp
 )
 
-set_target_properties(fakefluentd PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+set_target_properties(fakereceiver PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 install(TARGETS
-        fakefluentd
+        fakereceiver
         RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 

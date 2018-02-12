@@ -16,25 +16,16 @@
 #ifndef AUOMS_STDIN_READER_H
 #define AUOMS_STDIN_READER_H
 
+#include "IO.h"
+
 #include <cstdint>
 #include <cstddef>
 
-class StdinReader {
+class StdinReader: public IOBase {
 public:
-    const static int CLOSED = 0;
-    const static int TIMEOUT = -1;
-    const static int INTERRUPTED = -2;
-
-    StdinReader();
-    // Return 0 on EOF
-    // Return >0 on bytes read
-    // Return -1 on timeout
-    // Return -2 on signal
-    // Throw exception on error
-    int Read(void *buf, size_t buf_size, int timeout);
-
-private:
-    int _fd;
+    StdinReader(): IOBase(0) {
+        SetNonBlock(true);
+    }
 };
 
 

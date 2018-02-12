@@ -51,6 +51,8 @@ bool UnixDomainWriter::Open()
     }
 
     _fd.store(fd);
+    _rclosed.store(false);
+    _wclosed.store(false);
 
     return true;
 }

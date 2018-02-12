@@ -17,7 +17,7 @@
 #define AUOMS_OMSEVENTTRANSFORMER_H
 
 #include "OMSEventWriterConfig.h"
-#include "IEventWriter.h"
+#include "TextEventWriter.h"
 
 #include <string>
 #include <memory>
@@ -26,19 +26,19 @@
 #include <rapidjson/writer.h>
 
 
-class OMSEventWriter: public IEventWriter {
+class OMSEventWriter: public TextEventWriter {
 public:
     OMSEventWriter(OMSEventWriterConfig config):
     _config(config), _buffer(0, 256*1024), _writer(_buffer)
     {}
 
-    virtual bool WriteEvent(const Event& event, IWriter* writer);
+    virtual ssize_t WriteEvent(const Event& event, IWriter* writer);
 
 private:
     static void decode_hex(std::string& out, const std::string& in);
     static bool unescape(std::string& out, const std::string& in);
 
-    bool write_event(IWriter* writer);
+    ssize_t write_event(IWriter* writer);
     void reset();
     void begin_array();
     void end_array();

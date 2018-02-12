@@ -23,13 +23,14 @@
 
 class RunBase {
 public:
-    RunBase(): _start(false), _stop(false), _joined(false), _stopped(false) {}
+    RunBase(): _start(false), _stop(true), _joining(true), _joined(true), _stopped(true) {}
     virtual ~RunBase() {}
 
     void Start();
     void Stop();
     void Stop(bool wait);
     bool IsStopping();
+    bool IsStopped(); // Only returns true if stopped and waited
     void Wait();
 
 protected:
@@ -37,13 +38,22 @@ protected:
     bool _sleep(int millis);
     bool _sleep_locked(std::unique_lock<std::mutex>& lock, int millis);
 
+    // This method is called once when stop is triggered.
+    // It is called before the RunBase thread is signaled to stop.
+    // _run_mutex is not locked when it is called.
+    virtual void on_stopping();
+
+    // This method is called after run has exited. _run_mutex is not locked when it is called.
     virtual void on_stop();
+
+    // This is the main method that is called by the RunBase thread
     virtual void run() = 0;
 
     std::mutex _run_mutex;
     std::condition_variable _run_cond;
     bool _start;
     bool _stop;
+    bool _joining;
     bool _joined;
     bool _stopped;
     pthread_t _thread_id;
