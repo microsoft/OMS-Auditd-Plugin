@@ -42,6 +42,9 @@ extern "C" {
 #include <dlfcn.h>
 }
 
+#include <linux/audit.h>
+#include <syscall.h>
+
 #define PROCESS_CREATE_RECORD_TYPE 4688
 #define PROCESS_CREATE_RECORD_NAME "PROC_CREATE"
 #define PROCESS_CREATE_INCOMPLETE_RECORD_NAME "PROC_CREATE_INCOMPLETE"
@@ -135,9 +138,9 @@ bool AuditEventProcessor::is_execve()
 
     const char *syscall = auparse_find_field(_state, "syscall");
 
-    auparse_first_field();
+    auparse_first_field(_state);
 
-    if (syscall == nullptr || strcmp(syscall, "EXECVE") != 0) {
+    if (syscall == nullptr || atoi(syscall) != SYS_execve) {
         return false;
     }
 
@@ -148,6 +151,8 @@ void AuditEventProcessor::process_execve()
 {
     static const std::unordered_set<std::string> execve_fields = { "arch", "syscall", "success", "exit", "items", "ppid", "pid", "auid", "uid", "gid", "euid", "suid", "fsuid", "egid", "sgid", "fsgid", "tty", "ses", "comm", "exe", "key", "name", "inode", "dev", "mode", "ouid", "ogid", "rdev", "nametype", "cwd", "cmdline" };
     const char *record_name = PROCESS_CREATE_RECORD_NAME;
+    const char *field;
+    std::string commandline;
 
     if (_num_records < 4) {
         record_name = PROCESS_CREATE_INCOMPLETE_RECORD_NAME;
@@ -168,31 +173,31 @@ void AuditEventProcessor::process_execve()
         switch (record_type) {
             case AUDIT_SYSCALL:
                 do {
-                    char *name = auparse_get_field_name();
-                    if (name != nullptr && execve_fields.count(std::string(name)) && !process_field(name)) {
+                    field = auparse_get_field_name(_state);
+                    if (field != nullptr && execve_fields.count(std::string(field)) && !process_field(field)) {
                         cancel_event();
                         return;
                     }
                 } while (auparse_next_field(_state) == 1);
                 break;
-            case AUDIT_EXEVE:
-                std::string commandline = "";
+            case AUDIT_EXECVE:
+                commandline = "";
                 do {
                     int number;
-                    char *name = auparse_get_field_name();
+                    field = auparse_get_field_name(_state);
 
-                    if (sscanf(name, "a%d", number) < 1) {
+                    if (sscanf(field, "a%d", &number) < 1) {
                         continue;
                     }
 
-                    if (!commandline.empty)
+                    if (!commandline.empty())
                         commandline.push_back(' ');
 
                     if (auparse_get_field_type(_state) == AUPARSE_TYPE_ESCAPED) {
-                        char *interp = auparse_interpret_field(_state);
+                        field = auparse_interpret_field(_state);
 
                         commandline.push_back('"');
-                        for (char *c = interp; *c != '\0'; ++c) {
+                        for (const char *c = field; *c != '\0'; ++c) {
                             switch (*c) {
                                 case '"':
                                 case '\\':
@@ -206,12 +211,12 @@ void AuditEventProcessor::process_execve()
                         commandline.push_back('"');
                     }
                     else {
-                        char *field = auparse_get_field_str(_state);
+                        field = auparse_get_field_str(_state);
                         commandline.append(field);
                     }
                 } while (auparse_next_field(_state) == 1);
 
-                auto ret = _builder->AddField("cmdline", commandline.c_str(), NULL, FIELD_TYPE_UNCLASSIFIED);
+                ret = _builder->AddField("cmdline", commandline.c_str(), NULL, FIELD_TYPE_UNCLASSIFIED);
                 if (ret != 1) {
                     if (ret == Queue::CLOSED) {
                         throw std::runtime_error("Queue closed");
@@ -221,21 +226,21 @@ void AuditEventProcessor::process_execve()
                 }
                 break;
             case AUDIT_CWD:
-                char *cwd = auparse_find_field(_state, "cwd");
-                if (cwd == nullptr || !process_field("cwd")) {
+                field = auparse_find_field(_state, "cwd");
+                if (field == nullptr || !process_field("cwd")) {
                     break;
                 };
                 break;
             case AUDIT_PATH:
-                char *item = auparse_find_field(_state, "item");
-                if (item == nullptr || strcmp(item, "0") != 0) {
+                field = auparse_find_field(_state, "item");
+                if (field == nullptr || strcmp(field, "0") != 0) {
                     break;
                 }
 
                 auparse_first_field(_state);
                 do {
-                    char *name = auparse_get_field_str(_state);
-                    if (name != nullptr && execve_fields.count(name) && !process_field(name)) {
+                    field = auparse_get_field_str(_state);
+                    if (field != nullptr && execve_fields.count(field) && !process_field(field)) {
                         cancel_event();
                         return;
                     }
@@ -247,7 +252,7 @@ void AuditEventProcessor::process_execve()
             case 0:
                 Logger::Warn("auparse_get_type() failed!");
                 break;
-            case default:
+            default:
                 Logger::Warn("Unexpected EXECVE record type - " + record_type);
                 break;
         }
@@ -399,7 +404,7 @@ inline bool NAME_EQUAL_PID(const char *name) {
     return *reinterpret_cast<const uint32_t*>(name) == 0x00646970;
 }
 
-bool AuditEventProcessor::process_field(char *name_ptr)
+bool AuditEventProcessor::process_field(const char *name_ptr)
 {
     const char* val_ptr = auparse_get_field_str(_state);
     if (val_ptr == nullptr) {
