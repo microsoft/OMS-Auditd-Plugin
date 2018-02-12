@@ -154,11 +154,19 @@ void AuditEventProcessor::process_execve()
     const char *field;
     std::string commandline;
 
+    auto ret = _builder->BeginEvent(_current_event_sec, _current_event_msec, _current_event_serial, 1);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        return;
+    }
+
     if (_num_records < 4) {
         record_name = PROCESS_CREATE_INCOMPLETE_RECORD_NAME;
     }
 
-    auto ret = _builder->BeginRecord(PROCESS_CREATE_RECORD_TYPE, record_name, "", execve_fields.size());
+    ret = _builder->BeginRecord(PROCESS_CREATE_RECORD_TYPE, record_name, "", execve_fields.size());
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
             throw std::runtime_error("Queue closed");
@@ -239,7 +247,7 @@ void AuditEventProcessor::process_execve()
 
                 auparse_first_field(_state);
                 do {
-                    field = auparse_get_field_str(_state);
+                    field = auparse_get_field_name(_state);
                     if (field != nullptr && execve_fields.count(field) && !process_field(field)) {
                         cancel_event();
                         return;
@@ -258,7 +266,16 @@ void AuditEventProcessor::process_execve()
         }
     } while (auparse_next_record(_state) == 1);
 
-    ret = _builder->EndRecord();
+    try
+    {
+        ret = _builder->EndRecord();
+    }
+    catch (std::exception ex)
+    {
+        Logger::Warn(ex.what());
+        cancel_event();
+        return;
+    }
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
             throw std::runtime_error("Queue closed");
@@ -297,12 +314,12 @@ void AuditEventProcessor::callback(void *ptr)
         return;
     }
 
-    if (!begin_event()) {
+    if (_num_records > 2 && is_execve()) {
+        process_execve();
         return;
     }
 
-    if (_num_records > 2 && is_execve()) {
-        process_execve();
+    if (!begin_event()) {
         return;
     }
 
