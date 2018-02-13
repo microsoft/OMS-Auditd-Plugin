@@ -47,7 +47,6 @@ extern "C" {
 
 #define PROCESS_CREATE_RECORD_TYPE 4688
 #define PROCESS_CREATE_RECORD_NAME "PROC_CREATE"
-#define PROCESS_CREATE_INCOMPLETE_RECORD_NAME "PROC_CREATE_INCOMPLETE"
 
 /*****************************************************************************
  * Dynamicly load needed libaudit symbols
@@ -133,7 +132,6 @@ void AuditEventProcessor::static_callback(void *au, dummy_enum_t cb_event_type, 
 bool AuditEventProcessor::process_execve()
 {
     static const std::unordered_set<std::string> execve_fields = { "arch", "syscall", "success", "exit", "items", "ppid", "pid", "auid", "uid", "gid", "euid", "suid", "fsuid", "egid", "sgid", "fsgid", "tty", "ses", "comm", "exe", "key", "name", "inode", "dev", "mode", "ouid", "ogid", "rdev", "nametype", "cwd", "cmdline" };
-    const char *record_name = PROCESS_CREATE_RECORD_NAME;
 
     if (auparse_get_type(_state) != AUDIT_SYSCALL) {
         return false;
@@ -154,11 +152,7 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    if (_num_records < 4) {
-        record_name = PROCESS_CREATE_INCOMPLETE_RECORD_NAME;
-    }
-
-    ret = _builder->BeginRecord(PROCESS_CREATE_RECORD_TYPE, record_name, "", execve_fields.size());
+    ret = _builder->BeginRecord(PROCESS_CREATE_RECORD_TYPE, PROCESS_CREATE_RECORD_NAME, "", execve_fields.size());
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
             throw std::runtime_error("Queue closed");
