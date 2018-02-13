@@ -434,6 +434,10 @@ int EventBuilder::AddField(const char *field_name, const char* raw_value, const 
     return 1;
 }
 
+int EventBuilder::GetFieldCount() {
+    return _field_idx;
+}
+
 /*****************************************************************************
  ** EventRecordField
  *****************************************************************************/

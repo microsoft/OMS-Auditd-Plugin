@@ -47,7 +47,6 @@ private:
     bool begin_event();
     void end_event();
     void cancel_event();
-    bool is_execve();
     void process_execve();
     bool process_field(const char *name_ptr);
     bool process_field();
