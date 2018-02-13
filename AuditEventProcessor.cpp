@@ -133,7 +133,7 @@ bool AuditEventProcessor::process_execve()
 {
     static const std::unordered_set<std::string> execve_fields = { "arch", "syscall", "success", "exit", "items", "ppid", "pid", "auid", "uid", "gid", "euid", "suid", "fsuid", "egid", "sgid", "fsgid", "tty", "ses", "comm", "exe", "key", "name", "inode", "dev", "mode", "ouid", "ogid", "rdev", "nametype", "cwd", "cmdline" };
 
-    if (auparse_get_type(_state) != AUDIT_SYSCALL) {
+    if (_num_records < 5 || auparse_get_type(_state) != AUDIT_SYSCALL) {
         return false;
     }
 
@@ -300,7 +300,7 @@ void AuditEventProcessor::callback(void *ptr)
         return;
     }
 
-    if (_num_records > 4 && process_execve()) {
+    if (process_execve()) {
         return;
     }
 
