@@ -30,6 +30,7 @@
 #include <sys/types.h>
 #include <sys/stat.h> /* for stat() */
 #include <dirent.h>
+#include <pwd.h>
 #include <algorithm>
 #include <cctype>
 
@@ -95,12 +96,12 @@ std::set<std::string> ProcFilter::_blocked_process_names;
 void ProcFilter::static_init()
 {
     _blocked_process_names.clear();
-    _blocked_process_names.insert("waagent");
-    _blocked_process_names.insert("omsconfig");
+    _blocked_process_names.insert("omiagent");
     _blocked_process_names.insert("omsagent");
 }
 
-int is_dir(std::string path)
+// -------- helper functions -----------------------------
+int ProcFilter::is_dir(std::string path)
 {
     struct stat stat_buf;
     stat(path.c_str(), &stat_buf);
@@ -108,13 +109,34 @@ int is_dir(std::string path)
     return (is_directory ? 1: 0);
 }
 
-bool is_number(const std::string& s)
+bool ProcFilter::is_number(const std::string& s)
 {
     return !s.empty() &&
            std::find_if(s.begin(), s.end(), [](char c) { return !std::isdigit(c); }) == s.end();
 }
 
-ProcessInfo read_proc_data_from_stat(const std::string& fileName)
+bool ProcFilter::is_process_running(int pid)
+{
+    std:string file = std::string("/proc/") + pid + std::string("/stat")
+    struct stat stat_buf;
+    return (stat(file.c_str(), &stat_buf) == 0);
+}
+
+std::string ProcFilter::get_user_of_process(int pid)
+{
+    //////////// not good
+    sdgsdgsf
+    uid_t uid = geteuid();
+    struct passwd *pw = getpwuid(uid);
+    if (pw)
+    {
+        return pw->pw_name;
+    }
+
+    return "";
+}
+
+ProcessInfo ProcFilter::read_proc_data_from_stat(const std::string& fileName)
 {
     ProcessInfo procData = ProcessInfo::Empty;
     std::ifstream infile(fileName, std::ifstream::in);
@@ -140,6 +162,8 @@ ProcessInfo read_proc_data_from_stat(const std::string& fileName)
     }
     return ProcessInfo::Empty;
 }
+
+// --------- end helper functions -------------------------
 
 std::list<ProcessInfo>* ProcFilter::get_all_processes()
 {
@@ -170,11 +194,12 @@ void ProcFilter::compile_proc_list(std::list<ProcessInfo>* allProcs)
         // add root blocking processes
         for (const ProcessInfo& proc : *allProcs)
         {
-            for (const std::string& blockedName : ProcFilter::_blocked_process_names)
+            for (const std::string& blockedName : ProcFilter::_blocked_process_names)                                                                                   
             {
-                if (proc.name.find(blockedName) != std::string::npos)
+                if (proc.name.find(blockedName) != std::string::npos && (get_user_of_process(proc.pid) == "omsagent" || get_user_of_process(proc.pid) == "root"))
                 {
                     _proc_list.insert(proc.pid);
+                    _delete_queue.push(proc.pid);
                 }
             }
         }
@@ -211,6 +236,10 @@ ProcFilter::~ProcFilter()
 void ProcFilter::Initialize()
 {
     _proc_list.clear();
+    while(!_delete_queue.empty())
+    {
+        _delete_queue.pop();
+    }
     // TODO: scan existing processes and choose those in the names list and children
     std::list<ProcessInfo>* listOfProcesses = get_all_processes();
     compile_proc_list(listOfProcesses);
@@ -229,9 +258,22 @@ bool ProcFilter::ShouldBlock(int pid)
 
 bool ProcFilter::AddProcess(int pid, int ppid)
 {
+    RemoveProcess(pid);
     if(_proc_list.find(ppid) != _proc_list.end())
     {
         _proc_list.insert(pid);
+        _delete_queue.push(proc.pid);
+
+        int curr_pid = _delete_queue.peek();
+        _delete_queue.pop();
+        if (!is_process_running(curr_pid))
+        {
+            RemoveProcess(curr_pid);
+        }
+        else
+        {
+            _delete_queue.push(curr_pid);
+        }
         return true;
     }
     return false;

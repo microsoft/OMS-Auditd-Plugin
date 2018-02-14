@@ -20,6 +20,7 @@
 #include <memory>
 #include <set>
 #include <list>
+#include <queue>
 
 struct ProcessInfo {
     int pid;
@@ -46,6 +47,7 @@ public:
 private:    
     static ProcFilter* _instance;
     std::set<int> _proc_list;
+    std::queue<int> _delete_queue;
     static std::set<std::string> _blocked_process_names;
     
 
@@ -54,6 +56,14 @@ private:
     void Initialize();
     std::list<ProcessInfo>* get_all_processes();
     void compile_proc_list(std::list<ProcessInfo>* allProcs);
+
+    // helper methods
+    static int is_dir(std::string path);
+    static bool is_number(const std::string& s);
+    static bool is_process_running(int pid);
+    static bool get_user_of_process(int pid);
+    static ProcessInfo read_proc_data_from_stat(const std::string& fileName);
+
 };
 
 #endif //AUOMS_PROC_FILTER_H
