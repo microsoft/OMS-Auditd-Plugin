@@ -45,8 +45,8 @@ extern "C" {
 #include <linux/audit.h>
 #include <syscall.h>
 
-#define PROCESS_CREATE_RECORD_TYPE 4688
-#define PROCESS_CREATE_RECORD_NAME "PROC_CREATE"
+#define PROCESS_CREATE_RECORD_TYPE 14688
+#define PROCESS_CREATE_RECORD_NAME "AUOMS_EXECVE"
 
 /*****************************************************************************
  * Dynamicly load needed libaudit symbols
@@ -137,10 +137,11 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    const char *syscall = auparse_find_field(_state, "syscall");
+    auparse_find_field(_state, "syscall");
+    const char *syscall = auparse_interpret_field(_state);
     auparse_first_field(_state);
 
-    if (syscall == nullptr || atoi(syscall) != SYS_execve) {
+    if (syscall == nullptr || strncmp(syscall, "execve", 6) != 0) {
         return false;
     }
 
@@ -176,7 +177,7 @@ bool AuditEventProcessor::process_execve()
                 break;
             }
             case AUDIT_EXECVE: {
-                std::string commandline = "";
+                _cmdline.assign("");
                 do {
                     int number;
                     const char* field = auparse_get_field_name(_state);
@@ -185,33 +186,33 @@ bool AuditEventProcessor::process_execve()
                         continue;
                     }
 
-                    if (!commandline.empty())
-                        commandline.push_back(' ');
+                    if (!_cmdline.empty())
+                        _cmdline.push_back(' ');
 
-                    if (auparse_get_field_type(_state) == AUPARSE_TYPE_ESCAPED) {
-                        field = auparse_interpret_field(_state);
+                    field = auparse_interpret_field(_state);
+                    size_t span = strspn(field, "!%+,-./0123456789:=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_abcdefghijklmnopqrstuvwxyz");
 
-                        commandline.push_back('"');
+                    if (field[span] == '\0') {
+                        _cmdline.append(field);
+                    }
+                    else {
+                        _cmdline.push_back('"');
                         for (const char *c = field; *c != '\0'; ++c) {
                             switch (*c) {
                                 case '"':
                                 case '\\':
                                 case '$':
                                 case '`':
-                                    commandline.push_back('\\');
+                                    _cmdline.push_back('\\');
                                 default:
-                                    commandline.push_back(*c);
+                                    _cmdline.push_back(*c);
                             }
                         }
-                        commandline.push_back('"');
-                    }
-                    else {
-                        field = auparse_get_field_str(_state);
-                        commandline.append(field);
+                        _cmdline.push_back('"');
                     }
                 } while (auparse_next_field(_state) == 1);
 
-                ret = _builder->AddField("cmdline", commandline.c_str(), NULL, FIELD_TYPE_UNCLASSIFIED);
+                ret = _builder->AddField("cmdline", _cmdline.c_str(), NULL, FIELD_TYPE_UNCLASSIFIED);
                 if (ret != 1) {
                     if (ret == Queue::CLOSED) {
                         throw std::runtime_error("Queue closed");

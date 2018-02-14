@@ -61,6 +61,7 @@ private:
     uint32_t _event_flags;
     pid_t _pid;
     pid_t _ppid;
+    std::string _cmdline;
 };
 
 #endif //AUOMS_AUDIT_EVENT_PROCESSOR_H
