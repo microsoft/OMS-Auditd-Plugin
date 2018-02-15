@@ -406,6 +406,10 @@ int EventBuilder::AddField(const char *field_name, const char* raw_value, const 
         throw std::runtime_error("interp_value length exceeds limit");
     }
 
+    if (_field_idx >= _num_fields) {
+        throw std::runtime_error("field count exceeds allocated number");
+    }
+
     size_t size = _size+fsize;
     int ret = _allocator->Allocate(reinterpret_cast<void**>(&_data), size);
     if (ret != 1) {

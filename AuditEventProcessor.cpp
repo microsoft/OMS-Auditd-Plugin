@@ -139,7 +139,10 @@ bool AuditEventProcessor::process_execve()
 
     auparse_find_field(_state, "syscall");
     const char *syscall = auparse_interpret_field(_state);
-    auparse_first_field(_state);
+
+    if (auparse_first_field(_state) != 1) {
+        return false;
+    }
 
     if (syscall == nullptr || strncmp(syscall, "execve", 6) != 0) {
         return false;
@@ -177,22 +180,27 @@ bool AuditEventProcessor::process_execve()
                 break;
             }
             case AUDIT_EXECVE: {
-                _cmdline.assign("");
+                _cmdline.clear();
                 do {
                     int number;
                     const char* field = auparse_get_field_name(_state);
 
-                    if (sscanf(field, "a%d", &number) < 1) {
+                    if (field == nullptr || sscanf(field, "a%d", &number) < 1) {
                         continue;
                     }
 
-                    if (!_cmdline.empty())
-                        _cmdline.push_back(' ');
-
                     field = auparse_interpret_field(_state);
+                    if (field == nullptr) {
+                        continue;
+                    }
+
+                    if (!_cmdline.empty()) {
+                        _cmdline.push_back(' ');
+                    }
+
                     size_t span = strspn(field, "!%+,-./0123456789:=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_abcdefghijklmnopqrstuvwxyz");
 
-                    if (field[span] == '\0') {
+                    if (span > 0 && field[span] == '\0') {
                         _cmdline.append(field);
                     }
                     else {
@@ -247,6 +255,7 @@ bool AuditEventProcessor::process_execve()
             }
             case AUDIT_PROCTITLE:
             case AUDIT_EOE:
+            case AUDIT_BPRM_FCAPS:
                 break;
             case 0:
                 Logger::Warn("auparse_get_type() failed!");
@@ -292,7 +301,6 @@ void AuditEventProcessor::callback(void *ptr)
     _num_records = auparse_get_num_records(_state);
     if (_num_records == 0) {
         Logger::Warn("auparse_get_num_records() returned 0!");
-        cancel_event();
         return;
     }
 
@@ -304,6 +312,8 @@ void AuditEventProcessor::callback(void *ptr)
     if (process_execve()) {
         return;
     }
+
+    auparse_first_record(_state);
 
     if (!begin_event()) {
         return;
