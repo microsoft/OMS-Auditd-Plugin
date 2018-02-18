@@ -16,7 +16,10 @@
 
 #include "JSONEventWriter.h"
 
-bool JSONEventWriter::WriteEvent(const Event& event, IWriter* writer) {
+#include <cstdlib>
+#include <climits>
+
+ssize_t JSONEventWriter::WriteEvent(const Event& event, IWriter* writer) {
     _buffer.Clear();
     _writer.Reset(_buffer);
 
@@ -75,11 +78,9 @@ bool JSONEventWriter::WriteEvent(const Event& event, IWriter* writer) {
     _writer.EndObject(); // Event
 
     auto len = snprintf(_header.data(), _header.size(), "%ld\n", _buffer.GetSize());
-    if (writer->Write(_header.data(), len) != IWriter::OK) {
-        return false;
+    auto ret = writer->WriteAll(_header.data(), len);
+    if (ret != IWriter::OK) {
+        return ret;
     }
-    if (writer->Write(_buffer.GetString(), _buffer.GetSize()) != IWriter::OK) {
-        return false;
-    }
-    return true;
+    return writer->WriteAll(_buffer.GetString(), _buffer.GetSize());
 }

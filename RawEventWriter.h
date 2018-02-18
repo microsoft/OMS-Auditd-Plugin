@@ -21,8 +21,20 @@
 
 class RawEventWriter: public IEventWriter {
 public:
-    virtual bool WriteEvent(const Event& event, IWriter* writer) {
-        return writer->Write(event.Data(), event.Size()) != IWriter::OK;
+    virtual ssize_t WriteEvent(const Event& event, IWriter* writer) {
+        return writer->WriteAll(event.Data(), event.Size());
+    }
+
+    virtual ssize_t ReadAck(EventId& event_id, IReader* reader) {
+        std::array<uint8_t, 8+4+8> data;
+        auto ret = reader->ReadAll(data.data(), data.size());
+        if (ret != IO::OK) {
+            return ret;
+        }
+        event_id = EventId(*reinterpret_cast<uint64_t*>(data.data()),
+                           *reinterpret_cast<uint32_t*>(data.data()+8),
+                           *reinterpret_cast<uint64_t*>(data.data()+12));
+        return IO::OK;
     }
 };
 

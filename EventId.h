@@ -75,6 +75,22 @@ public:
         }
     }
 
+    bool operator<=(const EventId& other) const {
+        if (*this == other) {
+            return true;
+        } else {
+            return *this < other;
+        }
+    }
+
+    bool operator>=(const EventId& other) const {
+        if (*this == other) {
+            return true;
+        } else {
+            return *this > other;
+        }
+    }
+
 private:
     uint64_t _sec;
     uint32_t _msec;

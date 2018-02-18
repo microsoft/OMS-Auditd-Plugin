@@ -25,9 +25,10 @@ extern "C" {
 #include <unistd.h>
 }
 
-void Outputs::Reload() {
+void Outputs::Reload(const std::vector<std::string>& allowed_socket_dirs) {
     Logger::Info("Reload requested");
     std::unique_lock<std::mutex> lock(_run_mutex);
+    _allowed_socket_dirs = allowed_socket_dirs;
     _do_reload = true;
     _run_cond.notify_all();
 }
@@ -52,6 +53,88 @@ void Outputs::run() {
             lock.lock();
         }
     }
+}
+
+/*
+ *  Get List of outputs
+ *  Delete existing output not in new list
+ *  If new output is in existing outputs
+ *      If config is not valid or config is different
+ *          stop output
+ *      if config is valid
+ *          start new output
+ *  Else
+ *      If config is valid
+ *          Start new output
+ */
+
+std::unique_ptr<Config> Outputs::read_and_validate_config(const std::string& name, const std::string& path) {
+    Logger::Error("Output(%s): Reading config from %s", name.c_str(), path.c_str());
+
+    std::unique_ptr<Config> config(new Config());
+    try {
+        config->Load(path);
+    } catch (std::runtime_error& ex) {
+        Logger::Error("Output(%s): Failed to read configuration: %s", name.c_str(), ex.what());
+        return nullptr;
+    }
+
+    std::string format = "oms";
+    if (config->HasKey("output_format")) {
+        format = config->GetString("output_format");
+    }
+
+    if (!config->HasKey("output_socket")) {
+        Logger::Error("Output(%s): Missing required parameter: output_socket", name.c_str());
+        return nullptr;
+    }
+
+    auto socket_path = config->GetString("output_socket");
+    bool socket_path_valid = false;
+    for (auto dir: _allowed_socket_dirs) {
+        if (socket_path.length() > dir.length() && socket_path.substr(0, dir.length()) == dir) {
+            socket_path_valid = true;
+            break;
+        }
+    }
+
+    if (!socket_path_valid) {
+        Logger::Error("Output(%s): Invalid output_socket parameter value: '%s'", name.c_str(), socket_path.c_str());
+        return nullptr;
+    }
+
+    if (format != "oms" && format != "json" && format != "msgpack" && format != "raw") {
+        Logger::Error("Output(%s): Invalid output_format parameter value: '%s'", name.c_str(), format.c_str());
+        return nullptr;
+    }
+
+    bool ack_mode = false;
+    if (config->HasKey("enable_ack_mode")) {
+        try {
+            ack_mode = config->GetBool("enable_ack_mode");
+        } catch (std::exception) {
+            Logger::Error("Output(%s): Invalid enable_ack_mode parameter value", name.c_str());
+            return nullptr;
+        }
+    }
+
+    if (ack_mode) {
+        uint64_t ack_queue_size = Output::DEFAULT_ACK_QUEUE_SIZE;
+        if (config->HasKey("ack_queue_size")) {
+            try {
+                ack_queue_size = config->GetUint64("ack_queue_size");
+            } catch (std::exception) {
+                Logger::Error("Output(%s): Invalid ack_queue_size parameter value", name.c_str());
+                return nullptr;
+            }
+        }
+        if (ack_queue_size < 1) {
+            Logger::Error("Output(%s): Invalid ack_queue_size parameter value", name.c_str());
+            return nullptr;
+        }
+    }
+
+    return config;
 }
 
 void Outputs::do_conf_sync() {
@@ -97,23 +180,35 @@ void Outputs::do_conf_sync() {
     }
 
     for(auto ent: new_outputs) {
-        auto it = _outputs.find(ent.first);
-        if (it != _outputs.end()) {
-            if (it->second->IsValid()) {
-                it->second->Reload();
-            } else {
-                it->second->Stop();
-                it->second->Delete();
-                _outputs.erase(it);
-                it = _outputs.end();
-            }
+        auto config = read_and_validate_config(ent.first, ent.second);
+
+        if (!config) {
+            Logger::Error("Output(%s): Config is invalid: It will be ignored", ent.first.c_str());
+            continue;
         }
 
-        if (it == _outputs.end()) {
+        auto it = _outputs.find(ent.first);
+
+        bool load = false;
+        if (it != _outputs.end()) {
+            if (it->second->IsConfigDifferent(*config)) {
+                Logger::Error("Output(%s): Config has changed", ent.first.c_str());
+                it->second->Stop();
+                load = true;
+            }
+        } else {
             auto cursor_file = _cursor_dir + "/" + ent.first + ".cursor";
-            auto o = std::make_shared<Output>(ent.first, ent.second, cursor_file, _allowed_socket_dirs, _queue);
-            _outputs.insert(std::make_pair(ent.first, o));
-            o->Start();
+            auto o = std::make_shared<Output>(ent.first, cursor_file, _queue);
+            it = _outputs.insert(std::make_pair(ent.first, o)).first;
+            load = true;
+        }
+
+        if (load) {
+            if (!it->second->Load(config)) {
+                Logger::Error("Output(%s): Failed to load config: Not started", ent.first.c_str());
+            } else {
+                it->second->Start();
+            }
         }
     }
 }

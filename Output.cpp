@@ -30,44 +30,81 @@ extern "C" {
 #include <fcntl.h>
 }
 
-bool Output::IsValid() {
-    std::lock_guard<std::mutex> lock(_mutex);
-    return _config_valid;
-}
 
-void Output::Reload() {
-    std::unique_ptr<Config> config(new Config());
+/****************************************************************************
+ *
+ ****************************************************************************/
 
-    try {
-        config->Load(_conf_path);
-    } catch (std::runtime_error& ex) {
-        Logger::Error("Output(%s): Failed to reload configuration: %s", _name.c_str(), ex.what());
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(_mutex);
-
-    if (!_config || *_config != *config) {
-        _config = std::move(config);
-        _reload_pending = true;
-        Logger::Info("Output(%s): Reloading config", _name.c_str());
+AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _head(0), _tail(0), _size(0) {
+    _ring.reserve(max_size);
+    for (size_t i; i < max_size; i++) {
+        _ring.emplace_back(EventId(0, 0, 0), QueueCursor(0, 0));
     }
 }
 
-// Delete any resources associated with the output
-void Output::Delete() {
-    delete_cursor_file();
-    Logger::Info("Output(%s): Removed", _name.c_str());
+void AckQueue::Close() {
+    std::unique_lock<std::mutex> _lock(_mutex);
+    _closed = true;
+    _cond.notify_all();
 }
 
+bool AckQueue::Add(const EventId& event_id, const QueueCursor& cursor) {
+    std::unique_lock<std::mutex> _lock(_mutex);
 
-bool Output::read_cursor_file() {
+    _cond.wait(_lock, [this]() { return _closed || _size < _max_size; });
+    if (_size < _max_size) {
+        _ring[_head] = std::make_pair(event_id, cursor);
+        _size++;
+        _head++;
+        if (_head >= _max_size) {
+            _head = 0;
+        }
+        return true;
+    } else {
+        return false;
+    }
+}
+
+bool AckQueue::Wait(int millis) {
+    std::unique_lock<std::mutex> _lock(_mutex);
+
+    auto now = std::chrono::steady_clock::now();
+    return _cond.wait_until(_lock, now + (std::chrono::milliseconds(1) * millis), [this] { return _size == 0; });
+}
+
+bool AckQueue::Ack(const EventId& event_id, QueueCursor& cursor) {
+    std::unique_lock<std::mutex> _lock(_mutex);
+
+    ssize_t last = -1;
+    while(_size > 0 && _ring[_tail].first <= event_id) {
+        last = _tail;
+        _tail++;
+        _size--;
+        if (_tail >= _max_size) {
+            _tail = 0;
+        }
+    }
+    if (last < 0) {
+        return false;
+    }
+    cursor = _ring[last].second;
+    _cond.notify_all();
+    return true;
+}
+
+/****************************************************************************
+ *
+ ****************************************************************************/
+
+bool CursorWriter::Read() {
+    std::lock_guard<std::mutex> lock(_mutex);
+
     std::array<uint8_t, QueueCursor::DATA_SIZE> data;
 
-    int fd = open(_cursor_path.c_str(), O_RDONLY);
+    int fd = open(_path.c_str(), O_RDONLY);
     if (fd < 0) {
         if (errno != ENOENT) {
-            Logger::Error("Output(%s): Failed to open cursor file (%s): %s", _name.c_str(), _cursor_path.c_str(), std::strerror(errno));
+            Logger::Error("Output(%s): Failed to open cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
             return false;
         } else {
             _cursor = QueueCursor::TAIL;
@@ -78,9 +115,9 @@ bool Output::read_cursor_file() {
     auto ret = read(fd, data.data(), data.size());
     if (ret != data.size()) {
         if (ret >= 0) {
-            Logger::Error("Output(%s): Failed to read cursor file (%s): only %d bytes out of %d where read", _name.c_str(), _cursor_path.c_str(), std::strerror(errno), ret, data.size());
+            Logger::Error("Output(%s): Failed to read cursor file (%s): only %d bytes out of %d where read", _name.c_str(), _path.c_str(), std::strerror(errno), ret, data.size());
         } else {
-            Logger::Error("Output(%s): Failed to read cursor file (%s): %s", _name.c_str(), _cursor_path.c_str(), std::strerror(errno));
+            Logger::Error("Output(%s): Failed to read cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
         }
         close(fd);
         return false;
@@ -92,22 +129,24 @@ bool Output::read_cursor_file() {
     return true;
 }
 
-bool Output::write_cursor_file() {
+bool CursorWriter::Write() {
+    std::lock_guard<std::mutex> lock(_mutex);
+
     std::array<uint8_t, QueueCursor::DATA_SIZE> data;
     _cursor.to_data(data);
 
-    int fd = open(_cursor_path.c_str(), O_WRONLY|O_CREAT, 0600);
+    int fd = open(_path.c_str(), O_WRONLY|O_CREAT, 0600);
     if (fd < 0) {
-        Logger::Error("Output(%s): Failed to open/create cursor file (%s): %s", _name.c_str(), _cursor_path.c_str(), std::strerror(errno));
+        Logger::Error("Output(%s): Failed to open/create cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
         return false;
     }
 
     auto ret = write(fd, data.data(), data.size());
     if (ret != data.size()) {
         if (ret >= 0) {
-            Logger::Error("Output(%s): Failed to write cursor file (%s): only %d bytes out of %d where written", _name.c_str(), _cursor_path.c_str(), std::strerror(errno), ret, data.size());
+            Logger::Error("Output(%s): Failed to write cursor file (%s): only %d bytes out of %d where written", _name.c_str(), _path.c_str(), std::strerror(errno), ret, data.size());
         } else {
-            Logger::Error("Output(%s): Failed to write cursor file (%s): %s", _name.c_str(), _cursor_path.c_str(), std::strerror(errno));
+            Logger::Error("Output(%s): Failed to write cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
         }
         close(fd);
         return false;
@@ -117,16 +156,83 @@ bool Output::write_cursor_file() {
     return true;
 }
 
-bool Output::delete_cursor_file() {
-    auto ret = unlink(_cursor_path.c_str());
+bool CursorWriter::Delete() {
+    auto ret = unlink(_path.c_str());
     if (ret != 0 && errno != ENOENT) {
-        Logger::Error("Output(%s): Failed to delete cursor file (%s): %s", _name.c_str(), _cursor_path.c_str(), std::strerror(errno));
+        Logger::Error("Output(%s): Failed to delete cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
         return false;
     }
     return true;
 }
 
-bool Output::configure() {
+QueueCursor CursorWriter::GetCursor() {
+    std::lock_guard<std::mutex> lock(_mutex);
+    return _cursor;
+}
+
+void CursorWriter::UpdateCursor(const QueueCursor& cursor) {
+    std::lock_guard<std::mutex> lock(_mutex);
+    _cursor = cursor;
+    _cursor_updated = true;
+    _cond.notify_all();
+}
+
+void CursorWriter::on_stopping() {
+    std::lock_guard<std::mutex> lock(_mutex);
+    _cursor_updated = true;
+    _cond.notify_all();
+}
+
+void CursorWriter::run() {
+    while (!IsStopping()) {
+        {
+            std::unique_lock<std::mutex> lock(_mutex);
+            _cond.wait(lock, [this]{ return _cursor_updated;});
+            _cursor_updated = false;
+        }
+        Write();
+        _sleep(100);
+    }
+    Write();
+}
+
+/****************************************************************************
+ *
+ ****************************************************************************/
+void AckReader::Init(std::shared_ptr<IEventWriter> event_writer,
+                     std::shared_ptr<IOBase> writer,
+                     std::shared_ptr<AckQueue> ack_queue,
+                     std::shared_ptr<CursorWriter> cursor_writer) {
+    _event_writer = event_writer;
+    _writer = writer;
+    _queue = ack_queue;
+    _cursor_writer = cursor_writer;
+}
+
+void AckReader::run() {
+    EventId id;
+    QueueCursor cursor;
+    while(_event_writer->ReadAck(id, _writer.get()) == IO::OK) {
+        if (_queue->Ack(id, cursor)) {
+            _cursor_writer->UpdateCursor(cursor);
+        }
+    }
+}
+
+/****************************************************************************
+ *
+ ****************************************************************************/
+
+bool Output::IsConfigDifferent(const Config& config) {
+    return *_config != config;
+}
+
+bool Output::Load(std::unique_ptr<Config>& config) {
+    Logger::Info("Output(%s): Loading config", _name.c_str());
+
+    _config = std::unique_ptr<Config>(new(Config));
+    *_config = *config;
+
     std::string format = "oms";
 
     if (_config->HasKey("output_format")) {
@@ -139,25 +245,14 @@ bool Output::configure() {
     }
 
     auto socket_path = _config->GetString("output_socket");
-    for (auto dir: _allowed_socket_dirs) {
-        if (socket_path.length() > dir.length() && socket_path.substr(0, dir.length()) == dir) {
-            _socket_path = socket_path;
-            break;
-        }
-    }
-
-    if (_socket_path.empty()) {
-        Logger::Error("Output(%s): Invalid output_socket parameter value: '%s'", _name.c_str(), socket_path.c_str());
-        return false;
-    }
 
     if (format == "oms") {
-        OMSEventWriterConfig config;
-        if (!config.LoadFromConfig(*_config)) {
+        OMSEventWriterConfig oms_config;
+        if (!oms_config.LoadFromConfig(*_config)) {
             return false;
         }
 
-        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new OMSEventWriter(config)));
+        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new OMSEventWriter(oms_config)));
     } else if (format == "json") {
         _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new JSONEventWriter()));
     } else if (format == "msgpack") {
@@ -169,24 +264,63 @@ bool Output::configure() {
         return false;
     }
 
-    _writer = std::unique_ptr<UnixDomainWriter>(new UnixDomainWriter(_socket_path));
+    if (socket_path != _socket_path || !_writer) {
+        _socket_path = socket_path;
+        _writer = std::unique_ptr<UnixDomainWriter>(new UnixDomainWriter(_socket_path));
+    }
 
-    std::lock_guard<std::mutex> lock(_mutex);
-    _config_valid = true;
+    if (_config->HasKey("enable_ack_mode")) {
+        try {
+            _ack_mode = _config->GetBool("enable_ack_mode");
+        } catch (std::exception) {
+            Logger::Error("Output(%s): Invalid enable_ack_mode parameter value", _name.c_str());
+            return false;
+        }
+    }
+
+    if (_ack_mode) {
+        uint64_t ack_queue_size = DEFAULT_ACK_QUEUE_SIZE;
+        if (_config->HasKey("ack_queue_size")) {
+            try {
+                ack_queue_size = _config->GetUint64("ack_queue_size");
+            } catch (std::exception) {
+                Logger::Error("Output(%s): Invalid ack_queue_size parameter value", _name.c_str());
+                return false;
+            }
+        }
+        if (ack_queue_size < 1) {
+            Logger::Error("Output(%s): Invalid ack_queue_size parameter value", _name.c_str());
+            return false;
+        }
+        if (!_ack_queue || _ack_queue->MaxSize() != ack_queue_size) {
+            _ack_queue = std::make_shared<AckQueue>(ack_queue_size);
+        }
+    } else {
+        if (_ack_queue) {
+            _ack_queue.reset();
+        }
+    }
     return true;
+
+}
+
+// Delete any resources associated with the output
+void Output::Delete() {
+    _cursor_writer->Delete();
+    Logger::Info("Output(%s): Removed", _name.c_str());
 }
 
 bool Output::check_open()
 {
     int sleep_period = START_SLEEP_PERIOD;
 
-    while(!IsStopping() && !is_reload_pending()) {
+    while(!IsStopping()) {
         if (_writer->IsOpen()) {
             return true;
         }
         Logger::Info("Output(%s): Connecting", _name.c_str());
         if (_writer->Open()) {
-            if (IsStopping() || is_reload_pending()) {
+            if (IsStopping()) {
                 _writer->Close();
                 return false;
             }
@@ -210,105 +344,94 @@ bool Output::check_open()
 
 bool Output::handle_events() {
     std::array<uint8_t, Queue::MAX_ITEM_SIZE> data;
-    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-    int32_t sleep_millis = 100;
-    bool cursor_changed = false;
 
-    while(!IsStopping() && !is_reload_pending()) {
+    _cursor = _cursor_writer->GetCursor();
+    _cursor_writer->Start();
+
+    if (_ack_mode) {
+        _ack_reader->Init(_event_writer, _writer, _ack_queue, _cursor_writer);
+        _ack_reader->Start();
+    }
+
+    while(!IsStopping()) {
         QueueCursor cursor;
         size_t size = data.size();
 
-        auto ret = _queue->Get(_cursor, data.data(), &size, &cursor, sleep_millis);
+        auto ret = _queue->Get(_cursor, data.data(), &size, &cursor, -1);
         if (ret == Queue::CLOSED) {
-            return false;
+            break;
         }
 
         if (ret == Queue::OK) {
             Event event(data.data(), size);
-            if (!_event_writer->WriteEvent(event, _writer.get())) {
-                if (!write_cursor_file()) {
-                    return false;
+            auto ret = _event_writer->WriteEvent(event, _writer.get());
+            if (ret != IWriter::OK) {
+                if (ret == IO::FAILED) {
+                    Logger::Info("Output(%s): Connection lost", _name.c_str());
                 }
-                return !IsStopping();
+                break;
             }
             _cursor = cursor;
-            cursor_changed = true;
-        }
-
-        auto since_start = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
-        if (since_start < 100) {
-            sleep_millis = 100 - static_cast<int32_t>(since_start);
-        } else {
-            if (cursor_changed) {
-                if(!write_cursor_file()) {
-                    return false;
-                }
-                cursor_changed = false;
+            if (_ack_mode) {
+                _ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()), _cursor);
+            } else {
+                _cursor_writer->UpdateCursor(cursor);
             }
-            start = std::chrono::steady_clock::now();
-            sleep_millis = 100;
         }
     }
-    if (cursor_changed) {
-        if(!write_cursor_file()) {
-            return false;
-        }
+
+    if (_ack_mode) {
+        // Wait a short time for final acks to arrive
+        _ack_queue->Wait(100);
+        _ack_reader->Stop();
     }
-    return is_reload_pending() && !IsStopping();
+
+    _cursor_writer->Stop();
+
+    return !IsStopping();
 }
 
-bool Output::is_reload_pending() {
-    std::lock_guard<std::mutex> lock(_mutex);
-    return _reload_pending;
-}
-
-void Output::clear_reload_pending() {
-    std::lock_guard<std::mutex> lock(_mutex);
-    _reload_pending = false;
+void Output::on_stopping() {
+    Logger::Info("Output(%s): Stopping", _name.c_str());
+    _queue->Interrupt();
+    if (_writer) {
+        _writer->CloseWrite();
+    }
+    if (_ack_queue) {
+        _ack_queue->Close();
+    }
 }
 
 void Output::on_stop() {
+    if (_ack_reader) {
+        _ack_reader->Stop();
+    }
     if (_writer) {
         _writer->Close();
     }
-    write_cursor_file();
+    if (_cursor_writer) {
+        _cursor_writer->Stop();
+    }
+    _cursor_writer->Write();
     Logger::Info("Output(%s): Stopped", _name.c_str());
 }
 
 void Output::run() {
     Logger::Info("Output(%s): Started", _name.c_str());
 
-    Logger::Info("Output(%s): Reading configuration (%s)", _name.c_str(), _conf_path.c_str());
-    _config = std::unique_ptr<Config>(new Config());
-    try {
-        _config->Load(_conf_path);
-    } catch (std::runtime_error& ex) {
-        Logger::Error("Output(%s): Failed to load configuration: %s", _name.c_str(), ex.what());
-        return;
-    }
-
-    if (!read_cursor_file()) {
+    if (!_cursor_writer->Read()) {
         Logger::Error("Output(%s): Aborting because cursor file is unreadable", _name.c_str());
         return;
     }
 
+    _cursor = _cursor_writer->GetCursor();
+
     while(!IsStopping()) {
-        clear_reload_pending();
-
-        if (!configure()) {
-            std::lock_guard<std::mutex> lock(_mutex);
-            _config_valid = false;
-            return;
-        }
-
         while (check_open()) {
             if (!handle_events()) {
                 return;
             }
             _writer->Close();
         }
-        _writer->Close();
     }
-
-    Logger::Info("Output(%s): Stopped", _name.c_str());
 }

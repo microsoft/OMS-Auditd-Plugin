@@ -46,6 +46,30 @@ void usage()
     exit(1);
 }
 
+bool parsePath(std::vector<std::string>& dirs, const std::string& path_str) {
+    std::string str = path_str;
+    while (!str.empty()) {
+        auto idx = str.find_first_of(':', 0);
+        std::string dir;
+        if (idx == std::string::npos) {
+            dir = str;
+            str.clear();
+        } else {
+            dir = str.substr(0, idx);
+            str = str.substr(idx+1);
+        }
+        if (dir.length() < 2 || dir[0] != '/') {
+            Logger::Error("Config parameter 'allowed_socket_dirs' has invalid value");
+            return false;
+        }
+        if (dir[dir.length()-1] != '/') {
+            dir += '/';
+        }
+        dirs.push_back(dir);
+    }
+    return true;
+}
+
 int main(int argc, char**argv) {
     // AuditEventProcessor needs audit_msg_type_to_name(). load_libaudit_symbols() loads that symbol.
     // See comments next to load_libaudit_symbols for the reason why it is done this way.
@@ -67,7 +91,7 @@ int main(int argc, char**argv) {
 
     Config config;
 
-    if (config_file.size() > 0) {
+    if (!config_file.empty()) {
         try {
             config.Load(config_file);
         } catch (std::runtime_error& ex) {
@@ -91,25 +115,8 @@ int main(int argc, char**argv) {
         Logger::Error("Required config parameter missing: allowed_output_socket_dirs");
         exit(1);
     } else {
-        auto dirs = config.GetString("allowed_output_socket_dirs");
-        while (!dirs.empty()) {
-            auto idx = dirs.find_first_of(':', 0);
-            std::string dir;
-            if (idx == std::string::npos) {
-                dir = dirs;
-                dirs.clear();
-            } else {
-                dir = dirs.substr(0, idx);
-                dirs = dirs.substr(idx+1);
-            }
-            if (dir.length() < 2 || dir[0] != '/') {
-                Logger::Error("Config parameter 'allowed_socket_dirs' has invalid value");
-                exit(1);
-            }
-            if (dir[dir.length()-1] != '/') {
-                dir += '/';
-            }
-            allowed_socket_dirs.push_back(dir);
+        if (!parsePath(allowed_socket_dirs, config.GetString("allowed_output_socket_dirs"))) {
+            exit(1);
         }
     }
 
@@ -121,7 +128,7 @@ int main(int argc, char**argv) {
         queue_file = config.GetString("queue_file");
     }
 
-    if (queue_file.size() == 0) {
+    if (queue_file.empty()) {
         Logger::Error("Invalid 'queue_file' value");
         exit(1);
     }
@@ -193,8 +200,28 @@ int main(int argc, char**argv) {
         throw;
     }
 
-    Signals::SetHupHandler([&outputs](){
-        outputs.Reload();
+    Signals::SetHupHandler([&outputs,&config_file](){
+        Config config;
+
+        if (config_file.size() > 0) {
+            try {
+                config.Load(config_file);
+            } catch (std::runtime_error& ex) {
+                Logger::Error("Config error during reload: %s", ex.what());
+                return;
+            }
+        }
+        std::vector<std::string> allowed_socket_dirs;
+        if (!config.HasKey("allowed_output_socket_dirs")) {
+            Logger::Error("Config error during reload: Required config parameter missing: allowed_output_socket_dirs");
+            return;
+        } else {
+            if (!parsePath(allowed_socket_dirs, config.GetString("allowed_output_socket_dirs"))) {
+                Logger::Error("Config error during reload: Invalid config parameter: allowed_output_socket_dirs");
+                return;
+            }
+        }
+        outputs.Reload(allowed_socket_dirs);
     });
 
     // Start signal handling thread

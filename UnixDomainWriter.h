@@ -16,13 +16,13 @@
 #ifndef AUOMS_UNIXDOMAINWRITER_H
 #define AUOMS_UNIXDOMAINWRITER_H
 
-#include "WriterBase.h"
+#include "IO.h"
 
 #include <string>
 
-class UnixDomainWriter: public WriterBase {
+class UnixDomainWriter: public IOBase {
 public:
-    UnixDomainWriter(const std::string& addr): WriterBase(-1), _addr(addr) {}
+    UnixDomainWriter(const std::string& addr): IOBase(-1), _addr(addr) {}
 
     virtual bool Open();
 
