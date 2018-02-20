@@ -60,13 +60,13 @@ private:
     void Initialize();
     std::list<ProcessInfo>* get_all_processes();
     void compile_proc_list(std::list<ProcessInfo>* allProcs);
-    void test_for_recompile();
+    bool test_and_recompile();
 
     // helper methods
     static int is_dir(std::string path);
     static bool is_number(const std::string& s);
     static bool is_process_running(int pid);
-    static bool get_user_of_process(int pid);
+    static std::string get_user_of_process(int pid);
     static ProcessInfo read_proc_data_from_stat(const std::string& fileName);
 
 };

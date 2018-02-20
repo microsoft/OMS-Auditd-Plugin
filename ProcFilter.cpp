@@ -31,6 +31,7 @@
 #include <sys/stat.h> /* for stat() */
 #include <dirent.h>
 #include <pwd.h>
+#include <grp.h>
 #include <algorithm>
 #include <cctype>
 
@@ -117,23 +118,18 @@ bool ProcFilter::is_number(const std::string& s)
 
 bool ProcFilter::is_process_running(int pid)
 {
-    std:string file = std::string("/proc/") + pid + std::string("/stat")
+    std::string file = std::string("/proc/") + pid + std::string("/stat");
     struct stat stat_buf;
     return (stat(file.c_str(), &stat_buf) == 0);
 }
 
 std::string ProcFilter::get_user_of_process(int pid)
 {
-    //////////// not good
-    sdgsdgsf
-    uid_t uid = geteuid();
-    struct passwd *pw = getpwuid(uid);
-    if (pw)
-    {
-        return pw->pw_name;
-    }
-
-    return "";
+    std::string file_name = std::string("/proc/") + pid;
+    struct stat info;
+    stat(file_name, &info);  // Error check omitted
+    struct passwd *pw = getpwuid(info.st_uid);
+    return pw->pw_name;
 }
 
 ProcessInfo ProcFilter::read_proc_data_from_stat(const std::string& fileName)
@@ -191,31 +187,33 @@ std::list<ProcessInfo>* ProcFilter::get_all_processes()
 }
 void ProcFilter::compile_proc_list(std::list<ProcessInfo>* allProcs)
 {
-        // add root blocking processes
-        for (const ProcessInfo& proc : *allProcs)
+    std::string user_name;
+    // add root blocking processes
+    for (const ProcessInfo& proc : *allProcs)
+    {
+        for (const std::string& blockedName : ProcFilter::_blocked_process_names)                                                                                   
         {
-            for (const std::string& blockedName : ProcFilter::_blocked_process_names)                                                                                   
+            user_name = get_user_of_process(proc.pid);
+            if (proc.name.find(blockedName) != std::string::npos && (user_name == std::string("omsagent") || user_name == std::string("root")))
             {
-                if (proc.name.find(blockedName) != std::string::npos && (get_user_of_process(proc.pid) == "omsagent" || get_user_of_process(proc.pid) == "root"))
-                {
-                    _proc_list.insert(proc.pid);
-                    _delete_queue.push(proc.pid);
-                }
+                _proc_list.insert(proc.pid);
+                _delete_queue.push(proc.pid);
             }
         }
+    }
 
-        // find child blocked processes with limited depth of search
-        bool newProcFound;
-        int depth = 0;
-        do {
-            newProcFound = false;
-            ++depth;
-            for (const ProcessInfo& proc : *allProcs)
-            {
-                newProcFound = newProcFound | AddProcess(proc.pid, proc.ppid);
-            }
+    // find child blocked processes with limited depth of search
+    bool newProcFound;
+    int depth = 0;
+    do {
+        newProcFound = false;
+        ++depth;
+        for (const ProcessInfo& proc : *allProcs)
+        {
+            newProcFound = newProcFound | AddProcess(proc.pid, proc.ppid);
+        }
 
-        } while (newProcFound && (depth < MAX_ITERATION_DEPTH));
+    } while (newProcFound && (depth < MAX_ITERATION_DEPTH));
 }
 
 ProcFilter* ProcFilter::GetInstance()
@@ -244,9 +242,8 @@ void ProcFilter::ResetAndFree()
 
 void ProcFilter::Initialize()
 {
-    gettimeofday(_last_time, NULL);
+    gettimeofday(_last_time_initiated, NULL);
     _records_processed_since_reinit = 0;
-    _last_time
     _proc_list.clear();
     while(!_delete_queue.empty())
     {
@@ -268,11 +265,11 @@ bool ProcFilter::ShouldBlock(int pid)
     return (_proc_list.find(pid) != _proc_list.end());
 }
 
-bool ProcFilter::test_for_recompile()
+bool ProcFilter::test_and_recompile()
 {
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    if((_last_time.tv_sec + 3600/*1 hour*/ < tv.tv_sec) || (_records_processed_since_reinit > 30000))
+    if((_last_time_initiated.tv_sec + 3600/*1 hour*/ < tv.tv_sec) || (_records_processed_since_reinit > 30000))
     {
         Initialize();
         return true;
@@ -283,7 +280,7 @@ bool ProcFilter::test_for_recompile()
 bool ProcFilter::AddProcess(int pid, int ppid)
 {
     
-    if(!test_for_recompile())
+    if(!test_and_recompile())
     {
         RemoveProcess(pid);
     }
@@ -292,8 +289,9 @@ bool ProcFilter::AddProcess(int pid, int ppid)
     if(_proc_list.find(ppid) != _proc_list.end())
     {
         _proc_list.insert(pid);
-        _delete_queue.push(proc.pid);
+        _delete_queue.push(pid);
 
+        // cleanup crawler:
         int curr_pid = _delete_queue.peek();
         _delete_queue.pop();
         if (!is_process_running(curr_pid))
