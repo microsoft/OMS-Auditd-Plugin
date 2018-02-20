@@ -118,16 +118,24 @@ bool ProcFilter::is_number(const std::string& s)
 
 bool ProcFilter::is_process_running(int pid)
 {
-    std::string file = std::string("/proc/") + pid + std::string("/stat");
+    std::stringstream ss_file;
+    ss_file << "/proc/" << pid << "/stat";
+    std::string file = ss_file.str();
     struct stat stat_buf;
     return (stat(file.c_str(), &stat_buf) == 0);
 }
 
 std::string ProcFilter::get_user_of_process(int pid)
 {
-    std::string file_name = std::string("/proc/") + pid;
+    std::stringstream ss_file;
+    ss_file << "/proc/" << pid;
+    std::string file_name = ss_file.str();
+
     struct stat stat_buf;
-    stat(file_name.c_str(), &stat_buf);  // Error check omitted
+    if(stat(file_name.c_str(), &stat_buf) == -1)
+    {
+        return std::string::Empty;
+    }
     struct passwd *pw = getpwuid(stat_buf.st_uid);
     return pw->pw_name;
 }
