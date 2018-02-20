@@ -126,9 +126,9 @@ bool ProcFilter::is_process_running(int pid)
 std::string ProcFilter::get_user_of_process(int pid)
 {
     std::string file_name = std::string("/proc/") + pid;
-    struct stat info;
-    stat(file_name, &info);  // Error check omitted
-    struct passwd *pw = getpwuid(info.st_uid);
+    struct stat stat_buf;
+    stat(file_name.c_str(), &stat_buf);  // Error check omitted
+    struct passwd *pw = getpwuid(stat_buf.st_uid);
     return pw->pw_name;
 }
 
@@ -233,16 +233,16 @@ ProcFilter::~ProcFilter()
 
 void ProcFilter::ResetAndFree()
 {
-    if(_instance != null)
+    if(_instance != NULL)
     {
         delete _instance;
-        _instance = null;
+        _instance = NULL;
     }
 }
 
 void ProcFilter::Initialize()
 {
-    gettimeofday(_last_time_initiated, NULL);
+    gettimeofday(&_last_time_initiated, NULL);
     _records_processed_since_reinit = 0;
     _proc_list.clear();
     while(!_delete_queue.empty())
@@ -279,20 +279,21 @@ bool ProcFilter::test_and_recompile()
 
 bool ProcFilter::AddProcess(int pid, int ppid)
 {
-    
+    bool is_new = false;
     if(!test_and_recompile())
     {
-        RemoveProcess(pid);
+        // dead process which is no longer part of the tree should be removed, this causes revalidation
+        is_new = !RemoveProcess(pid);
     }
 
     ++_records_processed_since_reinit;
     if(_proc_list.find(ppid) != _proc_list.end())
-    {
+    {        
         _proc_list.insert(pid);
-        _delete_queue.push(pid);
+        if (is_new) _delete_queue.push(pid);
 
-        // cleanup crawler:
-        int curr_pid = _delete_queue.peek();
+        // cleanup crawler iteration:
+        int curr_pid = _delete_queue.front();
         _delete_queue.pop();
         if (!is_process_running(curr_pid))
         {
