@@ -133,7 +133,7 @@ bool AuditEventProcessor::process_execve()
 {
     static const std::unordered_set<std::string> execve_fields = { "arch", "syscall", "success", "exit", "items", "ppid", "pid", "auid", "uid", "gid", "euid", "suid", "fsuid", "egid", "sgid", "fsgid", "tty", "ses", "comm", "exe", "key", "name", "inode", "dev", "mode", "ouid", "ogid", "rdev", "nametype", "cwd", "cmdline" };
 
-    if (auparse_first_record(_state) != 1 || _num_records < 2 || auparse_get_type(_state) != AUDIT_SYSCALL) {
+    if (auparse_first_record(_state) != 1 || _num_records < 4 || auparse_get_type(_state) != AUDIT_SYSCALL) {
         return false;
     }
 
@@ -241,15 +241,11 @@ bool AuditEventProcessor::process_execve()
                 } while (auparse_next_field(_state) == 1);
                 break;
             }
-            case AUDIT_PROCTITLE:
-            case AUDIT_EOE:
-            case AUDIT_BPRM_FCAPS:
                 break;
             case 0:
                 Logger::Warn("auparse_get_type() failed!");
                 break;
             default:
-                Logger::Warn("Unexpected EXECVE record type - " + record_type);
                 break;
         }
     } while (auparse_next_record(_state) == 1);
