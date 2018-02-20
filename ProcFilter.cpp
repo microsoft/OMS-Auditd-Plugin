@@ -233,8 +233,20 @@ ProcFilter::~ProcFilter()
 {
 }
 
+void ProcFilter::ResetAndFree()
+{
+    if(_instance != null)
+    {
+        delete _instance;
+        _instance = null;
+    }
+}
+
 void ProcFilter::Initialize()
 {
+    gettimeofday(_last_time, NULL);
+    _records_processed_since_reinit = 0;
+    _last_time
     _proc_list.clear();
     while(!_delete_queue.empty())
     {
@@ -256,9 +268,27 @@ bool ProcFilter::ShouldBlock(int pid)
     return (_proc_list.find(pid) != _proc_list.end());
 }
 
+bool ProcFilter::test_for_recompile()
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    if((_last_time.tv_sec + 3600/*1 hour*/ < tv.tv_sec) || (_records_processed_since_reinit > 30000))
+    {
+        Initialize();
+        return true;
+    }
+    return false;
+}
+
 bool ProcFilter::AddProcess(int pid, int ppid)
 {
-    RemoveProcess(pid);
+    
+    if(!test_for_recompile())
+    {
+        RemoveProcess(pid);
+    }
+
+    ++_records_processed_since_reinit;
     if(_proc_list.find(ppid) != _proc_list.end())
     {
         _proc_list.insert(pid);

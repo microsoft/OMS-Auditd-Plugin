@@ -16,6 +16,7 @@
 #ifndef AUOMS_PROC_FILTER_H
 #define AUOMS_PROC_FILTER_H
 
+#include<sys/time.h>
 #include <string>
 #include <memory>
 #include <set>
@@ -43,12 +44,15 @@ public:
     bool ShouldBlock(int pid);
     bool AddProcess(int pid, int ppid);
     bool RemoveProcess(int pid);
+    static void ResetAndFree();
 
 private:    
     static ProcFilter* _instance;
     std::set<int> _proc_list;
     std::queue<int> _delete_queue;
     static std::set<std::string> _blocked_process_names;
+    struct timeval _last_time_initiated;
+    int _records_processed_since_reinit;
     
 
     static void static_init();
@@ -56,6 +60,7 @@ private:
     void Initialize();
     std::list<ProcessInfo>* get_all_processes();
     void compile_proc_list(std::list<ProcessInfo>* allProcs);
+    void test_for_recompile();
 
     // helper methods
     static int is_dir(std::string path);

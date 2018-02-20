@@ -176,7 +176,8 @@ int main(int argc, char**argv) {
     auto event_queue = std::make_shared<EventQueue>(queue);
     auto builder = std::make_shared<EventBuilder>(event_queue);
 
-    AuditEventProcessor aep(builder, user_db);
+    ProcFilter *proc_filter = ProcFilter::GetInstance();
+    AuditEventProcessor aep(builder, user_db, proc_filter);
     aep.Initialize();
     StdinReader reader;
 
@@ -275,6 +276,7 @@ int main(int argc, char**argv) {
         queue->Close(); // Close queue, this will trigger exit of autosave thread
         outputs.Wait(); // Wait for outputs to finish shutdown
         autosave_thread.join(); // Wait for autosave thread to exit
+        ProcFilter::ResetAndFree();
     } catch (const std::exception& ex) {
         Logger::Error("Unexpected exception during exit: %s", ex.what());
         throw;

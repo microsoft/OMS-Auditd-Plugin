@@ -17,7 +17,6 @@
 
 #include "Queue.h"
 #include "Logger.h"
-#include "ProcFilter.h"
 
 #include <stdexcept>
 #include <cassert>
@@ -63,8 +62,6 @@ extern "C" {
 
 static const char *(*audit_msg_type_to_name)(int msg_type);
 
-static ProcFilter* _procFilter;
-
 void load_libaudit_symbols()
 {
     char *error;
@@ -104,7 +101,6 @@ void AuditEventProcessor::Initialize()
     _state_ptr = auparse_init(AUSOURCE_FEED, nullptr);
     assert(_state != nullptr);
     auparse_add_callback(_state, reinterpret_cast<void (*)(auparse_state_t *au, auparse_cb_event_t cb_event_type, void *user_data)>(static_callback), this, nullptr);
-    _procFilter = ProcFilter::GetInstance(); 
 }
 
 void AuditEventProcessor::ProcessData(const char* data, size_t data_len)
@@ -257,7 +253,7 @@ bool AuditEventProcessor::process_execve()
                 } while (auparse_next_field(_state) == 1);
                 break;
             }
-            case AUDIT_PROCTITLE:
+            //case AUDIT_PROCTITLE:
             case AUDIT_EOE:
             case AUDIT_BPRM_FCAPS:
                 break;
@@ -377,7 +373,8 @@ void AuditEventProcessor::callback(void *ptr)
         }
     } while (auparse_next_record(_state) == 1);
 
-    bool shouldBeBlocked = (_pid_found && _procFilter->ShouldBlock(_builder->GetEventPid()));
+    _procFilter->AddProcess(_ppid, _pid);
+    bool shouldBeBlocked = (_pid != 0 && _procFilter->ShouldBlock(_pid));
 
     // Sometimes the event will only have the EOE record
     // Only end/emit the event if it's not empty
