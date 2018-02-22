@@ -45,8 +45,8 @@ public:
     bool AddProcess(int pid, int ppid);
     bool RemoveProcess(int pid);
     static void ResetAndFree();
-    static void SetBlockedProcessNames(std::set<string> blocked_process_names);
-    static void SetBlockedUserNames(std::set<string> blocked_user_names);
+    static void SetBlockedProcessNames(std::set<std::string> blocked_process_names);
+    static void SetBlockedUserNames(std::set<std::string> blocked_user_names);
 
 private:    
     static ProcFilter* _instance;

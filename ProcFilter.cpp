@@ -252,12 +252,12 @@ void ProcFilter::ResetAndFree()
     }
 }
 
-void ProcFilter::SetBlockedProcessNames(std::set<string> blocked_process_names)
+void ProcFilter::SetBlockedProcessNames(std::set<std::string> blocked_process_names)
 {
     blocked_process_names = blocked_process_names;
 }
 
-void ProcFilter::SetBlockedUserNames(std::set<string> blocked_user_names)
+void ProcFilter::SetBlockedUserNames(std::set<std::string> blocked_user_names)
 {
     _blocked_user_names = blocked_user_names;
 }
