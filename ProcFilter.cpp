@@ -35,10 +35,6 @@
 #include <algorithm>
 #include <cctype>
 
-#include <rapidjson/document.h>
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/filereadstream.h>
-
 // This include file can only be included in ONE translation unit
 #include <auparse.h>
 
@@ -93,13 +89,7 @@ inline bool ProcessInfo::operator!=(const ProcessInfo& x) const
 ProcFilter* ProcFilter::_instance = NULL;
 
 std::set<std::string> ProcFilter::_blocked_process_names;
-
-void ProcFilter::static_init()
-{
-    _blocked_process_names.clear();
-    _blocked_process_names.insert("omiagent");
-    _blocked_process_names.insert("omsagent");
-}
+std::set<std::string> ProcFilter::_blocked_user_names;
 
 // -------- helper functions -----------------------------
 int ProcFilter::is_dir(std::string path)
@@ -134,7 +124,7 @@ std::string ProcFilter::get_user_of_process(int pid)
     struct stat stat_buf;
     if(stat(file_name.c_str(), &stat_buf) == -1)
     {
-        return std::string::Empty;
+        return std::string();
     }
     struct passwd *pw = getpwuid(stat_buf.st_uid);
     return pw->pw_name;
@@ -196,16 +186,31 @@ std::list<ProcessInfo>* ProcFilter::get_all_processes()
 void ProcFilter::compile_proc_list(std::list<ProcessInfo>* allProcs)
 {
     std::string user_name;
+    bool is_valid_user;
     // add root blocking processes
     for (const ProcessInfo& proc : *allProcs)
     {
-        for (const std::string& blockedName : ProcFilter::_blocked_process_names)                                                                                   
+        user_name = get_user_of_process(proc.pid);
+        is_valid_user = false;
+        // validate user name
+        for (const std::string& blockedUser : ProcFilter::_blocked_user_names)                                                                                   
         {
-            user_name = get_user_of_process(proc.pid);
-            if (proc.name.find(blockedName) != std::string::npos && (user_name == std::string("omsagent") || user_name == std::string("root")))
+            if (user_name == blockedUser)
             {
-                _proc_list.insert(proc.pid);
-                _delete_queue.push(proc.pid);
+                is_valid_user = true;
+                break;
+            }
+        }
+        if(is_valid_user)
+        { 
+            // validate process name
+            for (const std::string& blockedName : ProcFilter::_blocked_process_names)                                                                                   
+            {
+                if (proc.name.find(blockedName) != std::string::npos)
+                {
+                    _proc_list.insert(proc.pid);
+                    _delete_queue.push(proc.pid);
+                }
             }
         }
     }
@@ -228,7 +233,6 @@ ProcFilter* ProcFilter::GetInstance()
 {
     if (_instance == NULL)
     {
-        static_init();
         _instance = new ProcFilter();
     }
 
@@ -248,16 +252,27 @@ void ProcFilter::ResetAndFree()
     }
 }
 
+void ProcFilter::SetBlockedProcessNames(std::set<string> blocked_process_names)
+{
+    blocked_process_names = blocked_process_names;
+}
+
+void ProcFilter::SetBlockedUserNames(std::set<string> blocked_user_names)
+{
+    _blocked_user_names = blocked_user_names;
+}
+
 void ProcFilter::Initialize()
 {
     gettimeofday(&_last_time_initiated, NULL);
     _records_processed_since_reinit = 0;
+    _add_proc_counter = 0;
     _proc_list.clear();
     while(!_delete_queue.empty())
     {
         _delete_queue.pop();
     }
-    // TODO: scan existing processes and choose those in the names list and children
+    // scan existing processes and choose those in the names list and children
     std::list<ProcessInfo>* listOfProcesses = get_all_processes();
     compile_proc_list(listOfProcesses);
     delete listOfProcesses;
@@ -277,7 +292,7 @@ bool ProcFilter::test_and_recompile()
 {
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    if((_last_time_initiated.tv_sec + 3600/*1 hour*/ < tv.tv_sec) || (_records_processed_since_reinit > 30000))
+    if((tv.tv_sec - _last_time_initiated.tv_sec > 3600/*1 hour*/) || (_records_processed_since_reinit > 30000))
     {
         Initialize();
         return true;
@@ -285,8 +300,23 @@ bool ProcFilter::test_and_recompile()
     return false;
 }
 
+void ProcFilter::cleanup_crawler_step() 
+{
+    int curr_pid = _delete_queue.front();
+    _delete_queue.pop();
+    if (!is_process_running(curr_pid))
+    {
+        RemoveProcess(curr_pid);
+    }
+    else
+    {
+        _delete_queue.push(curr_pid);
+    }
+}
+
 bool ProcFilter::AddProcess(int pid, int ppid)
 {
+    
     bool is_new = false;
     if(!test_and_recompile())
     {
@@ -300,18 +330,15 @@ bool ProcFilter::AddProcess(int pid, int ppid)
         _proc_list.insert(pid);
         if (is_new) _delete_queue.push(pid);
 
-        // cleanup crawler iteration:
-        int curr_pid = _delete_queue.front();
-        _delete_queue.pop();
-        if (!is_process_running(curr_pid))
-        {
-            RemoveProcess(curr_pid);
-        }
-        else
-        {
-            _delete_queue.push(curr_pid);
-        }
+        // cleanup crawler iteration for selected processes activity
+        cleanup_crawler_step();
+
         return true;
+    }
+    // cleanup crawling independent of selected process  
+    else if((++_add_proc_counter) & 0x3FF == 0)
+    {
+        cleanup_crawler_step();
     }
     return false;
 }

@@ -27,6 +27,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <memory>
 #include <system_error>
 
@@ -156,6 +157,30 @@ int main(int argc, char**argv) {
         Logger::OpenSyslog("auoms", LOG_DAEMON);
     }
 
+    ProcFilter *proc_filter = ProcFilter::GetInstance();
+
+    if (config.HasKey("blocked_process_names")) {
+        std::string process_names = config.GetString("blocked_process_names");
+        std::set<std::string> procs;
+        std::istringstream stream_of_names(process_names);
+        std::string s;    
+        while (getline(stream_of_names, s, '|')) {
+            procs.insert(s);
+        }
+        proc_filter->SetBlockedProcessNames(procs);
+    }
+
+    if (config.HasKey("blocked_process_user_names")) {
+        std::string user_names = config.GetString("blocked_process_user_names");
+        std::set<std::string> users;
+        std::istringstream stream_of_names(user_names);
+        std::string s;    
+        while (getline(stream_of_names, s, '|')) {
+            users.insert(s);
+        }
+        proc_filter->SetBlockedUserNames(users);
+    }
+
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
     Signals::Init();
@@ -176,7 +201,7 @@ int main(int argc, char**argv) {
     auto event_queue = std::make_shared<EventQueue>(queue);
     auto builder = std::make_shared<EventBuilder>(event_queue);
 
-    ProcFilter *proc_filter = ProcFilter::GetInstance();
+
     AuditEventProcessor aep(builder, user_db, proc_filter);
     aep.Initialize();
     StdinReader reader;

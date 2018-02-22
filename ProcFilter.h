@@ -45,22 +45,25 @@ public:
     bool AddProcess(int pid, int ppid);
     bool RemoveProcess(int pid);
     static void ResetAndFree();
+    static void SetBlockedProcessNames(std::set<string> blocked_process_names);
+    static void SetBlockedUserNames(std::set<string> blocked_user_names);
 
 private:    
     static ProcFilter* _instance;
     std::set<int> _proc_list;
     std::queue<int> _delete_queue;
     static std::set<std::string> _blocked_process_names;
+    static std::set<std::string> _blocked_user_names;
     struct timeval _last_time_initiated;
     int _records_processed_since_reinit;
+    int _add_proc_counter;
     
-
-    static void static_init();
     ProcFilter();
     void Initialize();
     std::list<ProcessInfo>* get_all_processes();
     void compile_proc_list(std::list<ProcessInfo>* allProcs);
     bool test_and_recompile();
+    void cleanup_crawler_step();
 
     // helper methods
     static int is_dir(std::string path);
@@ -68,7 +71,6 @@ private:
     static bool is_process_running(int pid);
     static std::string get_user_of_process(int pid);
     static ProcessInfo read_proc_data_from_stat(const std::string& fileName);
-
 };
 
 #endif //AUOMS_PROC_FILTER_H
