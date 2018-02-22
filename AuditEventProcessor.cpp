@@ -133,18 +133,14 @@ bool AuditEventProcessor::process_execve()
 {
     static const std::unordered_set<std::string> execve_fields = { "arch", "syscall", "success", "exit", "items", "ppid", "pid", "auid", "uid", "gid", "euid", "suid", "fsuid", "egid", "sgid", "fsgid", "tty", "ses", "comm", "exe", "key", "name", "inode", "dev", "mode", "ouid", "ogid", "rdev", "nametype", "cwd", "cmdline" };
 
-    if (_num_records < 5 || auparse_get_type(_state) != AUDIT_SYSCALL) {
+    if (auparse_first_record(_state) != 1 || _num_records < 4 || auparse_get_type(_state) != AUDIT_SYSCALL) {
         return false;
     }
 
     auparse_find_field(_state, "syscall");
     const char *syscall = auparse_interpret_field(_state);
 
-    if (auparse_first_field(_state) != 1) {
-        return false;
-    }
-
-    if (syscall == nullptr || strncmp(syscall, "execve", 6) != 0) {
+    if (auparse_first_field(_state) != 1 || syscall == nullptr || strncmp(syscall, "execve", 6) != 0) {
         return false;
     }
 
@@ -165,6 +161,8 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
+    _cmdline.clear();
+
     do {
         int record_type = auparse_get_type(_state);
 
@@ -180,7 +178,6 @@ bool AuditEventProcessor::process_execve()
                 break;
             }
             case AUDIT_EXECVE: {
-                _cmdline.clear();
                 do {
                     int number;
                     const char* field = auparse_get_field_name(_state);
@@ -219,28 +216,19 @@ bool AuditEventProcessor::process_execve()
                         _cmdline.push_back('"');
                     }
                 } while (auparse_next_field(_state) == 1);
-
-                ret = _builder->AddField("cmdline", _cmdline.c_str(), NULL, FIELD_TYPE_UNCLASSIFIED);
-                if (ret != 1) {
-                    if (ret == Queue::CLOSED) {
-                        throw std::runtime_error("Queue closed");
-                    }
-                    cancel_event();
-                    return false;
-                }
                 break;
             }
             case AUDIT_CWD: {
                 const char* field = auparse_find_field(_state, "cwd");
                 if (field == nullptr || !process_field("cwd")) {
-                    break;
+                    continue;
                 };
                 break;
             }
             case AUDIT_PATH: {
                 const char* field = auparse_find_field(_state, "item");
                 if (field == nullptr || strcmp(field, "0") != 0) {
-                    break;
+                    continue;
                 }
 
                 auparse_first_field(_state);
@@ -253,18 +241,23 @@ bool AuditEventProcessor::process_execve()
                 } while (auparse_next_field(_state) == 1);
                 break;
             }
-            //case AUDIT_PROCTITLE:
-            case AUDIT_EOE:
-            case AUDIT_BPRM_FCAPS:
                 break;
             case 0:
                 Logger::Warn("auparse_get_type() failed!");
                 break;
             default:
-                Logger::Warn("Unexpected EXECVE record type - " + record_type);
                 break;
         }
     } while (auparse_next_record(_state) == 1);
+
+    ret = _builder->AddField("cmdline", _cmdline.c_str(), NULL, FIELD_TYPE_UNCLASSIFIED);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
 
     if (_builder->GetFieldCount() != execve_fields.size()) {
         cancel_event();
@@ -304,16 +297,14 @@ void AuditEventProcessor::callback(void *ptr)
         return;
     }
 
-    if (auparse_first_record(_state) != 1) {
-        Logger::Warn("auparse_first_record() failed!");
-        return;
-    }
-
     if (process_execve()) {
         return;
     }
 
-    auparse_first_record(_state);
+    if (auparse_first_record(_state) != 1) {
+        Logger::Warn("auparse_first_record() failed!");
+        return;
+    }
 
     if (!begin_event()) {
         return;
@@ -353,6 +344,11 @@ void AuditEventProcessor::callback(void *ptr)
                 throw std::runtime_error("Queue closed");
             }
             cancel_event();
+            return;
+        }
+
+        if (auparse_first_field(_state) != 1) {
+            Logger::Warn("auparse_first_field() failed!");
             return;
         }
 
