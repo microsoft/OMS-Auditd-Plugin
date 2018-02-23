@@ -389,7 +389,7 @@ int EventBuilder::AddField(const char *field_name, const char* raw_value, const 
     size_t raw_size = strlen(raw_value)+1;
     size_t fsize = FIELD_HEADER_SIZE + name_size + raw_size;
     size_t interp_size = 0;
-    if (interp_value != nullptr && raw_value != interp_value) {
+    if (interp_value != nullptr && (raw_value == nullptr || strcmp(raw_value, interp_value) != 0)) {
         interp_size = strlen(interp_value)+1;
         fsize += interp_size;
     }
