@@ -272,8 +272,8 @@ void OMSEventWriter::process_field(const EventRecordField& field)
                 case FIELD_TYPE_SESSION:
                     // Since the interpreted value for SES is also (normally) an int
                     // Replace "unset" and "4294967295" with "-1"
-                    if (std::strncmp("unset", field.InterpValue(), field.InterpValueSize()) == 0 ||
-                            strncmp("4294967295", field.InterpValue(), field.InterpValueSize()) == 0) {
+                    if ((field.InterpValueSize() == 5 && std::strncmp("unset", field.InterpValue(), field.InterpValueSize()) == 0) ||
+                            (field.InterpValueSize() == 10 && strncmp("4294967295", field.InterpValue(), field.InterpValueSize()) == 0)) {
                         add_string_field(_interp_name, "-1");
                     } else {
                         add_string_field(_interp_name, field.InterpValue(), field.InterpValueSize());
