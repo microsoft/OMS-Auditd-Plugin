@@ -278,6 +278,7 @@ void OMSEventWriter::process_field(const EventRecordField& field)
                     } else {
                         add_string_field(_interp_name, field.InterpValue(), field.InterpValueSize());
                     }
+                    break;
                 default:
                     add_string_field(_interp_name, field.InterpValue(), field.InterpValueSize());
             }
