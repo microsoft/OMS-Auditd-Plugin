@@ -86,11 +86,6 @@ inline bool ProcessInfo::operator!=(const ProcessInfo& x) const
  ** ProcFilter
  *****************************************************************************/
 
-ProcFilter* ProcFilter::_instance = NULL;
-
-std::set<std::string> ProcFilter::_blocked_process_names;
-std::set<std::string> ProcFilter::_blocked_user_names;
-
 // -------- helper functions -----------------------------
 int ProcFilter::is_dir(std::string path)
 {
@@ -229,16 +224,6 @@ void ProcFilter::compile_proc_list(std::list<ProcessInfo>* allProcs)
     } while (newProcFound && (depth < MAX_ITERATION_DEPTH));
 }
 
-ProcFilter* ProcFilter::GetInstance()
-{
-    if (_instance == NULL)
-    {
-        _instance = new ProcFilter();
-    }
-
-    return _instance;
-}
-
 ProcFilter::~ProcFilter()
 {
 }
@@ -285,6 +270,11 @@ bool ProcFilter::test_and_recompile()
 
 void ProcFilter::cleanup_crawler_step() 
 {
+    if (_delete_queue.empty())
+    {
+        return;
+    }
+    
     int curr_pid = _delete_queue.front();
     _delete_queue.pop();
     if (!is_process_running(curr_pid))
@@ -329,9 +319,10 @@ bool ProcFilter::AddProcess(int pid, int ppid)
 // Shalow delete. The children may remain
 bool ProcFilter::RemoveProcess(int pid)
 {
-    if(_proc_list.find(pid) != _proc_list.end())
+    std::list< item * >::iterator iter = _proc_list.find(pid);
+    if(iter != _proc_list.end())
     {
-        _proc_list.erase(pid);
+        _proc_list.erase(iter);
         return true;
     }
     return false;
