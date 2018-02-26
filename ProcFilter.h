@@ -39,26 +39,21 @@ class ProcFilter {
 public:
     
     ~ProcFilter();
-
-    static ProcFilter* GetInstance();     
+    ProcFilter(const std::set<std::string>& blocked_process_names, const std::set<std::string>& blocked_user_names); 
     bool ShouldBlock(int pid);
     bool AddProcess(int pid, int ppid);
     bool RemoveProcess(int pid);
-    static void ResetAndFree();
-    static void SetBlockedProcessNames(std::set<std::string> blocked_process_names);
-    static void SetBlockedUserNames(std::set<std::string> blocked_user_names);
 
 private:    
-    static ProcFilter* _instance;
     std::set<int> _proc_list;
     std::queue<int> _delete_queue;
-    static std::set<std::string> _blocked_process_names;
-    static std::set<std::string> _blocked_user_names;
+    std::set<std::string> _blocked_process_names;
+    std::set<std::string> _blocked_user_names;
     struct timeval _last_time_initiated;
     int _records_processed_since_reinit;
     int _add_proc_counter;
     
-    ProcFilter();
+    
     void Initialize();
     std::list<ProcessInfo>* get_all_processes();
     void compile_proc_list(std::list<ProcessInfo>* allProcs);

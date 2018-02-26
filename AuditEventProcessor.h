@@ -32,7 +32,7 @@ event_field_type_t field_type_from_auparse_type(int auparse_type);
 
 class AuditEventProcessor {
 public:
-    AuditEventProcessor(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<UserDB>& user_db, ProcFilter *proc_filter):
+    AuditEventProcessor(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<UserDB>& user_db, const std::shared_ptr<ProcFilter>& proc_filter):
             _builder(builder), _user_db(user_db), _state_ptr(nullptr), _procFilter(proc_filter) {};
     ~AuditEventProcessor();
 
@@ -55,7 +55,7 @@ private:
     std::shared_ptr<EventBuilder> _builder;
     std::shared_ptr<UserDB> _user_db;
     void* _state_ptr;
-    ProcFilter *_procFilter;
+    std::shared_ptr<ProcFilter> _procFilter;
     int _num_records;
     uint64_t _current_event_sec;
     uint32_t _current_event_msec;

@@ -155,31 +155,30 @@ int main(int argc, char**argv) {
 
     if (use_syslog) {
         Logger::OpenSyslog("auoms", LOG_DAEMON);
-    }
+    }    
 
-    ProcFilter *proc_filter = ProcFilter::GetInstance();
-
+    std::set<std::string> blocked_procs;
     if (config.HasKey("blocked_process_names")) {
         std::string process_names = config.GetString("blocked_process_names");
-        std::set<std::string> procs;
         std::istringstream stream_of_names(process_names);
         std::string s;    
         while (getline(stream_of_names, s, '|')) {
-            procs.insert(s);
+            blocked_procs.insert(s);
         }
-        proc_filter->SetBlockedProcessNames(procs);
+
     }
 
+    std::set<std::string> blocked_procs_users;
     if (config.HasKey("blocked_process_user_names")) {
         std::string user_names = config.GetString("blocked_process_user_names");
-        std::set<std::string> users;
         std::istringstream stream_of_names(user_names);
         std::string s;    
         while (getline(stream_of_names, s, '|')) {
-            users.insert(s);
+            blocked_procs_users.insert(s);
         }
-        proc_filter->SetBlockedUserNames(users);
     }
+
+    auto proc_filter = std::make_shared<ProcFilter>(blocked_procs, blocked_procs_users);
 
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
@@ -301,7 +300,6 @@ int main(int argc, char**argv) {
         queue->Close(); // Close queue, this will trigger exit of autosave thread
         outputs.Wait(); // Wait for outputs to finish shutdown
         autosave_thread.join(); // Wait for autosave thread to exit
-        ProcFilter::ResetAndFree();
     } catch (const std::exception& ex) {
         Logger::Error("Unexpected exception during exit: %s", ex.what());
         throw;

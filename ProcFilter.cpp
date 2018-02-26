@@ -243,25 +243,6 @@ ProcFilter::~ProcFilter()
 {
 }
 
-void ProcFilter::ResetAndFree()
-{
-    if(_instance != NULL)
-    {
-        delete _instance;
-        _instance = NULL;
-    }
-}
-
-void ProcFilter::SetBlockedProcessNames(std::set<std::string> blocked_process_names)
-{
-    blocked_process_names = blocked_process_names;
-}
-
-void ProcFilter::SetBlockedUserNames(std::set<std::string> blocked_user_names)
-{
-    _blocked_user_names = blocked_user_names;
-}
-
 void ProcFilter::Initialize()
 {
     gettimeofday(&_last_time_initiated, NULL);
@@ -278,8 +259,10 @@ void ProcFilter::Initialize()
     delete listOfProcesses;
 }
 
-ProcFilter::ProcFilter()
+ProcFilter::ProcFilter(const std::set<std::string>& blocked_process_names, const std::set<std::string>& blocked_user_names)
 {
+    _blocked_process_names = blocked_process_names;
+    _blocked_user_names = blocked_user_names;
     Initialize();
 }
 
