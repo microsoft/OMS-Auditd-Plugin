@@ -264,11 +264,20 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
+    _procFilter->AddProcess(_ppid, _pid);
+
     ret = _builder->EndRecord();
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
             throw std::runtime_error("Queue closed");
         }
+        cancel_event();
+        return false;
+    }
+
+    bool shouldBeBlocked = (_pid != 0 && _procFilter->ShouldBlock(_pid));
+    if(shouldBeBlocked)
+    {
         cancel_event();
         return false;
     }
@@ -369,7 +378,6 @@ void AuditEventProcessor::callback(void *ptr)
         }
     } while (auparse_next_record(_state) == 1);
 
-    _procFilter->AddProcess(_ppid, _pid);
     bool shouldBeBlocked = (_pid != 0 && _procFilter->ShouldBlock(_pid));
 
     // Sometimes the event will only have the EOE record
