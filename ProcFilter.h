@@ -22,6 +22,7 @@
 #include <set>
 #include <list>
 #include <queue>
+#include "UserDB.h"
 
 struct ProcessInfo {
     int pid;
@@ -39,7 +40,7 @@ class ProcFilter {
 public:
     
     ~ProcFilter();
-    ProcFilter(const std::set<std::string>& blocked_process_names, const std::set<std::string>& blocked_user_names); 
+    ProcFilter(const std::set<std::string>& blocked_process_names, const std::set<std::string>& blocked_user_names, const std::shared_ptr<UserDB>& user_db); 
     bool ShouldBlock(int pid);
     bool AddProcess(int pid, int ppid);
     bool RemoveProcess(int pid);
@@ -49,6 +50,7 @@ private:
     std::queue<int> _delete_queue;
     std::set<std::string> _blocked_process_names;
     std::set<std::string> _blocked_user_names;
+    std::shared_ptr<UserDB> _user_db;
     struct timeval _last_time_initiated;
     int _records_processed_since_reinit;
     int _add_proc_counter;

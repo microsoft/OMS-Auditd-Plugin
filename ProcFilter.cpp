@@ -121,8 +121,10 @@ std::string ProcFilter::get_user_of_process(int pid)
     {
         return std::string();
     }
-    struct passwd *pw = getpwuid(stat_buf.st_uid);
-    return pw->pw_name;
+    // alternative for retrieving user name:
+    // struct passwd *pw = getpwuid(stat_buf.st_uid);
+    // return pw->pw_name;
+    return  _user_db->GetUserName(stat_buf.st_uid)
 }
 
 ProcessInfo ProcFilter::read_proc_data_from_stat(const std::string& fileName)
@@ -244,10 +246,11 @@ void ProcFilter::Initialize()
     delete listOfProcesses;
 }
 
-ProcFilter::ProcFilter(const std::set<std::string>& blocked_process_names, const std::set<std::string>& blocked_user_names)
+ProcFilter::ProcFilter(const std::set<std::string>& blocked_process_names, const std::set<std::string>& blocked_user_names, const std::shared_ptr<UserDB>& user_db)
 {
     _blocked_process_names = blocked_process_names;
     _blocked_user_names = blocked_user_names;
+    _user_db = user_db;
     Initialize();
 }
 
@@ -274,7 +277,7 @@ void ProcFilter::cleanup_crawler_step()
     {
         return;
     }
-    
+
     int curr_pid = _delete_queue.front();
     _delete_queue.pop();
     if (!is_process_running(curr_pid))
@@ -319,7 +322,7 @@ bool ProcFilter::AddProcess(int pid, int ppid)
 // Shalow delete. The children may remain
 bool ProcFilter::RemoveProcess(int pid)
 {
-    std::list< item * >::iterator iter = _proc_list.find(pid);
+    std::set<int>::iterator iter = _proc_list.find(pid);
     if(iter != _proc_list.end())
     {
         _proc_list.erase(iter);

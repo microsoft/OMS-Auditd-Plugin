@@ -178,7 +178,7 @@ int main(int argc, char**argv) {
         }
     }
 
-    auto proc_filter = std::make_shared<ProcFilter>(blocked_procs, blocked_procs_users);
+    
 
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
@@ -200,7 +200,7 @@ int main(int argc, char**argv) {
     auto event_queue = std::make_shared<EventQueue>(queue);
     auto builder = std::make_shared<EventBuilder>(event_queue);
 
-
+    auto proc_filter = std::make_shared<ProcFilter>(blocked_procs, blocked_procs_users, user_db);
     AuditEventProcessor aep(builder, user_db, proc_filter);
     aep.Initialize();
     StdinReader reader;
