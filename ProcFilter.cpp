@@ -34,15 +34,20 @@
 #include <grp.h>
 #include <algorithm>
 #include <cctype>
+#include <unistd.h>
+#include <limits.h>
 
 // This include file can only be included in ONE translation unit
 #include <auparse.h>
 
 #define MAX_ITERATION_DEPTH 10
+#define PATH_MAX 256
 
 extern "C" {
 #include <dlfcn.h>
 }
+
+
 
 /*****************************************************************************
  * Dynamicly load needed libaudit symbols
@@ -127,10 +132,21 @@ std::string ProcFilter::get_user_of_process(int pid)
     return  _user_db->GetUserName(stat_buf.st_uid)
 }
 
-ProcessInfo ProcFilter::read_proc_data_from_stat(const std::string& fileName)
+std::string ProcFilter::do_readlink(std::string const& path) {
+    char buff[PATH_MAX];
+    ssize_t len = ::readlink(path.c_str(), buff, sizeof(buff)-1);
+    if (len != -1) {
+      buff[len] = '\0';
+      return std::string(buff);
+    }
+    /* handle error condition */
+    return std::string();
+}
+
+ProcessInfo ProcFilter::read_proc_data(const std::string& statFileName, const std::string& exeFileName)
 {
     ProcessInfo procData = ProcessInfo::Empty;
-    std::ifstream infile(fileName, std::ifstream::in);
+    std::ifstream infile(statFileName, std::ifstream::in);
 
     if(!infile) {
         return ProcessInfo::Empty;
@@ -148,7 +164,7 @@ ProcessInfo ProcFilter::read_proc_data_from_stat(const std::string& fileName)
     {
         procData.pid = pid;
         procData.ppid = ppid;
-        procData.name = comm;
+        procData.name = do_readlink(exeFileName);
         return procData;
     }
     return ProcessInfo::Empty;
@@ -170,7 +186,7 @@ std::list<ProcessInfo>* ProcFilter::get_all_processes()
     while ((dirp = readdir(dp)) != NULL) {
         std::string Tmp = dir.c_str() + std::string(dirp->d_name);
         if (is_number(std::string(dirp->d_name)) && is_dir(Tmp)) {
-            ProcessInfo procData = read_proc_data_from_stat(Tmp + std::string("/stat"));
+            ProcessInfo procData = read_proc_data(Tmp + std::string("/stat"), Tmp + std::string("/exe"));
             if (procData != ProcessInfo::Empty) {
                 procList->push_front(procData);
             } 
@@ -203,7 +219,8 @@ void ProcFilter::compile_proc_list(std::list<ProcessInfo>* allProcs)
             // validate process name
             for (const std::string& blockedName : ProcFilter::_blocked_process_names)                                                                                   
             {
-                if (proc.name.find(blockedName) != std::string::npos)
+                // path starts with defined block name...
+                if (proc.compare(0,blockedName.length(), blockedName) == 0)
                 {
                     _proc_list.insert(proc.pid);
                     _delete_queue.push(proc.pid);

@@ -67,7 +67,8 @@ private:
     static bool is_number(const std::string& s);
     static bool is_process_running(int pid);
     static std::string get_user_of_process(int pid);
-    static ProcessInfo read_proc_data_from_stat(const std::string& fileName);
+    static std::string do_readlink(std::string const& path)
+    static ProcessInfo read_proc_data(const std::string& statFileName, const std::string& exeFileName);
 };
 
 #endif //AUOMS_PROC_FILTER_H
