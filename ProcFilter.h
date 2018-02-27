@@ -66,8 +66,8 @@ private:
     static int is_dir(std::string path);
     static bool is_number(const std::string& s);
     static bool is_process_running(int pid);
-    static std::string get_user_of_process(int pid);
-    static std::string do_readlink(std::string const& path)
+    std::string get_user_of_process(int pid);
+    static std::string do_readlink(std::string const& path);
     static ProcessInfo read_proc_data(const std::string& statFileName, const std::string& exeFileName);
 };
 

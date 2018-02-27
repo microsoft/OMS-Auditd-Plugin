@@ -129,7 +129,7 @@ std::string ProcFilter::get_user_of_process(int pid)
     // alternative for retrieving user name:
     // struct passwd *pw = getpwuid(stat_buf.st_uid);
     // return pw->pw_name;
-    return  _user_db->GetUserName(stat_buf.st_uid)
+    return  _user_db->GetUserName(stat_buf.st_uid);
 }
 
 std::string ProcFilter::do_readlink(std::string const& path) {
@@ -220,7 +220,7 @@ void ProcFilter::compile_proc_list(std::list<ProcessInfo>* allProcs)
             for (const std::string& blockedName : ProcFilter::_blocked_process_names)                                                                                   
             {
                 // path starts with defined block name...
-                if (proc.compare(0,blockedName.length(), blockedName) == 0)
+                if (proc.name.compare(0,blockedName.length(), blockedName) == 0)
                 {
                     _proc_list.insert(proc.pid);
                     _delete_queue.push(proc.pid);
