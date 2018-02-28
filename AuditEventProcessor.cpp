@@ -47,6 +47,8 @@ extern "C" {
 
 #define PROCESS_CREATE_RECORD_TYPE 14688
 #define PROCESS_CREATE_RECORD_NAME "AUOMS_EXECVE"
+#define FRAGMENT_RECORD_TYPE 11309
+#define FRAGMENT_RECORD_NAME "AUOMS_EXECVE_FRAGMENT"
 
 /*****************************************************************************
  * Dynamicly load needed libaudit symbols
@@ -131,16 +133,63 @@ void AuditEventProcessor::static_callback(void *au, dummy_enum_t cb_event_type, 
 
 bool AuditEventProcessor::process_execve()
 {
-    static const std::unordered_set<std::string> execve_fields = { "arch", "syscall", "success", "exit", "items", "ppid", "pid", "auid", "uid", "gid", "euid", "suid", "fsuid", "egid", "sgid", "fsgid", "tty", "ses", "comm", "exe", "key", "name", "inode", "dev", "mode", "ouid", "ogid", "rdev", "nametype", "cwd", "cmdline" };
+    static const std::unordered_set<std::string> syscall_fields = { "arch", "syscall", "success", "exit", "items", "ppid", "pid", "auid", "uid", "gid", "euid", "suid", "fsuid", "egid", "sgid", "fsgid", "tty", "ses", "comm", "exe", "key" };
+    static const std::unordered_set<std::string> path_fields = { "name", "inode", "dev", "mode", "ouid", "ogid", "rdev", "nametype" };
 
-    if (auparse_first_record(_state) != 1 || _num_records < 4 || auparse_get_type(_state) != AUDIT_SYSCALL) {
+    int record_type;
+    const char *record_name;
+    int field_count = 0;
+
+    if (auparse_first_record(_state) != 1) {
         return false;
     }
 
-    auparse_find_field(_state, "syscall");
-    const char *syscall = auparse_interpret_field(_state);
+    if (auparse_get_type(_state) == AUDIT_EXECVE) {
+        record_type = FRAGMENT_RECORD_TYPE;
+        record_name = FRAGMENT_RECORD_NAME;
+    } else if (auparse_get_type(_state) == AUDIT_SYSCALL && _num_records > 2) {
+        auparse_find_field(_state, "syscall");
+        const char *syscall = auparse_interpret_field(_state);
+        auparse_first_field(_state);
 
-    if (auparse_first_field(_state) != 1 || syscall == nullptr || strncmp(syscall, "execve", 6) != 0) {
+        if (syscall == nullptr || strncmp(syscall, "execve", 6) != 0) {
+            return false;
+        }
+
+        record_type = PROCESS_CREATE_RECORD_TYPE;
+        record_name = PROCESS_CREATE_RECORD_NAME;
+    } else {
+        return false;
+    }
+
+    bool path_seen = false;
+    bool eoe_seen = false;
+
+    do {
+        switch (auparse_get_type(_state)) {
+            case AUDIT_EXECVE:
+                field_count++;
+                break;
+            case AUDIT_SYSCALL:
+                field_count += syscall_fields.size();
+                break;
+            case AUDIT_CWD:
+                field_count++;
+                break;
+            case AUDIT_PATH:
+                if (path_seen) {
+                    continue;
+                }
+                field_count += path_fields.size();
+                path_seen = true;
+                break;
+            case AUDIT_EOE:
+                eoe_seen = true;
+                break;
+        }
+    } while (auparse_next_record(_state) == 1);
+
+    if (auparse_first_record(_state) != 1) {
         return false;
     }
 
@@ -152,7 +201,7 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    ret = _builder->BeginRecord(PROCESS_CREATE_RECORD_TYPE, PROCESS_CREATE_RECORD_NAME, "", execve_fields.size());
+    ret = _builder->BeginRecord(record_type, record_name, "", field_count);
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
             throw std::runtime_error("Queue closed");
@@ -161,7 +210,7 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    _cmdline.clear();
+    path_seen = false;
 
     do {
         int record_type = auparse_get_type(_state);
@@ -170,7 +219,7 @@ bool AuditEventProcessor::process_execve()
             case AUDIT_SYSCALL: {
                 do {
                     const char* field = auparse_get_field_name(_state);
-                    if (field != nullptr && execve_fields.count(std::string(field)) && !process_field(field)) {
+                    if (field != nullptr && syscall_fields.count(std::string(field)) && !process_field(field)) {
                         cancel_event();
                         return false;
                     }
@@ -178,6 +227,8 @@ bool AuditEventProcessor::process_execve()
                 break;
             }
             case AUDIT_EXECVE: {
+                _cmdline.clear();
+
                 do {
                     int number;
                     const char* field = auparse_get_field_name(_state);
@@ -199,8 +250,7 @@ bool AuditEventProcessor::process_execve()
 
                     if (span > 0 && field[span] == '\0') {
                         _cmdline.append(field);
-                    }
-                    else {
+                    } else {
                         _cmdline.push_back('"');
                         for (const char *c = field; *c != '\0'; ++c) {
                             switch (*c) {
@@ -216,6 +266,15 @@ bool AuditEventProcessor::process_execve()
                         _cmdline.push_back('"');
                     }
                 } while (auparse_next_field(_state) == 1);
+
+                ret = _builder->AddField("cmdline", _cmdline.c_str(), NULL, FIELD_TYPE_UNCLASSIFIED);
+                if (ret != 1) {
+                    if (ret == Queue::CLOSED) {
+                        throw std::runtime_error("Queue closed");
+                    }
+                    cancel_event();
+                    return false;
+                }
                 break;
             }
             case AUDIT_CWD: {
@@ -226,22 +285,21 @@ bool AuditEventProcessor::process_execve()
                 break;
             }
             case AUDIT_PATH: {
-                const char* field = auparse_find_field(_state, "item");
-                if (field == nullptr || strcmp(field, "0") != 0) {
+                if (path_seen) {
                     continue;
                 }
 
-                auparse_first_field(_state);
                 do {
-                    field = auparse_get_field_name(_state);
-                    if (field != nullptr && execve_fields.count(field) && !process_field(field)) {
+                    const char* field = auparse_get_field_name(_state);
+                    if (field != nullptr && path_fields.count(field) && !process_field(field)) {
                         cancel_event();
                         return false;
                     }
                 } while (auparse_next_field(_state) == 1);
+
+                path_seen = true;
                 break;
             }
-                break;
             case 0:
                 Logger::Warn("auparse_get_type() failed!");
                 break;
@@ -250,16 +308,7 @@ bool AuditEventProcessor::process_execve()
         }
     } while (auparse_next_record(_state) == 1);
 
-    ret = _builder->AddField("cmdline", _cmdline.c_str(), NULL, FIELD_TYPE_UNCLASSIFIED);
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        cancel_event();
-        return false;
-    }
-
-    if (_builder->GetFieldCount() != execve_fields.size()) {
+    if (_builder->GetFieldCount() != field_count) {
         cancel_event();
         return false;
     }
@@ -438,8 +487,7 @@ bool AuditEventProcessor::process_field(const char *name_ptr)
                 if (_pid != 0) {
                     _builder->SetEventPid(_pid);
                 }
-            }
-            else if (_ppid == 0 && NAME_EQUAL_PPID(name_ptr)) {
+            } else if (_ppid == 0 && NAME_EQUAL_PPID(name_ptr)) {
                 _ppid = atoi(val_ptr);
             }
 
