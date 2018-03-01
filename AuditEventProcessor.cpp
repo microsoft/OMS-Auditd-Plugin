@@ -138,7 +138,6 @@ bool AuditEventProcessor::process_execve()
 
     int record_type;
     const char *record_name;
-    int field_count = 0;
 
     if (auparse_first_record(_state) != 1) {
         return false;
@@ -164,6 +163,7 @@ bool AuditEventProcessor::process_execve()
 
     bool path_seen = false;
     bool eoe_seen = false;
+    int field_count = 0;
 
     do {
         switch (auparse_get_type(_state)) {
