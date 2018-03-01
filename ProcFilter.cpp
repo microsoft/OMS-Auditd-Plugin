@@ -41,7 +41,7 @@
 #include <auparse.h>
 
 #define MAX_ITERATION_DEPTH 10
-#define PATH_MAX 256
+#define PATH_MAX_LEN 4096
 
 extern "C" {
 #include <dlfcn.h>
@@ -133,7 +133,7 @@ std::string ProcFilter::get_user_of_process(int pid)
 }
 
 std::string ProcFilter::do_readlink(std::string const& path) {
-    char buff[PATH_MAX];
+    char buff[PATH_MAX_LEN];
     ssize_t len = ::readlink(path.c_str(), buff, sizeof(buff)-1);
     if (len != -1) {
       buff[len] = '\0';
