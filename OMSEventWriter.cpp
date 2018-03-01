@@ -195,7 +195,9 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
                 }
             }
 
-            process_record(rec, record_type, record_type_name);
+            if (!_config.FilterRecordTypes.count(record_type_name)) {
+                process_record(rec, record_type, record_type_name);
+            }
         }
         end_array(); // Records
     } catch (const std::exception& ex) {
