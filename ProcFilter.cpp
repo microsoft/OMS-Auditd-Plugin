@@ -36,10 +36,8 @@
 #include <cctype>
 #include <unistd.h>
 #include <limits.h>
-#include <rapidjson/document.h>
 
-#define MAX_ITERATION_DEPTH 10
-#define PATH_MAX_LEN 4096
+#define RELOAD_INTERVAL 300 // 5 minutes
 
 const std::string CONFIG_PARAM_NAME = "process_filters";
 
@@ -47,14 +45,15 @@ const std::string CONFIG_PARAM_NAME = "process_filters";
  ** ProcessInfo
  *****************************************************************************/
 
-ProcessInfo::ProcessInfo(const std::string& _exe, int processId, int parentProcessId)
+ProcessInfo::ProcessInfo(const std::string& _exe, int processId, int parentProcessId, int _uid)
 {
     exe = _exe;
     pid = processId;
     ppid = parentProcessId;
+    uid = _uid;
 }
 
-const ProcessInfo ProcessInfo::Empty("0",0,0);
+const ProcessInfo ProcessInfo::Empty("0",0,0,0);
 
 inline bool ProcessInfo::operator==(const ProcessInfo& x) const
 {
@@ -86,30 +85,8 @@ bool ProcFilter::is_number(const std::string& s)
            std::find_if(s.begin(), s.end(), [](char c) { return !std::isdigit(c); }) == s.end();
 }
 
-bool ProcFilter::is_process_running(int pid)
-{
-    std::string file = "/proc/" + std::to_string(pid) + "/stat";
-    struct stat stat_buf;
-    return (stat(file.c_str(), &stat_buf) == 0);
-}
-
-std::string ProcFilter::get_user_of_process(int pid)
-{
-    std::string file_name = "/proc/" + std::to_string(pid);
-
-    struct stat stat_buf;
-    if(stat(file_name.c_str(), &stat_buf) == -1)
-    {
-        return std::string();
-    }
-    // alternative for retrieving user name:
-    // struct passwd *pw = getpwuid(stat_buf.st_uid);
-    // return pw->pw_name;
-    return  _user_db->GetUserName(stat_buf.st_uid);
-}
-
 std::string ProcFilter::do_readlink(std::string const& path) {
-    char buff[PATH_MAX_LEN];
+    char buff[PATH_MAX];
     ssize_t len = ::readlink(path.c_str(), buff, sizeof(buff)-1);
     if (len != -1) {
       buff[len] = '\0';
@@ -141,6 +118,14 @@ ProcessInfo ProcFilter::read_proc_data(const std::string& pid_str)
     {
         procData.pid = pid;
         procData.ppid = ppid;
+
+        struct stat stat_buf;
+        if(stat(statFileName.c_str(), &stat_buf) == -1)
+        {
+            return ProcessInfo::Empty;
+        }
+        procData.uid = stat_buf.st_uid;
+
         procData.exe = do_readlink(exeFileName);
         if (procData.exe.empty()) {
             return ProcessInfo::Empty;
@@ -151,9 +136,7 @@ ProcessInfo ProcFilter::read_proc_data(const std::string& pid_str)
 }
 
 bool ProcFilter::is_root_filter_proc(const ProcessInfo& proc) {
-    std::string user_name = get_user_of_process(proc.pid);
-    bool is_valid_user = false;
-    // validate user name
+    std::string user_name = _user_db->GetUserName(proc.uid);
     for (auto ent : _filters)
     {
         if (user_name == ent.second && proc.exe.length() >= ent.first.length() && proc.exe.compare(0,ent.first.length(), ent.first) == 0)
@@ -209,7 +192,7 @@ void ProcFilter::compile_filter_pids(std::list<ProcessInfo>* allProcs)
 
     // Starting with initial root set of procs to filter
     // Look for children and add them to the filter set
-    while(search_pids.size() > 0) {
+    while(!search_pids.empty()) {
         for (auto ppid : search_pids) {
             auto it = procs.find(ppid);
             while (it != procs.end() && it->first == ppid) {
@@ -220,10 +203,6 @@ void ProcFilter::compile_filter_pids(std::list<ProcessInfo>* allProcs)
         search_pids = tmp_pids;
         tmp_pids.clear();
     }
-}
-
-ProcFilter::~ProcFilter()
-{
 }
 
 bool ProcFilter::ParseConfig(const Config& config) {
@@ -281,7 +260,7 @@ bool ProcFilter::test_and_recompile()
 {
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    if(tv.tv_sec - _last_time_initiated.tv_sec > 3600/*1 hour*/)
+    if(tv.tv_sec - _last_time_initiated.tv_sec > RELOAD_INTERVAL)
     {
         Load();
         return true;
@@ -301,6 +280,11 @@ void ProcFilter::AddProcess(int pid, int ppid)
     {
         return;
     }
+
+    // This new processes's pid might still be present in the list if the pid was used by a previous process.
+    // So, remove it from the list. If this new process needs to be filtered it will get re-added during the
+    // parent pid check, or during the root filter prod check.
+    _filter_pids.erase(pid);
 
     // Look for the parent pid in set
     if(_filter_pids.find(ppid) != _filter_pids.end())

@@ -155,30 +155,7 @@ int main(int argc, char**argv) {
 
     if (use_syslog) {
         Logger::OpenSyslog("auoms", LOG_DAEMON);
-    }    
-
-    std::set<std::string> filtered_proc_exe_prefixes;
-    if (config.HasKey("filtered_process_exe_prefixes")) {
-        std::string process_exe_prefixes = config.GetString("filtered_process_exe_prefixes");
-        std::istringstream stream_of_exe_prefixes(process_exe_prefixes);
-        std::string s;    
-        while (getline(stream_of_exe_prefixes, s, '|')) {
-            filtered_proc_exe_prefixes.insert(s);
-        }
-
     }
-
-    std::set<std::string> filtered_procs_users;
-    if (config.HasKey("blocked_process_user_names")) {
-        std::string user_names = config.GetString("filtered_process_user_names");
-        std::istringstream stream_of_names(user_names);
-        std::string s;    
-        while (getline(stream_of_names, s, '|')) {
-            filtered_procs_users.insert(s);
-        }
-    }
-
-    
 
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
@@ -207,6 +184,7 @@ int main(int argc, char**argv) {
         Logger::Error("Invalid 'process_filters' value");
         exit(1);
     }
+
     AuditEventProcessor aep(builder, user_db, proc_filter);
     aep.Initialize();
     StdinReader reader;

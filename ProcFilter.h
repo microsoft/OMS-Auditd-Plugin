@@ -29,9 +29,10 @@
 struct ProcessInfo {
     int pid;
     int ppid;
+    int uid;
     std::string exe;
 
-    ProcessInfo(const std::string& _exe, int processId, int parentProcessId);
+    ProcessInfo(const std::string& _exe, int processId, int parentProcessId, int _uid);
     static const ProcessInfo Empty;  
 
     inline bool operator==(const ProcessInfo& x) const;
@@ -41,7 +42,7 @@ struct ProcessInfo {
 class ProcFilter {
 public:
     
-    ~ProcFilter();
+    ~ProcFilter() = default;
     ProcFilter(const std::shared_ptr<UserDB>& user_db);
     void Load();
     bool ShouldFilter(int pid);
@@ -62,8 +63,6 @@ private:
     // helper methods
     static int is_dir(std::string path);
     static bool is_number(const std::string& s);
-    static bool is_process_running(int pid);
-    std::string get_user_of_process(int pid);
     static std::string do_readlink(std::string const& path);
     static ProcessInfo read_proc_data(const std::string& pid_str);
     bool is_root_filter_proc(const ProcessInfo& proc);
