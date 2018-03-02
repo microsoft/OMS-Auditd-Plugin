@@ -21,15 +21,17 @@
 #include <memory>
 #include <set>
 #include <list>
+#include <unordered_map>
 #include <queue>
+#include "Config.h"
 #include "UserDB.h"
 
 struct ProcessInfo {
     int pid;
     int ppid;
-    std::string name;
+    std::string exe;
 
-    ProcessInfo(std::string description, int processId, int parentProcessId);
+    ProcessInfo(const std::string& _exe, int processId, int parentProcessId);
     static const ProcessInfo Empty;  
 
     inline bool operator==(const ProcessInfo& x) const;
@@ -40,27 +42,22 @@ class ProcFilter {
 public:
     
     ~ProcFilter();
-    ProcFilter(const std::set<std::string>& blocked_process_names, const std::set<std::string>& blocked_user_names, const std::shared_ptr<UserDB>& user_db); 
-    bool ShouldBlock(int pid);
-    bool AddProcess(int pid, int ppid);
-    bool RemoveProcess(int pid);
+    ProcFilter(const std::shared_ptr<UserDB>& user_db);
+    void Load();
+    bool ShouldFilter(int pid);
+    void AddProcess(int pid, int ppid);
 
-private:    
-    std::set<int> _proc_list;
-    std::queue<int> _delete_queue;
-    std::set<std::string> _blocked_process_names;
-    std::set<std::string> _blocked_user_names;
+    bool ParseConfig(const Config& config);
+
+private:
+    std::set<int> _filter_pids;
+    std::unordered_multimap<std::string, std::string> _filters;
     std::shared_ptr<UserDB> _user_db;
     struct timeval _last_time_initiated;
-    int _records_processed_since_reinit;
-    int _add_proc_counter;
-    
-    
-    void Initialize();
+
     std::list<ProcessInfo>* get_all_processes();
-    void compile_proc_list(std::list<ProcessInfo>* allProcs);
+    void compile_filter_pids(std::list<ProcessInfo>* allProcs);
     bool test_and_recompile();
-    void cleanup_crawler_step();
 
     // helper methods
     static int is_dir(std::string path);
@@ -68,7 +65,8 @@ private:
     static bool is_process_running(int pid);
     std::string get_user_of_process(int pid);
     static std::string do_readlink(std::string const& path);
-    static ProcessInfo read_proc_data(const std::string& statFileName, const std::string& exeFileName);
+    static ProcessInfo read_proc_data(const std::string& pid_str);
+    bool is_root_filter_proc(const ProcessInfo& proc);
 };
 
 #endif //AUOMS_PROC_FILTER_H

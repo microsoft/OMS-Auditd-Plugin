@@ -37,13 +37,13 @@
 
 // This include file can only be included in ONE translation unit
 #include <auparse.h>
+#include <asm/types.h> // Required by <linux/audit.h>
+#include <linux/audit.h>
 
 extern "C" {
 #include <dlfcn.h>
 }
 
-#include <linux/audit.h>
-#include <syscall.h>
 
 #define PROCESS_CREATE_RECORD_TYPE 14688
 #define PROCESS_CREATE_RECORD_NAME "AUOMS_EXECVE"
@@ -275,8 +275,7 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    bool shouldBeBlocked = (_pid != 0 && _procFilter->ShouldBlock(_pid));
-    if(shouldBeBlocked)
+    if(_pid != 0 && _procFilter->ShouldFilter(_pid))
     {
         cancel_event();
         return false;
@@ -378,7 +377,7 @@ void AuditEventProcessor::callback(void *ptr)
         }
     } while (auparse_next_record(_state) == 1);
 
-    bool shouldBeBlocked = (_pid != 0 && _procFilter->ShouldBlock(_pid));
+    bool shouldBeBlocked = (_pid != 0 && _procFilter->ShouldFilter(_pid));
 
     // Sometimes the event will only have the EOE record
     // Only end/emit the event if it's not empty
