@@ -133,7 +133,7 @@ void AuditEventProcessor::static_callback(void *au, dummy_enum_t cb_event_type, 
 
 bool AuditEventProcessor::process_execve()
 {
-    static const std::unordered_set<std::string> syscall_fields = { "arch", "syscall", "success", "exit", "items", "ppid", "pid", "auid", "uid", "gid", "euid", "suid", "fsuid", "egid", "sgid", "fsgid", "tty", "ses", "comm", "exe", "key" };
+    static const std::unordered_set<std::string> syscall_fields = { "arch", "syscall", "success", "exit", "ppid", "pid", "auid", "uid", "gid", "euid", "suid", "fsuid", "egid", "sgid", "fsgid", "tty", "ses", "comm", "exe", "key" };
     static const std::unordered_set<std::string> path_fields = { "name", "inode", "dev", "mode", "ouid", "ogid", "rdev", "nametype" };
 
     int record_type;

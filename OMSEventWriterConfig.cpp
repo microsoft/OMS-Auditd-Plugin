@@ -140,11 +140,23 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
                     return false;
                 }
                 for (auto it = doc.Begin(); it != doc.End(); ++it) {
-                    et_config.FilterRecordTypes.emplace(std::string(it->GetString(), it->GetStringLength()));
+                    et_config.FilterRecordTypeSet.emplace(std::string(it->GetString(), it->GetStringLength()));
                 }
             }
             return true;
         }},
+        { "filter_field_names", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool {
+            if (config.HasKey(name)) {
+                auto doc = config.GetJSON(name);
+                if (!doc.IsArray()) {
+                    return false;
+                }
+                for (auto it = doc.Begin(); it != doc.End(); ++it) {
+                    et_config.FilterFieldNameSet.emplace(std::string(it->GetString(), it->GetStringLength()));
+                }
+            }
+            return true;
+        } },
 };
 
 bool OMSEventWriterConfig::LoadFromConfig(const Config& config)

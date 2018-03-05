@@ -147,14 +147,18 @@ void OMSEventWriter::add_string(const std::string& value)
 
 void OMSEventWriter::add_string_field(const std::string& name, const std::string& value)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.String(value.c_str(), value.size(), true);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.String(value.c_str(), value.size(), true);
+    }
 }
 
 void OMSEventWriter::add_string_field(const std::string& name, const char* value_data, size_t value_size)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.String(value_data, value_size, true);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.String(value_data, value_size, true);
+    }
 }
 
 ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
@@ -195,7 +199,7 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
                 }
             }
 
-            if (!_config.FilterRecordTypes.count(record_type_name)) {
+            if (!_config.FilterRecordTypeSet.count(record_type_name)) {
                 process_record(rec, record_type, record_type_name);
             }
         }
