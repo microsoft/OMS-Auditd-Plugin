@@ -213,7 +213,7 @@ bool ProcFilter::ParseConfig(const Config& config) {
         }
         for (auto it = doc.MemberBegin(); it != doc.MemberEnd(); ++it) {
             if (it->value.IsArray()) {
-                for (auto it2 = it->value.Begin(); it2 != it->value.End(); ++it) {
+                for (auto it2 = it->value.Begin(); it2 != it->value.End(); ++it2) {
                     if (it2->IsString()) {
                         _filters.insert(std::pair<std::string, std::string>(std::string(it->name.GetString(), it->name.GetStringLength()),
                                                                             std::string(it2->GetString(), it2->GetStringLength())));
@@ -270,16 +270,17 @@ bool ProcFilter::test_and_recompile()
 
 void ProcFilter::AddProcess(int pid, int ppid)
 {
-    // Do nothing if there are no filters
-    if (_filters.empty()) {
-        return;
-    }
-
     // Check to see if the entire set needs to be re-initialized
     if(test_and_recompile())
     {
         return;
     }
+
+    // Do nothing if there are no filters
+    if (_filters.empty()) 
+    {
+        return;
+    }    
 
     // This new processes's pid might still be present in the list if the pid was used by a previous process.
     // So, remove it from the list. If this new process needs to be filtered it will get re-added during the

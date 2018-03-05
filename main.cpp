@@ -177,6 +177,16 @@ int main(int argc, char**argv) {
     auto event_queue = std::make_shared<EventQueue>(queue);
     auto builder = std::make_shared<EventBuilder>(event_queue);
 
+    try {
+        user_db->Start();
+    } catch (const std::exception& ex) {
+        Logger::Error("Unexpected exception during startup: %s", ex.what());
+        throw;
+    } catch (...) {
+        Logger::Error("Unexpected exception during startup");
+        throw;
+    }    
+
     auto proc_filter = std::make_shared<ProcFilter>(user_db);
     if (proc_filter->ParseConfig(config)) {
         proc_filter->Load();
@@ -197,18 +207,15 @@ int main(int argc, char**argv) {
             throw;
         }
     });
-
-    try {
-        user_db->Start();
+try {
         outputs.Start();
     } catch (const std::exception& ex) {
-        Logger::Error("Unexpected exception during startup: %s", ex.what());
+        Logger::Error("Unexpected exception during outputs startup: %s", ex.what());
         throw;
     } catch (...) {
-        Logger::Error("Unexpected exception during startup");
+        Logger::Error("Unexpected exception during outputs startup");
         throw;
     }
-
     Signals::SetHupHandler([&outputs,&config_file](){
         Config config;
 
