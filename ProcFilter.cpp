@@ -194,10 +194,12 @@ void ProcFilter::compile_filter_pids(std::list<ProcessInfo>* allProcs)
     // Look for children and add them to the filter set
     while(!search_pids.empty()) {
         for (auto ppid : search_pids) {
-            auto it = procs.find(ppid);
-            while (it != procs.end() && it->first == ppid) {
-                _filter_pids.insert(it->second);
-                tmp_pids.push_back(it->second);
+            for (auto procPair : procs) {
+                if (procPair.first == ppid) {
+                    _filter_pids.insert(procPair.second);
+                    tmp_pids.push_back(procPair.second);
+                }
+
             }
         }
         search_pids = tmp_pids;
@@ -213,7 +215,7 @@ bool ProcFilter::ParseConfig(const Config& config) {
         }
         for (auto it = doc.MemberBegin(); it != doc.MemberEnd(); ++it) {
             if (it->value.IsArray()) {
-                for (auto it2 = it->value.Begin(); it2 != it->value.End(); ++it2) {
+                for (auto it2 = it->value.Begin(); it2 != it->value.End(); ++it2:) {
                     if (it2->IsString()) {
                         _filters.insert(std::pair<std::string, std::string>(std::string(it->name.GetString(), it->name.GetStringLength()),
                                                                             std::string(it2->GetString(), it2->GetStringLength())));
