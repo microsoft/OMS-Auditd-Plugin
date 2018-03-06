@@ -278,7 +278,7 @@ bool AuditEventProcessor::process_execve()
     if(_pid != 0 && _procFilter->ShouldFilter(_pid))
     {
         cancel_event();
-        return false;
+        return true;
     }
 
     end_event();
