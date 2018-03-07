@@ -367,6 +367,9 @@ void AuditEventProcessor::callback(void *ptr)
             }
         } while (auparse_next_field(_state) == 1);
 
+        if(_pid != 0) {
+            _procFilter->AddProcess(_pid, _ppid);
+        }
         ret = _builder->EndRecord();
         if (ret != 1) {
             if (ret == Queue::CLOSED) {
