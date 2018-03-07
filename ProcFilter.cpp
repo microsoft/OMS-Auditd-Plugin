@@ -293,7 +293,7 @@ void ProcFilter::AddProcess(int pid, int ppid)
     _filter_pids.erase(pid);
 
     // Look for the parent pid in set
-    if(_filter_pids.find(ppid) != _filter_pids.end())
+    if((_filter_pids.find(ppid) != _filter_pids.end()) || (_previous_filter_pids.find(ppid) != _previous_filter_pids.end()))
     {        
         _filter_pids.insert(pid);
         return;
