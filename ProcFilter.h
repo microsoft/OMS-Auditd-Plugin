@@ -20,6 +20,7 @@
 #include <string>
 #include <memory>
 #include <set>
+#include <unordered_set>
 #include <list>
 #include <unordered_map>
 #include <queue>
@@ -51,7 +52,8 @@ public:
     bool ParseConfig(const Config& config);
 
 private:
-    std::set<int> _filter_pids;
+    std::unordered_set<int> _filter_pids;
+    std::unordered_set<int> _previous_filter_pids;
     std::unordered_multimap<std::string, std::string> _filters;
     std::shared_ptr<UserDB> _user_db;
     struct timeval _last_time_initiated;

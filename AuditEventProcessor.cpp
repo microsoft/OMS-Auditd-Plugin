@@ -264,7 +264,7 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    _procFilter->AddProcess(_ppid, _pid);
+    _procFilter->AddProcess(_pid, _ppid);
 
     ret = _builder->EndRecord();
     if (ret != 1) {

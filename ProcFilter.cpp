@@ -240,6 +240,8 @@ void ProcFilter::Load()
     if (_filters.empty()) {
         return;
     }
+    _previous_filter_pids.clear();
+    _previous_filter_pids = _filter_pids;
     gettimeofday(&_last_time_initiated, NULL);
     _filter_pids.clear();
     // scan existing processes and choose those in the names list and children
@@ -255,7 +257,7 @@ ProcFilter::ProcFilter(const std::shared_ptr<UserDB>& user_db)
 
 bool ProcFilter::ShouldFilter(int pid, int ppid)
 {
-    return (_filter_pids.find(pid) != _filter_pids.end() || _filter_pids.find(ppid) != _filter_pids.end());
+    return (_filter_pids.find(pid) != _filter_pids.end() || _filter_pids.find(ppid) != _filter_pids.end() || _previous_filter_pids.find(pid) != _previous_filter_pids.end() || _previous_filter_pids.find(ppid) != _previous_filter_pids.end());
 }
 
 bool ProcFilter::test_and_recompile()
