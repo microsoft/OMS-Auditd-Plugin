@@ -133,9 +133,6 @@ void AuditEventProcessor::static_callback(void *au, dummy_enum_t cb_event_type, 
 
 bool AuditEventProcessor::process_execve()
 {
-    static const std::unordered_set<std::string> syscall_fields = { "arch", "syscall", "success", "exit", "ppid", "pid", "auid", "uid", "gid", "euid", "suid", "fsuid", "egid", "sgid", "fsgid", "tty", "ses", "comm", "exe", "key" };
-    static const std::unordered_set<std::string> path_fields = { "name", "inode", "dev", "mode", "ouid", "ogid", "rdev", "nametype" };
-
     int record_type;
     const char *record_name;
 
@@ -161,8 +158,6 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    bool path_seen = false;
-    bool eoe_seen = false;
     int field_count = 0;
 
     do {
@@ -171,20 +166,22 @@ bool AuditEventProcessor::process_execve()
                 field_count++;
                 break;
             case AUDIT_SYSCALL:
-                field_count += syscall_fields.size();
+                // remove type, items, a0, a1, a2 and a3 
+                field_count += auparse_get_num_fields(_state) - 6;
                 break;
             case AUDIT_CWD:
                 field_count++;
                 break;
-            case AUDIT_PATH:
-                if (path_seen) {
+            case AUDIT_PATH: {
+                const char* item = auparse_find_field(_state, "item");
+                if (item == nullptr || strcmp(item, "0") != 0) {
                     continue;
                 }
-                field_count += path_fields.size();
-                path_seen = true;
+                // remove type and item
+                field_count += auparse_get_num_fields(_state) - 2;
                 break;
-            case AUDIT_EOE:
-                eoe_seen = true;
+            }
+            default:
                 break;
         }
     } while (auparse_next_record(_state) == 1);
@@ -210,8 +207,6 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    path_seen = false;
-
     do {
         int record_type = auparse_get_type(_state);
 
@@ -219,7 +214,8 @@ bool AuditEventProcessor::process_execve()
             case AUDIT_SYSCALL: {
                 do {
                     const char* field = auparse_get_field_name(_state);
-                    if (field != nullptr && syscall_fields.count(std::string(field)) && !process_field(field)) {
+                    int number;
+                    if (field != nullptr && strcmp(field, "type") != 0 && strcmp(field, "items") != 0 && sscanf(field, "a%d", &number) == 0 && !process_field(field)) {
                         cancel_event();
                         return false;
                     }
@@ -278,26 +274,26 @@ bool AuditEventProcessor::process_execve()
                 break;
             }
             case AUDIT_CWD: {
-                const char* field = auparse_find_field(_state, "cwd");
-                if (field == nullptr || !process_field("cwd")) {
+                const char* cwd = auparse_find_field(_state, "cwd");
+                if (cwd == nullptr || !process_field("cwd")) {
                     continue;
                 };
                 break;
             }
             case AUDIT_PATH: {
-                if (path_seen) {
+                const char* item = auparse_find_field(_state, "item");
+                if (item == nullptr || strcmp(item, "0") != 0) {
                     continue;
                 }
 
+                auparse_first_field(_state);
                 do {
                     const char* field = auparse_get_field_name(_state);
-                    if (field != nullptr && path_fields.count(field) && !process_field(field)) {
+                    if (field != nullptr && strcmp(field, "type") != 0 && strcmp(field, "item") != 0 && !process_field(field)) {
                         cancel_event();
                         return false;
                     }
                 } while (auparse_next_field(_state) == 1);
-
-                path_seen = true;
                 break;
             }
             case 0:

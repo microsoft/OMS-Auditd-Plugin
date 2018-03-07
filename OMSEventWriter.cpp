@@ -186,6 +186,8 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
     add_int64_field(_config.SerialFieldName, event.Serial());
     add_string(_config.RecordsFieldName);
 
+    int records = 0;
+
     try {
         begin_array(); // Records
         for (auto rec : event) {
@@ -201,6 +203,7 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
 
             if (!_config.FilterRecordTypeSet.count(record_type_name)) {
                 process_record(rec, record_type, record_type_name);
+                records++;
             }
         }
         end_array(); // Records
@@ -212,6 +215,10 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
     end_object(); // Event
     end_array(); // Message
 
+    if (records == 0) {
+        reset();
+        return IWriter::OK;
+    }
     return write_event(writer);
 }
 
