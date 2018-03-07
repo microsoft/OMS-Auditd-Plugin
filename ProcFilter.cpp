@@ -253,9 +253,9 @@ ProcFilter::ProcFilter(const std::shared_ptr<UserDB>& user_db)
     _user_db = user_db;
 }
 
-bool ProcFilter::ShouldFilter(int pid)
+bool ProcFilter::ShouldFilter(int pid, int ppid)
 {
-    return (_filter_pids.find(pid) != _filter_pids.end());
+    return (_filter_pids.find(pid) != _filter_pids.end() || _filter_pids.find(ppid) != _filter_pids.end());
 }
 
 bool ProcFilter::test_and_recompile()
@@ -272,17 +272,18 @@ bool ProcFilter::test_and_recompile()
 
 void ProcFilter::AddProcess(int pid, int ppid)
 {
-    // Check to see if the entire set needs to be re-initialized
-    if(test_and_recompile())
-    {
-        return;
-    }
 
     // Do nothing if there are no filters
     if (_filters.empty()) 
     {
         return;
-    }    
+    }  
+    
+    // Check to see if the entire set needs to be re-initialized
+    if(test_and_recompile())
+    {
+        return;
+    }
 
     // This new processes's pid might still be present in the list if the pid was used by a previous process.
     // So, remove it from the list. If this new process needs to be filtered it will get re-added during the

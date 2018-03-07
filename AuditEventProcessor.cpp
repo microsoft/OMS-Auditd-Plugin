@@ -275,10 +275,10 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    if(_pid != 0 && _procFilter->ShouldFilter(_pid))
+    if(_pid != 0 && _procFilter->ShouldFilter(_pid, _ppid))
     {
         cancel_event();
-        return false;
+        return true;
     }
 
     end_event();
@@ -377,7 +377,7 @@ void AuditEventProcessor::callback(void *ptr)
         }
     } while (auparse_next_record(_state) == 1);
 
-    bool shouldBeBlocked = (_pid != 0 && _procFilter->ShouldFilter(_pid));
+    bool shouldBeBlocked = (_pid != 0 && _procFilter->ShouldFilter(_pid, _ppid));
 
     // Sometimes the event will only have the EOE record
     // Only end/emit the event if it's not empty

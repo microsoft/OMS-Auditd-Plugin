@@ -45,7 +45,7 @@ public:
     ~ProcFilter() = default;
     ProcFilter(const std::shared_ptr<UserDB>& user_db);
     void Load();
-    bool ShouldFilter(int pid);
+    bool ShouldFilter(int pid, int ppid);
     void AddProcess(int pid, int ppid);
 
     bool ParseConfig(const Config& config);
