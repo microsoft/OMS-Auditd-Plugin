@@ -215,7 +215,7 @@ bool ProcFilter::ParseConfig(const Config& config) {
         }
         for (auto it = doc.MemberBegin(); it != doc.MemberEnd(); ++it) {
             if (it->value.IsArray()) {
-                for (auto it2 = it->value.Begin(); it2 != it->value.End(); ++it2:) {
+                for (auto it2 = it->value.Begin(); it2 != it->value.End(); ++it2) {
                     if (it2->IsString()) {
                         _filters.insert(std::pair<std::string, std::string>(std::string(it->name.GetString(), it->name.GetStringLength()),
                                                                             std::string(it2->GetString(), it2->GetStringLength())));
