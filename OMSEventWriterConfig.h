@@ -50,6 +50,8 @@ public:
     std::unordered_map<int, std::string> RecordTypeNameOverrideMap;
     std::unordered_map<std::string, std::string> FieldNameOverrideMap;
     std::unordered_map<std::string, std::string> InterpFieldNameMap;
+    std::unordered_set<std::string> FilterRecordTypeSet;
+    std::unordered_set<std::string> FilterFieldNameSet;
 };
 
 

@@ -125,14 +125,18 @@ void OMSEventWriter::end_object() {
 
 void OMSEventWriter::add_int32_field(const std::string& name, int32_t value)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.Int(value);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.Int(value);
+    }
 }
 
 void OMSEventWriter::add_int64_field(const std::string& name, int64_t value)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.Int64(value);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.Int64(value);
+    }
 }
 
 void OMSEventWriter::add_double(double value)
@@ -147,14 +151,18 @@ void OMSEventWriter::add_string(const std::string& value)
 
 void OMSEventWriter::add_string_field(const std::string& name, const std::string& value)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.String(value.c_str(), value.size(), true);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.String(value.c_str(), value.size(), true);
+    }
 }
 
 void OMSEventWriter::add_string_field(const std::string& name, const char* value_data, size_t value_size)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.String(value_data, value_size, true);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.String(value_data, value_size, true);
+    }
 }
 
 ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
@@ -182,6 +190,8 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
     add_int64_field(_config.SerialFieldName, event.Serial());
     add_string(_config.RecordsFieldName);
 
+    int records = 0;
+
     try {
         begin_array(); // Records
         for (auto rec : event) {
@@ -195,7 +205,10 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
                 }
             }
 
-            process_record(rec, record_type, record_type_name);
+            if (!_config.FilterRecordTypeSet.count(record_type_name)) {
+                process_record(rec, record_type, record_type_name);
+                records++;
+            }
         }
         end_array(); // Records
     } catch (const std::exception& ex) {
@@ -206,6 +219,9 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
     end_object(); // Event
     end_array(); // Message
 
+    if (records == 0) {
+        return IWriter::OK;
+    }
     return write_event(writer);
 }
 
