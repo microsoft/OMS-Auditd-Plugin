@@ -17,23 +17,12 @@
 
 #include "Logger.h"
 
-#include <stdexcept>
-#include <cassert>
-#include <cctype>
-#include <cstring>
-
 #include <string>
-#include <sstream>
-#include <vector>
-#include <unordered_map>
 #include <iostream>
 #include <fstream>
-#include <system_error>
-#include <sys/types.h>
 #include <sys/stat.h> /* for stat() */
 #include <dirent.h>
 #include <algorithm>
-#include <cctype>
 #include <unistd.h>
 #include <limits.h>
 

@@ -180,10 +180,10 @@ int main(int argc, char**argv) {
     try {
         user_db->Start();
     } catch (const std::exception& ex) {
-        Logger::Error("Unexpected exception during startup: %s", ex.what());
+        Logger::Error("Unexpected exception during user_db startup: %s", ex.what());
         throw;
     } catch (...) {
-        Logger::Error("Unexpected exception during startup");
+        Logger::Error("Unexpected exception during user_db startup");
         throw;
     }    
 
