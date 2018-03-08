@@ -125,14 +125,18 @@ void OMSEventWriter::end_object() {
 
 void OMSEventWriter::add_int32_field(const std::string& name, int32_t value)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.Int(value);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.Int(value);
+    }
 }
 
 void OMSEventWriter::add_int64_field(const std::string& name, int64_t value)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.Int64(value);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.Int64(value);
+    }
 }
 
 void OMSEventWriter::add_double(double value)
@@ -216,7 +220,6 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
     end_array(); // Message
 
     if (records == 0) {
-        reset();
         return IWriter::OK;
     }
     return write_event(writer);

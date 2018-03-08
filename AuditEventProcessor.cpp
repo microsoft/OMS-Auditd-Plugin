@@ -45,9 +45,21 @@ extern "C" {
 #include <linux/audit.h>
 #include <syscall.h>
 
+
+/*****************************************************************************
+* New record types are in 10000 range to avoid collision with existing codes.
+*
+* 14688 was chosen for aggregate process creation records, given similarity
+* to windows 4688 events.
+*
+* 11309 was chosen for fragmented EXECVE records, following use of 1309 for
+* native AUDIT_EXECVE.
+*
+******************************************************************************/
+
 #define PROCESS_CREATE_RECORD_TYPE 14688
-#define PROCESS_CREATE_RECORD_NAME "AUOMS_EXECVE"
 #define FRAGMENT_RECORD_TYPE 11309
+#define PROCESS_CREATE_RECORD_NAME "AUOMS_EXECVE"
 #define FRAGMENT_RECORD_NAME "AUOMS_EXECVE_FRAGMENT"
 
 /*****************************************************************************
