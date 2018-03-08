@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <rapidjson/document.h>
 

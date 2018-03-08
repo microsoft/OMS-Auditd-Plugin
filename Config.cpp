@@ -72,7 +72,7 @@ void Config::Load(const std::string& path)
                 throw std::runtime_error("Invalid characters following value: Line " + std::to_string(line_num));
             }
             val = nval;
-        } else if (val[0] == '{') {
+        } else if (val[0] == '{' || val[0] == '[') {
             int start_line_num = line_num;
             std::string nval = val;
 
