@@ -37,13 +37,13 @@
 
 // This include file can only be included in ONE translation unit
 #include <auparse.h>
+#include <asm/types.h> // Required by <linux/audit.h>
+#include <linux/audit.h>
 
 extern "C" {
 #include <dlfcn.h>
 }
 
-#include <linux/audit.h>
-#include <syscall.h>
 
 
 /*****************************************************************************
@@ -321,6 +321,8 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
+    _procFilter->AddProcess(_pid, _ppid);
+
     ret = _builder->EndRecord();
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
@@ -328,6 +330,12 @@ bool AuditEventProcessor::process_execve()
         }
         cancel_event();
         return false;
+    }
+
+    if(_pid != 0 && _procFilter->ShouldFilter(_pid, _ppid))
+    {
+        cancel_event();
+        return true;
     }
 
     end_event();
@@ -416,6 +424,9 @@ void AuditEventProcessor::callback(void *ptr)
             }
         } while (auparse_next_field(_state) == 1);
 
+        if(_pid != 0) {
+            _procFilter->AddProcess(_pid, _ppid);
+        }
         ret = _builder->EndRecord();
         if (ret != 1) {
             if (ret == Queue::CLOSED) {
@@ -426,9 +437,11 @@ void AuditEventProcessor::callback(void *ptr)
         }
     } while (auparse_next_record(_state) == 1);
 
+    bool shouldBeBlocked = (_pid != 0 && _procFilter->ShouldFilter(_pid, _ppid));
+
     // Sometimes the event will only have the EOE record
     // Only end/emit the event if it's not empty
-    if (num_non_eoe_records > 0) {
+    if (num_non_eoe_records > 0 && !shouldBeBlocked) {
         end_event();
     } else {
         cancel_event();

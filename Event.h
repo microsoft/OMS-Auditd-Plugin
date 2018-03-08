@@ -82,6 +82,7 @@ public:
     int BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint16_t num_records);
     void SetEventFlags(uint32_t flags);
     void SetEventPid(int32_t pid);
+    int32_t GetEventPid();
     int EndEvent();
     int CancelEvent();
     int BeginRecord(uint16_t record_type, const char* record_name, const char* record_text, uint16_t num_fields);

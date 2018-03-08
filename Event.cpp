@@ -283,6 +283,14 @@ void EventBuilder::SetEventPid(int32_t pid) {
     EVENT_PID(_data) = pid;
 }
 
+int32_t EventBuilder::GetEventPid() {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    return EVENT_PID(_data);
+}
+
 int EventBuilder::EndEvent() {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");

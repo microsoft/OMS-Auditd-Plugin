@@ -27,6 +27,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <memory>
 #include <system_error>
 
@@ -176,7 +177,25 @@ int main(int argc, char**argv) {
     auto event_queue = std::make_shared<EventQueue>(queue);
     auto builder = std::make_shared<EventBuilder>(event_queue);
 
-    AuditEventProcessor aep(builder, user_db);
+    try {
+        user_db->Start();
+    } catch (const std::exception& ex) {
+        Logger::Error("Unexpected exception during user_db startup: %s", ex.what());
+        throw;
+    } catch (...) {
+        Logger::Error("Unexpected exception during user_db startup");
+        throw;
+    }    
+
+    auto proc_filter = std::make_shared<ProcFilter>(user_db);
+    if (proc_filter->ParseConfig(config)) {
+        proc_filter->Load();
+    } else {
+        Logger::Error("Invalid 'process_filters' value");
+        exit(1);
+    }
+
+    AuditEventProcessor aep(builder, user_db, proc_filter);
     aep.Initialize();
     StdinReader reader;
 
@@ -188,18 +207,15 @@ int main(int argc, char**argv) {
             throw;
         }
     });
-
-    try {
-        user_db->Start();
+try {
         outputs.Start();
     } catch (const std::exception& ex) {
-        Logger::Error("Unexpected exception during startup: %s", ex.what());
+        Logger::Error("Unexpected exception during outputs startup: %s", ex.what());
         throw;
     } catch (...) {
-        Logger::Error("Unexpected exception during startup");
+        Logger::Error("Unexpected exception during outputs startup");
         throw;
     }
-
     Signals::SetHupHandler([&outputs,&config_file](){
         Config config;
 
