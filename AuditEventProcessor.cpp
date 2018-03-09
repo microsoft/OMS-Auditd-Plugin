@@ -210,6 +210,8 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
+    _builder->SetEventFlags(EVENT_FLAG_IS_AUOMS_EVENT);
+
     ret = _builder->BeginRecord(record_type, record_name, "", field_count);
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
@@ -321,7 +323,14 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    _procFilter->AddProcess(_pid, _ppid);
+    if (_pid != 0 && _ppid != 0) {
+        _procFilter->AddProcess(_pid, _ppid);
+
+        auto filter_flags = _procFilter->GetFilterFlags(_pid, _ppid);
+        if (filter_flags != 0) {
+            _builder->SetEventFlags(_builder->GetEventFlags() | filter_flags);
+        }
+    }
 
     ret = _builder->EndRecord();
     if (ret != 1) {
@@ -330,12 +339,6 @@ bool AuditEventProcessor::process_execve()
         }
         cancel_event();
         return false;
-    }
-
-    if(_pid != 0 && _procFilter->ShouldFilter(_pid, _ppid))
-    {
-        cancel_event();
-        return true;
     }
 
     end_event();
@@ -424,9 +427,15 @@ void AuditEventProcessor::callback(void *ptr)
             }
         } while (auparse_next_field(_state) == 1);
 
-        if(_pid != 0) {
+        if (_pid != 0 && _ppid != 0) {
             _procFilter->AddProcess(_pid, _ppid);
+
+            auto filter_flags = _procFilter->GetFilterFlags(_pid, _ppid);
+            if (filter_flags != 0) {
+                _builder->SetEventFlags(_builder->GetEventFlags() | filter_flags);
+            }
         }
+
         ret = _builder->EndRecord();
         if (ret != 1) {
             if (ret == Queue::CLOSED) {
@@ -437,11 +446,9 @@ void AuditEventProcessor::callback(void *ptr)
         }
     } while (auparse_next_record(_state) == 1);
 
-    bool shouldBeBlocked = (_pid != 0 && _procFilter->ShouldFilter(_pid, _ppid));
-
     // Sometimes the event will only have the EOE record
     // Only end/emit the event if it's not empty
-    if (num_non_eoe_records > 0 && !shouldBeBlocked) {
+    if (num_non_eoe_records > 0) {
         end_event();
     } else {
         cancel_event();
