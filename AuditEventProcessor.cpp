@@ -59,8 +59,13 @@ extern "C" {
 
 #define PROCESS_CREATE_RECORD_TYPE 14688
 #define FRAGMENT_RECORD_TYPE 11309
+#define PROCESS_INVENTORY_RECORD_TYPE 10000
 #define PROCESS_CREATE_RECORD_NAME "AUOMS_EXECVE"
 #define FRAGMENT_RECORD_NAME "AUOMS_EXECVE_FRAGMENT"
+#define PROCESS_INVENTORY_RECORD_NAME "AUOMS_EXECVE"
+
+#define PROCESS_INVENTORY_FETCH_INTERVAL 300
+#define PROCESS_INVENTORY_EVENT_INTERVAL 3600
 
 /*****************************************************************************
  * Dynamicly load needed libaudit symbols
@@ -579,4 +584,178 @@ bool AuditEventProcessor::process_field()
         return false;
     }
     return process_field(name_ptr);
+}
+
+bool AuditEventProcessor::add_int_field(const char* name, int val, event_field_type_t ft) {
+    _tmp_val.assign(std::to_string(val));
+    return add_str_field(name, _tmp_val.c_str(), ft);
+}
+
+bool AuditEventProcessor::add_str_field(const char* name, const char* val, event_field_type_t ft) {
+    int ret = _builder->AddField(name, nullptr, val, ft);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+    return true;
+}
+
+bool AuditEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t nsec) {
+    auto ret = _builder->BeginEvent(sec, nsec, 0, 1);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        return false;
+    }
+
+    _builder->SetEventFlags(EVENT_FLAG_IS_AUOMS_EVENT);
+
+    uint16_t num_fields = 13;
+    if (pinfo->is_cmdline_truncated()) {
+        num_fields++;
+    }
+
+    ret = _builder->BeginRecord(PROCESS_INVENTORY_RECORD_TYPE, PROCESS_INVENTORY_RECORD_NAME, "", num_fields);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+
+    if (!add_int_field("pid", pinfo->pid(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_int_field("ppid", pinfo->ppid(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_int_field("ses", pinfo->ses(), FIELD_TYPE_SESSION)) {
+        return false;
+    }
+
+    if (!add_int_field("uid", pinfo->uid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_int_field("euid", pinfo->euid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_int_field("suid", pinfo->suid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_int_field("fsuid", pinfo->fsuid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_int_field("gid", pinfo->gid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_int_field("egid", pinfo->egid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_int_field("sgid", pinfo->sgid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_int_field("fsgid", pinfo->fsgid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_str_field("comm", pinfo->comm().c_str(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_str_field("exe", pinfo->exe().c_str(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    pinfo->format_cmdline(_cmdline);
+
+    if (!add_str_field("cmdline", _cmdline.c_str(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (pinfo->is_cmdline_truncated()) {
+        if (!add_str_field("cmdline_truncated", "true", FIELD_TYPE_UNCLASSIFIED)) {
+            return false;
+        }
+    }
+
+    ret = _builder->EndRecord();
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+
+    ret = _builder->EndEvent();
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        return false;
+    }
+}
+
+void AuditEventProcessor::DoProcessInventory() {
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+
+    uint64_t sec = static_cast<uint64_t>(tv.tv_sec);
+    uint32_t nsec = static_cast<uint32_t>(tv.tv_usec)*1000;
+
+    if (_last_proc_fetch+PROCESS_INVENTORY_FETCH_INTERVAL > sec) {
+        return;
+    }
+
+    bool gen_events = false;
+    if (_last_proc_event_gen+PROCESS_INVENTORY_EVENT_INTERVAL <= sec) {
+        gen_events = true;
+    }
+
+    bool update_filter = _procFilter->IsFilterEnabled();
+
+    if (!update_filter && !gen_events) {
+        return;
+    }
+
+    auto pinfo = ProcessInfo::Open();
+    if (!pinfo) {
+        Logger::Error("Failed to open '/proc': %s", strerror(errno));
+        return;
+    }
+
+    std::vector<ProcInfo> procs;
+    procs.reserve(16*1024);
+
+    while(pinfo->next()) {
+        if (update_filter) {
+            procs.emplace(procs.end(), pinfo.get());
+        }
+        if (gen_events) {
+            generate_proc_event(pinfo.get(), sec, nsec);
+        }
+    }
+
+    if (update_filter) {
+        _procFilter->UpdateProcesses(procs);
+    }
+
+    _last_proc_fetch = sec;
+    if (gen_events) {
+        _last_proc_event_gen = sec;
+    }
 }

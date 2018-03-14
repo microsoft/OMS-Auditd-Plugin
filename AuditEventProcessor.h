@@ -39,6 +39,7 @@ public:
     void Initialize();
     void ProcessData(const char* data, size_t data_len);
     void Flush();
+    void DoProcessInventory();
 
 private:
     static void static_callback(void *au, dummy_enum_t cb_event_type, void *user_data);
@@ -51,6 +52,9 @@ private:
     bool process_execve();
     bool process_field(const char *name_ptr);
     bool process_field();
+    bool add_int_field(const char* name, int val, event_field_type_t ft);
+    bool add_str_field(const char* name, const char *, event_field_type_t ft);
+    bool generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t nsec);
 
     std::shared_ptr<EventBuilder> _builder;
     std::shared_ptr<UserDB> _user_db;
@@ -64,6 +68,9 @@ private:
     pid_t _pid;
     pid_t _ppid;
     std::string _cmdline;
+    std::string _tmp_val;
+    uint64_t _last_proc_fetch;
+    uint64_t _last_proc_event_gen;
 };
 
 #endif //AUOMS_AUDIT_EVENT_PROCESSOR_H

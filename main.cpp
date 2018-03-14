@@ -188,9 +188,7 @@ int main(int argc, char**argv) {
     }    
 
     auto proc_filter = std::make_shared<ProcFilter>(user_db);
-    if (proc_filter->ParseConfig(config)) {
-        proc_filter->Load();
-    } else {
+    if (!proc_filter->ParseConfig(config)) {
         Logger::Error("Invalid 'process_filters' value");
         exit(1);
     }
@@ -243,10 +241,14 @@ try {
     // Start signal handling thread
     Signals::Start();
 
+
     try {
         char buffer[64*1024];
         int timeout = -1;
         bool flushed = true;
+
+        aep.DoProcessInventory();
+
         for (;;) {
             if (flushed && !Signals::IsExit()) {
                 // Only use infinite timeout if AuditEventProcessor hasn't been flushed
@@ -261,10 +263,12 @@ try {
             int nr = reader.Read(buffer, sizeof(buffer), timeout);
             if (nr > 0) {
                 aep.ProcessData(buffer, nr);
+                aep.DoProcessInventory();
                 flushed = false;
             } else if (nr == StdinReader::TIMEOUT || nr == StdinReader::INTERRUPTED) {
                 if (nr != StdinReader::INTERRUPTED) {
                     aep.Flush();
+                    aep.DoProcessInventory();
                     flushed = true;
                 }
                 if (nr == StdinReader::TIMEOUT && Signals::IsExit()) {

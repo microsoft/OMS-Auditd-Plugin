@@ -34,22 +34,21 @@ const std::string CONFIG_PARAM_NAME = "process_flags";
  ** ProcessInfo
  *****************************************************************************/
 
-ProcessInfo::ProcessInfo(const std::string& _exe, int processId, int parentProcessId, int _uid)
+ProcInfo::ProcInfo(ProcessInfo* proc)
 {
-    exe = _exe;
-    pid = processId;
-    ppid = parentProcessId;
-    uid = _uid;
+    exe = proc->exe();
+    pid = proc->pid();
+    ppid = proc->ppid();
+    uid = proc->uid();
+    proc->get_arg1(arg1);
 }
 
-const ProcessInfo ProcessInfo::Empty("0",0,0,0);
-
-inline bool ProcessInfo::operator==(const ProcessInfo& x) const
+inline bool ProcInfo::operator==(const ProcInfo& x) const
 {
     return (pid == x.pid) && (ppid == x.ppid) && (exe == x.exe);
 }
 
-inline bool ProcessInfo::operator!=(const ProcessInfo& x) const
+inline bool ProcInfo::operator!=(const ProcInfo& x) const
 {
     return !(*this==x);
 }
@@ -85,46 +84,7 @@ std::string ProcFilter::do_readlink(std::string const& path) {
     return std::string();
 }
 
-ProcessInfo ProcFilter::read_proc_data(const std::string& pid_str)
-{
-    ProcessInfo procData = ProcessInfo::Empty;
-    std::string statFileName = "/proc/" + pid_str + "/stat";
-    std::string exeFileName = "/proc/" + pid_str + "/exe";
-    std::ifstream infile(statFileName, std::ifstream::in);
-
-    if(!infile) {
-        return ProcessInfo::Empty;
-    }
-
-    int pid;
-    std::string comm;
-    char state;
-    int ppid;
-    int pgrp;
-    int session;
-
-    if (infile >> pid >> comm >> state >> ppid >> pgrp >> session)
-    {
-        procData.pid = pid;
-        procData.ppid = ppid;
-
-        struct stat stat_buf;
-        if(stat(statFileName.c_str(), &stat_buf) == -1)
-        {
-            return ProcessInfo::Empty;
-        }
-        procData.uid = stat_buf.st_uid;
-
-        procData.exe = do_readlink(exeFileName);
-        if (procData.exe.empty()) {
-            return ProcessInfo::Empty;
-        }
-        return procData;
-    }
-    return ProcessInfo::Empty;
-}
-
-uint32_t ProcFilter::is_root_filter_proc(const ProcessInfo& proc) {
+uint32_t ProcFilter::is_root_filter_proc(const ProcInfo& proc) {
     std::string user_name = _user_db->GetUserName(proc.uid);
     for (auto ent : _filters)
     {
@@ -144,38 +104,13 @@ uint32_t ProcFilter::is_root_filter_proc(const ProcessInfo& proc) {
 
 // --------- end helper functions -------------------------
 
-std::list<ProcessInfo>* ProcFilter::get_all_processes()
-{
-    std::list<ProcessInfo>* procList = new std::list<ProcessInfo>();
-    std::string dir = "/proc/";
- 
-    DIR *dp;
-    struct dirent *dirp;
-    if ((dp = opendir(dir.c_str())) == NULL) {
-        return procList;
-    }
-
-    while ((dirp = readdir(dp)) != NULL) {
-        std::string pid_str = std::string(dirp->d_name);
-        std::string Tmp = dir + pid_str;
-        if (is_number(pid_str) && is_dir(Tmp)) {
-            ProcessInfo procData = read_proc_data(pid_str);
-            if (procData != ProcessInfo::Empty) {
-                procList->push_front(procData);
-            } 
-        }
-    }
-    closedir(dp);
-
-    return procList;
-}
-void ProcFilter::compile_filter_pids(std::list<ProcessInfo>* allProcs)
+void ProcFilter::compile_filter_pids(std::vector<ProcInfo>& allProcs)
 {
     std::unordered_multimap<int, int> procs;
     std::vector<std::pair<int,uint32_t>> search_pids;
     std::vector<std::pair<int,uint32_t>> tmp_pids;
     // add root blocking processes
-    for (const ProcessInfo& proc : *allProcs)
+    for (const ProcInfo& proc : allProcs)
     {
         auto flags = is_root_filter_proc(proc);
         if (flags != 0) {
@@ -280,24 +215,23 @@ bool ProcFilter::ParseConfig(const Config& config) {
     return true;
 }
 
-void ProcFilter::Load()
-{
+void ProcFilter::UpdateProcesses(std::vector<ProcInfo>& procs) {
     if (_filters.empty()) {
         return;
     }
     _previous_filter_pids.clear();
     _previous_filter_pids = _filter_pids;
-    gettimeofday(&_last_time_initiated, NULL);
     _filter_pids.clear();
-    // scan existing processes and choose those in the names list and children
-    std::list<ProcessInfo>* listOfProcesses = get_all_processes();
-    compile_filter_pids(listOfProcesses);
-    delete listOfProcesses;
+    compile_filter_pids(procs);
 }
 
 ProcFilter::ProcFilter(const std::shared_ptr<UserDB>& user_db)
 {
     _user_db = user_db;
+}
+
+bool ProcFilter::IsFilterEnabled() {
+    return !_filters.empty();
 }
 
 uint32_t ProcFilter::GetFilterFlags(int pid, int ppid)
@@ -325,29 +259,11 @@ uint32_t ProcFilter::GetFilterFlags(int pid, int ppid)
     return 0;
 }
 
-bool ProcFilter::test_and_recompile()
-{
-    struct timeval tv;
-    gettimeofday(&tv, nullptr);
-    if(tv.tv_sec - _last_time_initiated.tv_sec > RELOAD_INTERVAL)
-    {
-        Load();
-        return true;
-    }
-    return false;
-}
-
 void ProcFilter::AddProcess(int pid, int ppid)
 {
 
     // Do nothing if there are no filters
     if (_filters.empty()) 
-    {
-        return;
-    }  
-    
-    // Check to see if the entire set needs to be re-initialized
-    if(test_and_recompile())
     {
         return;
     }
@@ -371,8 +287,9 @@ void ProcFilter::AddProcess(int pid, int ppid)
     }
 
     // Parent wasn't found, check to see if it is a root filter proc
-    auto proc = read_proc_data(std::to_string(pid));
-    if (proc != ProcessInfo::Empty) {
+    auto pinfo = ProcessInfo::Open(pid);
+    if (pinfo) {
+        ProcInfo proc(pinfo.get());
         auto flags = is_root_filter_proc(proc);
         if (flags != 0) {
             _filter_pids.insert(std::pair<int, uint32_t>(pid, flags));
