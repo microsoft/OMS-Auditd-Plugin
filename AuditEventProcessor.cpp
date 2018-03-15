@@ -226,6 +226,8 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
+    bool syscall_success = false;
+
     do {
         int record_type = auparse_get_type(_state);
 
@@ -234,9 +236,17 @@ bool AuditEventProcessor::process_execve()
                 do {
                     const char* field = auparse_get_field_name(_state);
                     int number;
-                    if (field != nullptr && strcmp(field, "type") != 0 && strcmp(field, "items") != 0 && sscanf(field, "a%d", &number) == 0 && !process_field(field)) {
-                        cancel_event();
-                        return false;
+                    if (field != nullptr && strcmp(field, "type") != 0 && strcmp(field, "items") != 0 && sscanf(field, "a%d", &number) == 0) {
+                        if (strcmp(field, "success") == 0) {
+                            const char* val_ptr = auparse_get_field_str(_state);
+                            if (val_ptr != nullptr && val_ptr[0] == 'y') {
+                                syscall_success = true;
+                            }
+                        }
+                        if (!process_field(field)) {
+                            cancel_event();
+                            return false;
+                        }
                     }
                 } while (auparse_next_field(_state) == 1);
                 break;
@@ -261,25 +271,7 @@ bool AuditEventProcessor::process_execve()
                         _cmdline.push_back(' ');
                     }
 
-                    size_t span = strspn(field, "!%+,-./0123456789:=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_abcdefghijklmnopqrstuvwxyz");
-
-                    if (span > 0 && field[span] == '\0') {
-                        _cmdline.append(field);
-                    } else {
-                        _cmdline.push_back('"');
-                        for (const char *c = field; *c != '\0'; ++c) {
-                            switch (*c) {
-                                case '"':
-                                case '\\':
-                                case '$':
-                                case '`':
-                                    _cmdline.push_back('\\');
-                                default:
-                                    _cmdline.push_back(*c);
-                            }
-                        }
-                        _cmdline.push_back('"');
-                    }
+                    append_escaped_string(field, strlen(field), _cmdline);
                 } while (auparse_next_field(_state) == 1);
 
                 ret = _builder->AddField("cmdline", _cmdline.c_str(), NULL, FIELD_TYPE_UNCLASSIFIED);
@@ -329,7 +321,9 @@ bool AuditEventProcessor::process_execve()
     }
 
     if (_pid != 0 && _ppid != 0) {
-        _procFilter->AddProcess(_pid, _ppid);
+        if (syscall_success) {
+            _procFilter->AddProcess(_pid, _ppid);
+        }
 
         auto filter_flags = _procFilter->GetFilterFlags(_pid, _ppid);
         if (filter_flags != 0) {

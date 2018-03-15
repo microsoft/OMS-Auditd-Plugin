@@ -51,8 +51,6 @@ const char* escape_codes =
 const char* hex_codes = "0123456789ABCDEF";
 
 size_t escape_string(const uint8_t* start, const uint8_t* end, std::string& str) {
-    str.resize(0);
-
     bool has_space = false;
     int dquote_count = 0;
     size_t size = 0;
@@ -132,6 +130,12 @@ size_t escape_string(const uint8_t* start, const uint8_t* end, std::string& str)
     }
 
     return size;
+}
+
+size_t append_escaped_string(const char* ptr, size_t len, std::string& str) {
+    const uint8_t* start = reinterpret_cast<const uint8_t*>(ptr);
+    const uint8_t* end = start+len;
+    return escape_string(start, end, str);
 }
 
 bool read_file(const std::string& path, std::vector<uint8_t>& data, size_t limit, size_t& actual_size) {

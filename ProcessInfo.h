@@ -21,6 +21,8 @@
 #include <vector>
 #include <memory>
 
+size_t append_escaped_string(const char* ptr, size_t len, std::string& str);
+
 class ProcessInfo {
 public:
     ~ProcessInfo();
