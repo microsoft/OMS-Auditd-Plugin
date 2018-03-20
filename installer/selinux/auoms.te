@@ -16,12 +16,6 @@ policy_module(auoms,1.2);
 # THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ####
 
-#
-# This policy file was developed for CentOS/RHEL 6 & 7.
-# It will not work on CentOS/RHEL 5, it may not work on CentOS/RHEL 6.
-# It requires the "open" operation and the "passwd_file_t" type.
-#
-
 require {
         type audisp_t;
         type unconfined_t;
@@ -35,7 +29,10 @@ require {
 
 type auoms_exec_t;
 
+domain_entry_file(unconfined_t, auoms_exec_t)
+
 domtrans_pattern(audisp_t, auoms_exec_t, unconfined_t)
+
 allow audisp_t unconfined_t:process { sigkill sigstop signull signal };
 
 allow audisp_t auoms_exec_t:file { getattr open };

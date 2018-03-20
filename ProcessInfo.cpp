@@ -122,19 +122,16 @@ size_t append_escaped_string(const char* ptr, size_t len, std::string& str) {
 }
 
 bool read_file(const std::string& path, std::vector<uint8_t>& data, size_t limit, bool& truncated) {
+    errno = 0;
     int fd = ::open(path.c_str(), O_RDONLY);
     if (fd < 0) {
-        int err_save = errno;
-        Logger::Warn("Open of '%s' failed: %s\n", path.c_str(), strerror(errno));
-        errno = err_save;
         return false;
     }
     data.resize(limit+1);
     if (data.size() > 0) {
         ssize_t nr = read(fd, data.data(), data.size());
-        if (nr <= 0) {
+        if (nr < 0) {
             int err_save = errno;
-            Logger::Warn("read of '%s' failed: %s\n", path.c_str(), strerror(errno));
             close(fd);
             errno = err_save;
             return false;
@@ -152,14 +149,21 @@ bool read_file(const std::string& path, std::vector<uint8_t>& data, size_t limit
     return true;
 }
 
-bool read_link(const std::string& path, std::string& data) {
+// Return 1 on success, 0 if there is no exe (the case for kernel processes), or -1 on error.
+int read_link(const std::string& path, std::string& data) {
     char buff[PATH_MAX];
+    data.clear();
+    errno = 0;
     ssize_t len = ::readlink(path.c_str(), buff, sizeof(buff)-1);
     if (len < 0) {
-        return false;
+        // For kernel processes errno will be ENOENT
+        if (errno == ENOENT) {
+            return 1;
+        }
+        return -1;
     }
     data.assign(buff, len);
-    return true;
+    return 1;
 }
 
 bool ProcessInfo::parse_stat() {
@@ -337,7 +341,10 @@ bool ProcessInfo::read(int pid) {
     bool truncated;
 
     if (!read_file(path+"/stat", _stat, 2048, truncated)) {
-        Logger::Warn("Failed to read /proc/%d/stat: %s", pid, strerror(errno));
+        // Only generate a log message if the error was something other than ENOENT
+        if (errno != ENOENT) {
+            Logger::Warn("Failed to read /proc/%d/stat: %s", pid, strerror(errno));
+        }
         return false;
     }
 
@@ -346,18 +353,22 @@ bool ProcessInfo::read(int pid) {
         return false;
     }
 
-    if (!read_link(path+"/exe", _exe)) {
-        Logger::Warn("Failed to readlink /proc/%d/exe: %s", pid, strerror(errno));
-        return false;
+    auto exe_status = read_link(path+"/exe", _exe);
+    if (exe_status < 0) {
+            Logger::Warn("Failed to readlink /proc/%d/exe: %s", pid, strerror(errno));
+            return false;
     }
 
-    // The Event field value size limit is UINT16_MAX (including NULL terminator)
-    if (!read_file(path+"/cmdline", _cmdline, UINT16_MAX-1, truncated)) {
-        Logger::Warn("Failed to read /proc/%d/cmdline: %s", pid, strerror(errno));
-        return false;
+    // Only try to read the cmdline file if there was an exe link.
+    // Kernel processes will not have anything in the cmdline file.
+    if (exe_status == 1) {
+        // The Event field value size limit is UINT16_MAX (including NULL terminator)
+        if (!read_file(path + "/cmdline", _cmdline, UINT16_MAX - 1, _cmdline_truncated)) {
+            Logger::Warn("Failed to read /proc/%d/cmdline: %s", pid, strerror(errno));
+            return false;
+        }
     }
 
-    _cmdline_truncated = truncated;
 
     if (!parse_stat()) {
         Logger::Warn("Failed to parse /proc/%d/stat", pid);

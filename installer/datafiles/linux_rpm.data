@@ -44,7 +44,7 @@ if [ -e /usr/sbin/semodule ]; then
     if [ $DO_INSTALL -ne 0 ]; then
         echo "Installing auoms selinux policy version $MODULE_VERSION"
         /usr/sbin/semodule -i ${{SEPOLICY_FILE}} >/dev/null 2>&1
-        if [ $? -eq 0 ]; then
+        if [ $? -ne 0 ]; then
             echo "ERROR: Failed to install auoms selinux policy module"
             exit 0
         fi
