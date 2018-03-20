@@ -192,8 +192,8 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
 
     add_string_field(_config.TimestampFieldName, timestamp_str.str());
     add_int64_field(_config.SerialFieldName, event.Serial());
-    add_string(_config.RecordsFieldName);
     add_int64_field(_config.ProcessFlagsFieldName, event.Flags()>>16);
+    add_string(_config.RecordsFieldName);
 
     int records = 0;
 

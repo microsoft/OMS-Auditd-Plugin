@@ -62,7 +62,7 @@ extern "C" {
 #define PROCESS_INVENTORY_RECORD_TYPE 10000
 #define PROCESS_CREATE_RECORD_NAME "AUOMS_EXECVE"
 #define FRAGMENT_RECORD_NAME "AUOMS_EXECVE_FRAGMENT"
-#define PROCESS_INVENTORY_RECORD_NAME "AUOMS_EXECVE"
+#define PROCESS_INVENTORY_RECORD_NAME "AUOMS_PROCESS_INVENTORY"
 
 #define PROCESS_INVENTORY_FETCH_INTERVAL 300
 #define PROCESS_INVENTORY_EVENT_INTERVAL 3600
@@ -274,6 +274,11 @@ bool AuditEventProcessor::process_execve()
                     append_escaped_string(field, strlen(field), _cmdline);
                 } while (auparse_next_field(_state) == 1);
 
+                bool cmdline_truncated = false;
+                if (_cmdline.size() > UINT16_MAX-1) {
+                    _cmdline.resize(UINT16_MAX-1);
+                    cmdline_truncated = true;
+                }
                 ret = _builder->AddField("cmdline", _cmdline.c_str(), NULL, FIELD_TYPE_UNCLASSIFIED);
                 if (ret != 1) {
                     if (ret == Queue::CLOSED) {
@@ -281,6 +286,16 @@ bool AuditEventProcessor::process_execve()
                     }
                     cancel_event();
                     return false;
+                }
+                if (cmdline_truncated) {
+                    ret = _builder->AddField("cmdline_truncated", "true", NULL, FIELD_TYPE_UNCLASSIFIED);
+                    if (ret != 1) {
+                        if (ret == Queue::CLOSED) {
+                            throw std::runtime_error("Queue closed");
+                        }
+                        cancel_event();
+                        return false;
+                    }
                 }
                 break;
             }
@@ -586,7 +601,7 @@ bool AuditEventProcessor::add_int_field(const char* name, int val, event_field_t
 }
 
 bool AuditEventProcessor::add_str_field(const char* name, const char* val, event_field_type_t ft) {
-    int ret = _builder->AddField(name, nullptr, val, ft);
+    int ret = _builder->AddField(name, val, nullptr, ft);
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
             throw std::runtime_error("Queue closed");
@@ -595,6 +610,36 @@ bool AuditEventProcessor::add_str_field(const char* name, const char* val, event
         return false;
     }
     return true;
+}
+
+bool AuditEventProcessor::add_uid_field(const char* name, int uid, event_field_type_t ft) {
+    _tmp_val.assign(std::to_string(uid));
+    std::string user = _user_db->GetUserName(uid);
+    int ret = _builder->AddField(name, _tmp_val.c_str(), user.c_str(), ft);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+    return true;
+    return add_str_field(name, _tmp_val.c_str(), ft);
+}
+
+bool AuditEventProcessor::add_gid_field(const char* name, int gid, event_field_type_t ft) {
+    _tmp_val.assign(std::to_string(gid));
+    std::string user = _user_db->GetGroupName(gid);
+    int ret = _builder->AddField(name, _tmp_val.c_str(), user.c_str(), ft);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+    return true;
+    return add_str_field(name, _tmp_val.c_str(), ft);
 }
 
 bool AuditEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t nsec) {
@@ -608,10 +653,7 @@ bool AuditEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, 
 
     _builder->SetEventFlags(EVENT_FLAG_IS_AUOMS_EVENT);
 
-    uint16_t num_fields = 13;
-    if (pinfo->is_cmdline_truncated()) {
-        num_fields++;
-    }
+    uint16_t num_fields = 15;
 
     ret = _builder->BeginRecord(PROCESS_INVENTORY_RECORD_TYPE, PROCESS_INVENTORY_RECORD_NAME, "", num_fields);
     if (ret != 1) {
@@ -634,35 +676,35 @@ bool AuditEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, 
         return false;
     }
 
-    if (!add_int_field("uid", pinfo->uid(), FIELD_TYPE_UID)) {
+    if (!add_uid_field("uid", pinfo->uid(), FIELD_TYPE_UID)) {
         return false;
     }
 
-    if (!add_int_field("euid", pinfo->euid(), FIELD_TYPE_UID)) {
+    if (!add_uid_field("euid", pinfo->euid(), FIELD_TYPE_UID)) {
         return false;
     }
 
-    if (!add_int_field("suid", pinfo->suid(), FIELD_TYPE_UID)) {
+    if (!add_uid_field("suid", pinfo->suid(), FIELD_TYPE_UID)) {
         return false;
     }
 
-    if (!add_int_field("fsuid", pinfo->fsuid(), FIELD_TYPE_UID)) {
+    if (!add_uid_field("fsuid", pinfo->fsuid(), FIELD_TYPE_UID)) {
         return false;
     }
 
-    if (!add_int_field("gid", pinfo->gid(), FIELD_TYPE_GID)) {
+    if (!add_gid_field("gid", pinfo->gid(), FIELD_TYPE_GID)) {
         return false;
     }
 
-    if (!add_int_field("egid", pinfo->egid(), FIELD_TYPE_GID)) {
+    if (!add_gid_field("egid", pinfo->egid(), FIELD_TYPE_GID)) {
         return false;
     }
 
-    if (!add_int_field("sgid", pinfo->sgid(), FIELD_TYPE_GID)) {
+    if (!add_gid_field("sgid", pinfo->sgid(), FIELD_TYPE_GID)) {
         return false;
     }
 
-    if (!add_int_field("fsgid", pinfo->fsgid(), FIELD_TYPE_GID)) {
+    if (!add_gid_field("fsgid", pinfo->fsgid(), FIELD_TYPE_GID)) {
         return false;
     }
 
@@ -676,14 +718,18 @@ bool AuditEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, 
 
     pinfo->format_cmdline(_cmdline);
 
+    bool cmdline_truncated = false;
+    if (_cmdline.size() > UINT16_MAX-1) {
+        _cmdline.resize(UINT16_MAX-1);
+        cmdline_truncated = true;
+    }
+
     if (!add_str_field("cmdline", _cmdline.c_str(), FIELD_TYPE_UNCLASSIFIED)) {
         return false;
     }
 
-    if (pinfo->is_cmdline_truncated()) {
-        if (!add_str_field("cmdline_truncated", "true", FIELD_TYPE_UNCLASSIFIED)) {
-            return false;
-        }
+    if (!add_str_field("cmdline_truncated", cmdline_truncated ? "true" : "false", FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
     }
 
     ret = _builder->EndRecord();

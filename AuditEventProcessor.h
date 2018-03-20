@@ -53,6 +53,8 @@ private:
     bool process_field(const char *name_ptr);
     bool process_field();
     bool add_int_field(const char* name, int val, event_field_type_t ft);
+    bool add_uid_field(const char* name, int uid, event_field_type_t ft);
+    bool add_gid_field(const char* name, int gid, event_field_type_t ft);
     bool add_str_field(const char* name, const char *, event_field_type_t ft);
     bool generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t nsec);
 

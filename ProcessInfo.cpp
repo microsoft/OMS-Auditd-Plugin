@@ -30,14 +30,19 @@ extern "C" {
 #include <dirent.h>
 }
 
+// code meanings:
+//      'Z' - NULL end of string
+//      '-' - Character needs to be quoted
+//      '*' - Character doesn't need escaping or quoting.
+//      other - Character must be escaped
 const char* escape_codes =
-    "Z------abtnvfr--"  // 0x00 - 0x0F
-    "-----------e----"  // 0x10 - 0x1F
-    " *+*************"  // 0x20 - 0x2F
+    "Z---------------"  // 0x00 - 0x0F
+    "----------------"  // 0x10 - 0x1F
+    "-*\"*$***********"  // 0x20 - 0x2F
     "****************"  // 0x30 - 0x3F
     "****************"  // 0x40 - 0x4F
     "************\\***" // 0x50 - 0x5F
-    "****************"  // 0x60 - 0x6F
+    "`***************"  // 0x60 - 0x6F
     "***************-"  // 0x70 - 0x7F
     "----------------"  // 0x80 - 0x8F
     "----------------"  // 0x90 - 0x9F
@@ -51,28 +56,19 @@ const char* escape_codes =
 const char* hex_codes = "0123456789ABCDEF";
 
 size_t escape_string(const uint8_t* start, const uint8_t* end, std::string& str) {
-    bool has_space = false;
-    int dquote_count = 0;
+    bool quote_needed = false;
     size_t size = 0;
     size_t size_needed = 0;
     for(const uint8_t *ptr = start; ptr < end; ++ptr) {
         switch (*ptr) {
-            case ' ':
-                size_needed += 1;
-                has_space = true;
-                break;
-            case '"':
-                size_needed += 1;
-                dquote_count++;
-                break;
             default:
                 switch (escape_codes[*ptr]) {
                     case 'Z':
-                        size = ptr-start;
                         ptr = end;
                         break;
                     case '-':
-                        size_needed += 4;
+                        quote_needed = true;
+                        size_needed += 1;
                         break;
                     case '*':
                         size_needed += 1;
@@ -84,37 +80,24 @@ size_t escape_string(const uint8_t* start, const uint8_t* end, std::string& str)
         }
     }
 
-    if (has_space) {
-        size_needed += 2 + dquote_count;
+    if (quote_needed) {
+        size_needed += 2;
     }
 
     if (str.capacity() - str.size() < size_needed) {
         str.reserve(str.size() + size_needed);
     }
 
-    if (has_space) {
+    if (quote_needed) {
         str.push_back('"');
     }
 
-    for(const uint8_t *ptr = start; ptr < end; ++ptr) {
+    for(const uint8_t *ptr = start; ptr < end; ++ptr, ++size) {
         switch (escape_codes[*ptr]) {
             case 'Z':
                 ptr = end;
                 break;
             case '-':
-                str.push_back('\\');
-                str.push_back('x');
-                str.push_back(hex_codes[(*ptr)>>8]);
-                str.push_back(hex_codes[(*ptr)&0xF]);
-                break;
-            case '+':
-                if (has_space) {
-                    str.push_back('\\');
-                    str.push_back(*ptr);
-                } else {
-                    str.push_back(*ptr);
-                }
-                break;
             case '*':
                 str.push_back(*ptr);
                 break;
@@ -125,7 +108,7 @@ size_t escape_string(const uint8_t* start, const uint8_t* end, std::string& str)
         }
     }
 
-    if (has_space) {
+    if (quote_needed) {
         str.push_back('"');
     }
 
@@ -138,31 +121,31 @@ size_t append_escaped_string(const char* ptr, size_t len, std::string& str) {
     return escape_string(start, end, str);
 }
 
-bool read_file(const std::string& path, std::vector<uint8_t>& data, size_t limit, size_t& actual_size) {
-    int fd = ::open(path.c_str(), O_DIRECT|O_NOATIME);
+bool read_file(const std::string& path, std::vector<uint8_t>& data, size_t limit, bool& truncated) {
+    int fd = ::open(path.c_str(), O_RDONLY);
     if (fd < 0) {
-        return false;
-    }
-    struct stat st;
-    if (fstat(fd, &st) != 0) {
         int err_save = errno;
-        close(fd);
+        Logger::Warn("Open of '%s' failed: %s\n", path.c_str(), strerror(errno));
         errno = err_save;
         return false;
     }
-    actual_size = static_cast<size_t>(st.st_size);
-    size_t size = actual_size;
-    if (actual_size > limit) {
-        size = limit;
-    };
-    data.resize(size);
+    data.resize(limit+1);
     if (data.size() > 0) {
         ssize_t nr = read(fd, data.data(), data.size());
-        if (nr != data.size()) {
+        if (nr <= 0) {
             int err_save = errno;
+            Logger::Warn("read of '%s' failed: %s\n", path.c_str(), strerror(errno));
             close(fd);
             errno = err_save;
             return false;
+        } else {
+            if (nr > limit) {
+                data.resize(limit);
+                truncated = true;
+            } else {
+                data.resize(nr);
+                truncated = false;
+            }
         }
     }
     close(fd);
@@ -172,7 +155,7 @@ bool read_file(const std::string& path, std::vector<uint8_t>& data, size_t limit
 bool read_link(const std::string& path, std::string& data) {
     char buff[PATH_MAX];
     ssize_t len = ::readlink(path.c_str(), buff, sizeof(buff)-1);
-    if (len != -1) {
+    if (len < 0) {
         return false;
     }
     data.assign(buff, len);
@@ -180,6 +163,10 @@ bool read_link(const std::string& path, std::string& data) {
 }
 
 bool ProcessInfo::parse_stat() {
+    if (_stat.empty()) {
+        return false;
+    }
+
     char *ptr = reinterpret_cast<char*>(_stat.data());
     char *end = reinterpret_cast<char*>(ptr+_stat.size());
 
@@ -199,18 +186,19 @@ bool ProcessInfo::parse_stat() {
     }
 
     // comm
-    f_end = strchr(ptr, ' ');
+    if (*ptr != '(') {
+        return false;
+    }
+    f_end = strchr(ptr, ')');
     if (f_end == nullptr || f_end >= end) {
         return false;
     }
-
-    // comm value is wrapped with "()" in stat file
-    if (*ptr != '(' || *(f_end-1) != ')') {
-        return false;
-    }
-    _comm.assign(ptr+1, f_end-ptr-2);
+    _comm.assign(ptr+1, f_end-ptr-1);
 
     ptr = f_end+1;
+    if (ptr < end && *ptr == ' ') {
+        ptr = ptr+1;
+    }
 
     if (ptr >= end) {
         return false;
@@ -266,6 +254,10 @@ bool ProcessInfo::parse_stat() {
 }
 
 bool ProcessInfo::parse_status() {
+    if (_status.empty()) {
+        return false;
+    }
+
     char *ptr = reinterpret_cast<char*>(_status.data());
     char *end = reinterpret_cast<char*>(ptr+_status.size());
 
@@ -291,7 +283,7 @@ bool ProcessInfo::parse_status() {
 
     ptr = uid_line;
     ptr += 4; // Skip "Uid:"
-    ptr = strchr(ptr, ' ');
+    ptr = strchr(ptr, '\t');
     if (ptr == nullptr) {
         return false;
     }
@@ -303,14 +295,14 @@ bool ProcessInfo::parse_status() {
         if (errno != 0) {
             return false;
         }
-        while(*ptr == ' ') {
+        while(*ptr == '\t') {
             ++ptr;
         }
     }
 
     ptr = gid_line;
     ptr += 4; // Skip "Gid:"
-    ptr = strchr(ptr, ' ');
+    ptr = strchr(ptr, '\t');
     if (ptr == nullptr) {
         return false;
     }
@@ -322,7 +314,7 @@ bool ProcessInfo::parse_status() {
         if (errno != 0) {
             return false;
         }
-        while(*ptr == ' ') {
+        while(*ptr == '\t') {
             ++ptr;
         }
     }
@@ -342,14 +334,14 @@ bool ProcessInfo::parse_status() {
 
 bool ProcessInfo::read(int pid) {
     const std::string path = "/proc/" + std::to_string(pid);
-    size_t actual_size;
+    bool truncated;
 
-    if (!read_file(path+"/stat", _stat, 2048, actual_size)) {
+    if (!read_file(path+"/stat", _stat, 2048, truncated)) {
         Logger::Warn("Failed to read /proc/%d/stat: %s", pid, strerror(errno));
         return false;
     }
 
-    if (!read_file(path+"/status", _status, 8192, actual_size)) {
+    if (!read_file(path+"/status", _status, 8192, truncated)) {
         Logger::Warn("Failed to read /proc/%d/status: %s", pid, strerror(errno));
         return false;
     }
@@ -359,21 +351,21 @@ bool ProcessInfo::read(int pid) {
         return false;
     }
 
-    // The 16K limit is only slightly arbitrary.
-    if (!read_file(path+"/cmdline", _cmdline, 16*1024, actual_size)) {
+    // The Event field value size limit is UINT16_MAX (including NULL terminator)
+    if (!read_file(path+"/cmdline", _cmdline, UINT16_MAX-1, truncated)) {
         Logger::Warn("Failed to read /proc/%d/cmdline: %s", pid, strerror(errno));
         return false;
     }
 
-    _cmdline_truncated = (actual_size > _cmdline.size());
+    _cmdline_truncated = truncated;
 
     if (!parse_stat()) {
-        Logger::Warn("Failed to parse /proc/%d/stat: %s", pid);
+        Logger::Warn("Failed to parse /proc/%d/stat", pid);
         return false;
     }
 
     if (!parse_status()) {
-        Logger::Warn("Failed to parse /proc/%d/status: %s", pid);
+        Logger::Warn("Failed to parse /proc/%d/status", pid);
         return false;
     }
 
@@ -387,6 +379,9 @@ void ProcessInfo::format_cmdline(std::string& str) {
     str.clear();
 
     while(ptr < end) {
+        if (!str.empty()) {
+            str.push_back(' ');
+        }
         size_t size = escape_string(ptr, end, str);
         ptr += size+1;
     }
@@ -463,13 +458,13 @@ bool ProcessInfo::next() {
     if (_dp == nullptr) {
         return false;
     }
-    clear();
 
     struct dirent *dirp;
 
     while ((dirp = readdir(reinterpret_cast<DIR*>(_dp))) != nullptr) {
         if (dirp->d_name[0] >= '0' && dirp->d_name[0] <= '9') {
             int pid = std::stoi(std::string(dirp->d_name));
+            clear();
             if (read(pid)) {
                 return true;
             }
