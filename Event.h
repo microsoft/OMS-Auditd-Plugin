@@ -81,6 +81,7 @@ public:
 
     int BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint16_t num_records);
     void SetEventFlags(uint32_t flags);
+    uint32_t GetEventFlags();
     void SetEventPid(int32_t pid);
     int32_t GetEventPid();
     int EndEvent();

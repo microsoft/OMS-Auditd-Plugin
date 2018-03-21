@@ -26,18 +26,34 @@
 #include <queue>
 #include "Config.h"
 #include "UserDB.h"
+#include "ProcessInfo.h"
 
-struct ProcessInfo {
+struct ProcInfo {
     int pid;
     int ppid;
     int uid;
     std::string exe;
+    std::string arg1;
 
-    ProcessInfo(const std::string& _exe, int processId, int parentProcessId, int _uid);
-    static const ProcessInfo Empty;  
+    ProcInfo(ProcessInfo* proc);
+    static const ProcInfo Empty;
 
-    inline bool operator==(const ProcessInfo& x) const;
-    inline bool operator!=(const ProcessInfo& x) const;
+    inline bool operator==(const ProcInfo& x) const;
+    inline bool operator!=(const ProcInfo& x) const;
+};
+
+struct ProcFilterSpec {
+    ProcFilterSpec(const std::string& exe, const std::string& arg1, uint32_t flags, const std::string& user) {
+        _exe = exe;
+        _arg1 = arg1;
+        _flags = flags;
+        _user = user;
+    }
+
+    std::string _exe;
+    std::string _arg1;
+    uint32_t _flags;
+    std::string _user;
 };
 
 class ProcFilter {
@@ -45,29 +61,27 @@ public:
     
     ~ProcFilter() = default;
     ProcFilter(const std::shared_ptr<UserDB>& user_db);
-    void Load();
-    bool ShouldFilter(int pid, int ppid);
+    bool IsFilterEnabled();
+    void UpdateProcesses(std::vector<ProcInfo>& procs);
+    uint32_t GetFilterFlags(int pid, int ppid);
     void AddProcess(int pid, int ppid);
 
     bool ParseConfig(const Config& config);
 
 private:
-    std::unordered_set<int> _filter_pids;
-    std::unordered_set<int> _previous_filter_pids;
-    std::unordered_multimap<std::string, std::string> _filters;
+    std::unordered_map<int, uint32_t> _filter_pids;
+    std::unordered_map<int, uint32_t> _previous_filter_pids;
+    std::vector<ProcFilterSpec> _filters;
     std::shared_ptr<UserDB> _user_db;
     struct timeval _last_time_initiated;
 
-    std::list<ProcessInfo>* get_all_processes();
-    void compile_filter_pids(std::list<ProcessInfo>* allProcs);
-    bool test_and_recompile();
+    void compile_filter_pids(std::vector<ProcInfo>& allProcs);
 
     // helper methods
     static int is_dir(std::string path);
     static bool is_number(const std::string& s);
     static std::string do_readlink(std::string const& path);
-    static ProcessInfo read_proc_data(const std::string& pid_str);
-    bool is_root_filter_proc(const ProcessInfo& proc);
+    uint32_t is_root_filter_proc(const ProcInfo& proc);
 };
 
 #endif //AUOMS_PROC_FILTER_H

@@ -275,6 +275,14 @@ void EventBuilder::SetEventFlags(uint32_t flags) {
     EVENT_FLAGS(_data) = flags;
 }
 
+uint32_t EventBuilder::GetEventFlags() {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    return EVENT_FLAGS(_data);
+}
+
 void EventBuilder::SetEventPid(int32_t pid) {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");

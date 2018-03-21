@@ -169,6 +169,10 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
 {
     std::ostringstream timestamp_str;
 
+    if ((event.Flags() & _config.FilterFlagsMask) != 0) {
+        return IWriter::OK;
+    }
+
     double time = static_cast<double>(event.Seconds());
     time += static_cast<double>(event.Milliseconds())/1000;
     reset();
@@ -176,7 +180,7 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
     add_double(time);
     begin_object(); // Event
 
-    if (event.Flags() && EVENT_FLAG_IS_AUOMS_EVENT) {
+    if ((event.Flags() & EVENT_FLAG_IS_AUOMS_EVENT) != 0) {
         add_string_field(_config.MsgTypeFieldName, "AUOMS_EVENT");
     } else {
         add_string_field(_config.MsgTypeFieldName, "AUDIT_EVENT");
@@ -188,6 +192,7 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
 
     add_string_field(_config.TimestampFieldName, timestamp_str.str());
     add_int64_field(_config.SerialFieldName, event.Serial());
+    add_int64_field(_config.ProcessFlagsFieldName, event.Flags()>>16);
     add_string(_config.RecordsFieldName);
 
     int records = 0;

@@ -71,6 +71,12 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
+        {"process_flags_field_name", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                et_config.ProcessFlagsFieldName = config.GetString(name);
+            }
+            return true;
+        }},
         {"field_suffix", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.FieldSuffix = config.GetString(name);
@@ -156,7 +162,17 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
                 }
             }
             return true;
-        } },
+        }},
+        {"filter_flags_mask", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                auto mask = config.GetUint64(name);
+                if (mask > 0xFFFF) {
+                    return false;
+                }
+                et_config.FilterFlagsMask = static_cast<uint32_t>(mask);
+            }
+            return true;
+        }},
 };
 
 bool OMSEventWriterConfig::LoadFromConfig(const Config& config)
