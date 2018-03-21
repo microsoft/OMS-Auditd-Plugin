@@ -42,6 +42,8 @@ set(SOURCE_FILES
         RunBase.cpp
         Outputs.cpp
         Output.cpp
+        ProcessInfo.cpp
+        ProcFilter.cpp
 )
 
 add_executable(auoms ${SOURCE_FILES})

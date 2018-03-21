@@ -71,6 +71,12 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
+        {"process_flags_field_name", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                et_config.ProcessFlagsFieldName = config.GetString(name);
+            }
+            return true;
+        }},
         {"field_suffix", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.FieldSuffix = config.GetString(name);
@@ -130,6 +136,40 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
                             std::string(it->value.GetString(), it->value.GetStringLength())
                     ));
                 }
+            }
+            return true;
+        }},
+        { "filter_record_types", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool {
+            if (config.HasKey(name)) {
+                auto doc = config.GetJSON(name);
+                if (!doc.IsArray()) {
+                    return false;
+                }
+                for (auto it = doc.Begin(); it != doc.End(); ++it) {
+                    et_config.FilterRecordTypeSet.emplace(std::string(it->GetString(), it->GetStringLength()));
+                }
+            }
+            return true;
+        }},
+        { "filter_field_names", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool {
+            if (config.HasKey(name)) {
+                auto doc = config.GetJSON(name);
+                if (!doc.IsArray()) {
+                    return false;
+                }
+                for (auto it = doc.Begin(); it != doc.End(); ++it) {
+                    et_config.FilterFieldNameSet.emplace(std::string(it->GetString(), it->GetStringLength()));
+                }
+            }
+            return true;
+        }},
+        {"filter_flags_mask", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                auto mask = config.GetUint64(name);
+                if (mask > 0xFFFF) {
+                    return false;
+                }
+                et_config.FilterFlagsMask = static_cast<uint32_t>(mask);
             }
             return true;
         }},

@@ -125,14 +125,18 @@ void OMSEventWriter::end_object() {
 
 void OMSEventWriter::add_int32_field(const std::string& name, int32_t value)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.Int(value);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.Int(value);
+    }
 }
 
 void OMSEventWriter::add_int64_field(const std::string& name, int64_t value)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.Int64(value);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.Int64(value);
+    }
 }
 
 void OMSEventWriter::add_double(double value)
@@ -147,19 +151,27 @@ void OMSEventWriter::add_string(const std::string& value)
 
 void OMSEventWriter::add_string_field(const std::string& name, const std::string& value)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.String(value.c_str(), value.size(), true);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.String(value.c_str(), value.size(), true);
+    }
 }
 
 void OMSEventWriter::add_string_field(const std::string& name, const char* value_data, size_t value_size)
 {
-    _writer.Key(name.c_str(), name.size(), true);
-    _writer.String(value_data, value_size, true);
+    if (!_config.FilterFieldNameSet.count(name)) {
+        _writer.Key(name.c_str(), name.size(), true);
+        _writer.String(value_data, value_size, true);
+    }
 }
 
 ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
 {
     std::ostringstream timestamp_str;
+
+    if ((event.Flags() & _config.FilterFlagsMask) != 0) {
+        return IWriter::OK;
+    }
 
     double time = static_cast<double>(event.Seconds());
     time += static_cast<double>(event.Milliseconds())/1000;
@@ -168,7 +180,7 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
     add_double(time);
     begin_object(); // Event
 
-    if (event.Flags() && EVENT_FLAG_IS_AUOMS_EVENT) {
+    if ((event.Flags() & EVENT_FLAG_IS_AUOMS_EVENT) != 0) {
         add_string_field(_config.MsgTypeFieldName, "AUOMS_EVENT");
     } else {
         add_string_field(_config.MsgTypeFieldName, "AUDIT_EVENT");
@@ -180,7 +192,10 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
 
     add_string_field(_config.TimestampFieldName, timestamp_str.str());
     add_int64_field(_config.SerialFieldName, event.Serial());
+    add_int64_field(_config.ProcessFlagsFieldName, event.Flags()>>16);
     add_string(_config.RecordsFieldName);
+
+    int records = 0;
 
     try {
         begin_array(); // Records
@@ -195,7 +210,10 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
                 }
             }
 
-            process_record(rec, record_type, record_type_name);
+            if (!_config.FilterRecordTypeSet.count(record_type_name)) {
+                process_record(rec, record_type, record_type_name);
+                records++;
+            }
         }
         end_array(); // Records
     } catch (const std::exception& ex) {
@@ -206,6 +224,9 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
     end_object(); // Event
     end_array(); // Message
 
+    if (records == 0) {
+        return IWriter::OK;
+    }
     return write_event(writer);
 }
 
@@ -272,12 +293,13 @@ void OMSEventWriter::process_field(const EventRecordField& field)
                 case FIELD_TYPE_SESSION:
                     // Since the interpreted value for SES is also (normally) an int
                     // Replace "unset" and "4294967295" with "-1"
-                    if (std::strncmp("unset", field.InterpValue(), field.InterpValueSize()) == 0 ||
-                            strncmp("4294967295", field.InterpValue(), field.InterpValueSize()) == 0) {
+                    if ((field.InterpValueSize() == 5 && std::strncmp("unset", field.InterpValue(), field.InterpValueSize()) == 0) ||
+                            (field.InterpValueSize() == 10 && strncmp("4294967295", field.InterpValue(), field.InterpValueSize()) == 0)) {
                         add_string_field(_interp_name, "-1");
                     } else {
                         add_string_field(_interp_name, field.InterpValue(), field.InterpValueSize());
                     }
+                    break;
                 default:
                     add_string_field(_interp_name, field.InterpValue(), field.InterpValueSize());
             }

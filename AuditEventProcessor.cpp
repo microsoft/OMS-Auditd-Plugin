@@ -29,6 +29,7 @@
 #include <unordered_map>
 #include <iostream>
 #include <system_error>
+#include <unordered_set>
 
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
@@ -36,10 +37,35 @@
 
 // This include file can only be included in ONE translation unit
 #include <auparse.h>
+#include <asm/types.h> // Required by <linux/audit.h>
+#include <linux/audit.h>
 
 extern "C" {
 #include <dlfcn.h>
 }
+
+
+
+/*****************************************************************************
+* New record types are in 10000 range to avoid collision with existing codes.
+*
+* 14688 was chosen for aggregate process creation records, given similarity
+* to windows 4688 events.
+*
+* 11309 was chosen for fragmented EXECVE records, following use of 1309 for
+* native AUDIT_EXECVE.
+*
+******************************************************************************/
+
+#define PROCESS_CREATE_RECORD_TYPE 14688
+#define FRAGMENT_RECORD_TYPE 11309
+#define PROCESS_INVENTORY_RECORD_TYPE 10000
+#define PROCESS_CREATE_RECORD_NAME "AUOMS_EXECVE"
+#define FRAGMENT_RECORD_NAME "AUOMS_EXECVE_FRAGMENT"
+#define PROCESS_INVENTORY_RECORD_NAME "AUOMS_PROCESS_INVENTORY"
+
+#define PROCESS_INVENTORY_FETCH_INTERVAL 300
+#define PROCESS_INVENTORY_EVENT_INTERVAL 3600
 
 /*****************************************************************************
  * Dynamicly load needed libaudit symbols
@@ -122,13 +148,225 @@ void AuditEventProcessor::static_callback(void *au, dummy_enum_t cb_event_type, 
     processor->callback(au);
 }
 
+bool AuditEventProcessor::process_execve()
+{
+    int record_type;
+    const char *record_name;
+
+    if (auparse_first_record(_state) != 1) {
+        return false;
+    }
+
+    if (auparse_get_type(_state) == AUDIT_EXECVE) {
+        record_type = FRAGMENT_RECORD_TYPE;
+        record_name = FRAGMENT_RECORD_NAME;
+    } else if (auparse_get_type(_state) == AUDIT_SYSCALL && _num_records > 2) {
+        auparse_find_field(_state, "syscall");
+        const char *syscall = auparse_interpret_field(_state);
+        auparse_first_field(_state);
+
+        if (syscall == nullptr || strncmp(syscall, "execve", 6) != 0) {
+            return false;
+        }
+
+        record_type = PROCESS_CREATE_RECORD_TYPE;
+        record_name = PROCESS_CREATE_RECORD_NAME;
+    } else {
+        return false;
+    }
+
+    int field_count = 0;
+
+    do {
+        switch (auparse_get_type(_state)) {
+            case AUDIT_EXECVE:
+                field_count++;
+                break;
+            case AUDIT_SYSCALL:
+                // remove type, items, a0, a1, a2 and a3 
+                field_count += auparse_get_num_fields(_state) - 6;
+                break;
+            case AUDIT_CWD:
+                field_count++;
+                break;
+            case AUDIT_PATH: {
+                const char* item = auparse_find_field(_state, "item");
+                if (item == nullptr || strcmp(item, "0") != 0) {
+                    continue;
+                }
+                // remove type and item
+                field_count += auparse_get_num_fields(_state) - 2;
+                break;
+            }
+            default:
+                break;
+        }
+    } while (auparse_next_record(_state) == 1);
+
+    if (auparse_first_record(_state) != 1) {
+        return false;
+    }
+
+    auto ret = _builder->BeginEvent(_current_event_sec, _current_event_msec, _current_event_serial, 1);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        return false;
+    }
+
+    _builder->SetEventFlags(EVENT_FLAG_IS_AUOMS_EVENT);
+
+    ret = _builder->BeginRecord(record_type, record_name, "", field_count);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+
+    bool syscall_success = false;
+
+    do {
+        int record_type = auparse_get_type(_state);
+
+        switch (record_type) {
+            case AUDIT_SYSCALL: {
+                do {
+                    const char* field = auparse_get_field_name(_state);
+                    int number;
+                    if (field != nullptr && strcmp(field, "type") != 0 && strcmp(field, "items") != 0 && sscanf(field, "a%d", &number) == 0) {
+                        if (strcmp(field, "success") == 0) {
+                            const char* val_ptr = auparse_get_field_str(_state);
+                            if (val_ptr != nullptr && val_ptr[0] == 'y') {
+                                syscall_success = true;
+                            }
+                        }
+                        if (!process_field(field)) {
+                            cancel_event();
+                            return false;
+                        }
+                    }
+                } while (auparse_next_field(_state) == 1);
+                break;
+            }
+            case AUDIT_EXECVE: {
+                _cmdline.clear();
+
+                do {
+                    int number;
+                    const char* field = auparse_get_field_name(_state);
+
+                    if (field == nullptr || sscanf(field, "a%d", &number) < 1) {
+                        continue;
+                    }
+
+                    field = auparse_interpret_field(_state);
+                    if (field == nullptr) {
+                        continue;
+                    }
+
+                    if (!_cmdline.empty()) {
+                        _cmdline.push_back(' ');
+                    }
+
+                    append_escaped_string(field, strlen(field), _cmdline);
+                } while (auparse_next_field(_state) == 1);
+
+                bool cmdline_truncated = false;
+                if (_cmdline.size() > UINT16_MAX-1) {
+                    _cmdline.resize(UINT16_MAX-1);
+                    cmdline_truncated = true;
+                }
+                ret = _builder->AddField("cmdline", _cmdline.c_str(), NULL, FIELD_TYPE_UNCLASSIFIED);
+                if (ret != 1) {
+                    if (ret == Queue::CLOSED) {
+                        throw std::runtime_error("Queue closed");
+                    }
+                    cancel_event();
+                    return false;
+                }
+                if (cmdline_truncated) {
+                    ret = _builder->AddField("cmdline_truncated", "true", NULL, FIELD_TYPE_UNCLASSIFIED);
+                    if (ret != 1) {
+                        if (ret == Queue::CLOSED) {
+                            throw std::runtime_error("Queue closed");
+                        }
+                        cancel_event();
+                        return false;
+                    }
+                }
+                break;
+            }
+            case AUDIT_CWD: {
+                const char* cwd = auparse_find_field(_state, "cwd");
+                if (cwd == nullptr || !process_field("cwd")) {
+                    continue;
+                };
+                break;
+            }
+            case AUDIT_PATH: {
+                const char* item = auparse_find_field(_state, "item");
+                if (item == nullptr || strcmp(item, "0") != 0) {
+                    continue;
+                }
+
+                auparse_first_field(_state);
+                do {
+                    const char* field = auparse_get_field_name(_state);
+                    if (field != nullptr && strcmp(field, "type") != 0 && strcmp(field, "item") != 0 && !process_field(field)) {
+                        cancel_event();
+                        return false;
+                    }
+                } while (auparse_next_field(_state) == 1);
+                break;
+            }
+            case 0:
+                Logger::Warn("auparse_get_type() failed!");
+                break;
+            default:
+                break;
+        }
+    } while (auparse_next_record(_state) == 1);
+
+    if (_builder->GetFieldCount() != field_count) {
+        cancel_event();
+        return false;
+    }
+
+    if (_pid != 0 && _ppid != 0) {
+        if (syscall_success) {
+            _procFilter->AddProcess(_pid, _ppid);
+        }
+
+        auto filter_flags = _procFilter->GetFilterFlags(_pid, _ppid);
+        if (filter_flags != 0) {
+            _builder->SetEventFlags(_builder->GetEventFlags() | filter_flags);
+        }
+    }
+
+    ret = _builder->EndRecord();
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+
+    end_event();
+    return true;
+}
+
 void AuditEventProcessor::callback(void *ptr)
 {
     assert(_state_ptr == ptr);
     assert(audit_msg_type_to_name != nullptr);
 
     // Process the event
-    _pid_found = false;
+    _pid = 0;
+    _ppid = 0;
     _event_flags = 0;
     const au_event_t *e = auparse_get_timestamp(_state);
     _current_event_sec = static_cast<uint64_t>(e->sec);
@@ -138,7 +376,10 @@ void AuditEventProcessor::callback(void *ptr)
     _num_records = auparse_get_num_records(_state);
     if (_num_records == 0) {
         Logger::Warn("auparse_get_num_records() returned 0!");
-        cancel_event();
+        return;
+    }
+
+    if (process_execve()) {
         return;
     }
 
@@ -188,12 +429,26 @@ void AuditEventProcessor::callback(void *ptr)
             return;
         }
 
+        if (auparse_first_field(_state) != 1) {
+            Logger::Warn("auparse_first_field() failed!");
+            return;
+        }
+
         do {
             if (!process_field()) {
                 cancel_event();
                 return;
             }
         } while (auparse_next_field(_state) == 1);
+
+        if (_pid != 0 && _ppid != 0) {
+            _procFilter->AddProcess(_pid, _ppid);
+
+            auto filter_flags = _procFilter->GetFilterFlags(_pid, _ppid);
+            if (filter_flags != 0) {
+                _builder->SetEventFlags(_builder->GetEventFlags() | filter_flags);
+            }
+        }
 
         ret = _builder->EndRecord();
         if (ret != 1) {
@@ -249,14 +504,12 @@ void AuditEventProcessor::cancel_event()
 inline bool NAME_EQUAL_PID(const char *name) {
     return *reinterpret_cast<const uint32_t*>(name) == 0x00646970;
 }
+inline bool NAME_EQUAL_PPID(const char *name) {
+    return *reinterpret_cast<const uint32_t*>(name) == 0x64697070 && name[4] == '\0';
+}
 
-bool AuditEventProcessor::process_field()
+bool AuditEventProcessor::process_field(const char *name_ptr)
 {
-    const char* name_ptr = auparse_get_field_name(_state);
-    if (name_ptr == nullptr) {
-        return false;
-    }
-
     const char* val_ptr = auparse_get_field_str(_state);
     if (val_ptr == nullptr) {
         return false;
@@ -271,11 +524,13 @@ bool AuditEventProcessor::process_field()
         case FIELD_TYPE_UNCLASSIFIED: {
             interp_ptr = auparse_interpret_field(_state);
 
-            if (!_pid_found && NAME_EQUAL_PID(name_ptr)) {
-                int64_t pid = atoll(val_ptr);
-                if (pid != 0) {
-                    _builder->SetEventPid(pid);
+            if (_pid == 0 && NAME_EQUAL_PID(name_ptr)) {
+                _pid = atoi(val_ptr);
+                if (_pid != 0) {
+                    _builder->SetEventPid(_pid);
                 }
+            } else if (_ppid == 0 && NAME_EQUAL_PPID(name_ptr)) {
+                _ppid = atoi(val_ptr);
             }
 
             if (strcmp(val_ptr, interp_ptr) == 0) {
@@ -329,4 +584,218 @@ bool AuditEventProcessor::process_field()
         return false;
     }
     return true;
+}
+
+bool AuditEventProcessor::process_field()
+{
+    const char* name_ptr = auparse_get_field_name(_state);
+    if (name_ptr == nullptr) {
+        return false;
+    }
+    return process_field(name_ptr);
+}
+
+bool AuditEventProcessor::add_int_field(const char* name, int val, event_field_type_t ft) {
+    _tmp_val.assign(std::to_string(val));
+    return add_str_field(name, _tmp_val.c_str(), ft);
+}
+
+bool AuditEventProcessor::add_str_field(const char* name, const char* val, event_field_type_t ft) {
+    int ret = _builder->AddField(name, val, nullptr, ft);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+    return true;
+}
+
+bool AuditEventProcessor::add_uid_field(const char* name, int uid, event_field_type_t ft) {
+    _tmp_val.assign(std::to_string(uid));
+    std::string user = _user_db->GetUserName(uid);
+    int ret = _builder->AddField(name, _tmp_val.c_str(), user.c_str(), ft);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+    return true;
+    return add_str_field(name, _tmp_val.c_str(), ft);
+}
+
+bool AuditEventProcessor::add_gid_field(const char* name, int gid, event_field_type_t ft) {
+    _tmp_val.assign(std::to_string(gid));
+    std::string user = _user_db->GetGroupName(gid);
+    int ret = _builder->AddField(name, _tmp_val.c_str(), user.c_str(), ft);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+    return true;
+    return add_str_field(name, _tmp_val.c_str(), ft);
+}
+
+bool AuditEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t nsec) {
+    auto ret = _builder->BeginEvent(sec, nsec, 0, 1);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        return false;
+    }
+
+    _builder->SetEventFlags(EVENT_FLAG_IS_AUOMS_EVENT);
+
+    uint16_t num_fields = 15;
+
+    ret = _builder->BeginRecord(PROCESS_INVENTORY_RECORD_TYPE, PROCESS_INVENTORY_RECORD_NAME, "", num_fields);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+
+    if (!add_int_field("pid", pinfo->pid(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_int_field("ppid", pinfo->ppid(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_int_field("ses", pinfo->ses(), FIELD_TYPE_SESSION)) {
+        return false;
+    }
+
+    if (!add_uid_field("uid", pinfo->uid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_uid_field("euid", pinfo->euid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_uid_field("suid", pinfo->suid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_uid_field("fsuid", pinfo->fsuid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_gid_field("gid", pinfo->gid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_gid_field("egid", pinfo->egid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_gid_field("sgid", pinfo->sgid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_gid_field("fsgid", pinfo->fsgid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_str_field("comm", pinfo->comm().c_str(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_str_field("exe", pinfo->exe().c_str(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    pinfo->format_cmdline(_cmdline);
+
+    bool cmdline_truncated = false;
+    if (_cmdline.size() > UINT16_MAX-1) {
+        _cmdline.resize(UINT16_MAX-1);
+        cmdline_truncated = true;
+    }
+
+    if (!add_str_field("cmdline", _cmdline.c_str(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_str_field("cmdline_truncated", cmdline_truncated ? "true" : "false", FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    ret = _builder->EndRecord();
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+
+    ret = _builder->EndEvent();
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        return false;
+    }
+}
+
+void AuditEventProcessor::DoProcessInventory() {
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+
+    uint64_t sec = static_cast<uint64_t>(tv.tv_sec);
+    uint32_t nsec = static_cast<uint32_t>(tv.tv_usec)*1000;
+
+    if (_last_proc_fetch+PROCESS_INVENTORY_FETCH_INTERVAL > sec) {
+        return;
+    }
+
+    bool gen_events = false;
+    if (_last_proc_event_gen+PROCESS_INVENTORY_EVENT_INTERVAL <= sec) {
+        gen_events = true;
+    }
+
+    bool update_filter = _procFilter->IsFilterEnabled();
+
+    if (!update_filter && !gen_events) {
+        return;
+    }
+
+    auto pinfo = ProcessInfo::Open();
+    if (!pinfo) {
+        Logger::Error("Failed to open '/proc': %s", strerror(errno));
+        return;
+    }
+
+    std::vector<ProcInfo> procs;
+    procs.reserve(16*1024);
+
+    while(pinfo->next()) {
+        if (update_filter) {
+            procs.emplace(procs.end(), pinfo.get());
+        }
+        if (gen_events) {
+            generate_proc_event(pinfo.get(), sec, nsec);
+        }
+    }
+
+    if (update_filter) {
+        _procFilter->UpdateProcesses(procs);
+    }
+
+    _last_proc_fetch = sec;
+    if (gen_events) {
+        _last_proc_event_gen = sec;
+    }
 }

@@ -24,8 +24,6 @@ RELEASE_DIR=$(BUILD_DIR)/release
 AUOMS_BIN=$(RELEASE_DIR)/bin/auoms
 SEPOLICY_SRC_DIR=$(BASE_DIR)/installer/selinux
 SEPOLICY_DIR=$(INTERMEDIATE_DIR)/selinux
-SEPOLICY_DIR_EL5=$(INTERMEDIATE_DIR)/selinux.el5
-SEPOLICY_DIR_EL6=$(INTERMEDIATE_DIR)/selinux.el6
 
 # Compiler flags
 
@@ -115,43 +113,19 @@ $(BUILD_DIR) :
 endif
 
 ifeq ($(ULINUX),1)
-$(SEPOLICY_DIR_EL5)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.el5.te $(SEPOLICY_SRC_DIR)/auoms.fc
-	@echo "========================= Building EL5 selinux policy module"
-	$(MKPATH) $(SEPOLICY_DIR_EL5)
-	$(COPY) $(SEPOLICY_SRC_DIR)/auoms.el5.te $(SEPOLICY_DIR_EL5)/auoms.te
-	$(COPY) $(SEPOLICY_SRC_DIR)/auoms.fc $(SEPOLICY_DIR_EL5)
-	cd $(SEPOLICY_DIR_EL5); make -f /usr/share/selinux/devel/Makefile
-
-$(SEPOLICY_DIR_EL6)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.el6.te $(SEPOLICY_SRC_DIR)/auoms.fc
-	@echo "========================= Building EL6 selinux policy module"
-	$(MKPATH) $(SEPOLICY_DIR_EL6)
-	$(COPY) $(SEPOLICY_SRC_DIR)/auoms.el6.te $(SEPOLICY_DIR_EL6)/auoms.te
-	$(COPY) $(SEPOLICY_SRC_DIR)/auoms.fc $(SEPOLICY_DIR_EL6)
-	cd $(SEPOLICY_DIR_EL6); make -f /usr/share/selinux/devel/Makefile
-
 $(SEPOLICY_DIR)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.te $(SEPOLICY_SRC_DIR)/auoms.fc
 	@echo "========================= Building selinux policy module"
 	$(MKPATH) $(SEPOLICY_DIR)
 	$(COPY) $(SEPOLICY_SRC_DIR)/auoms.te $(SEPOLICY_SRC_DIR)/auoms.fc $(SEPOLICY_DIR)
 	cd $(SEPOLICY_DIR); make -f /usr/share/selinux/devel/Makefile
 else
-$(SEPOLICY_DIR_EL5)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.el5.te $(SEPOLICY_SRC_DIR)/auoms.fc
-	@echo "========================= Building EL5 selinux policy module"
-	$(MKPATH) $(SEPOLICY_DIR_EL5)
-	touch $(SEPOLICY_DIR_EL5)/auoms.pp
-
-$(SEPOLICY_DIR_EL6)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.el6.te $(SEPOLICY_SRC_DIR)/auoms.fc
-	@echo "========================= Building EL6 selinux policy module"
-	$(MKPATH) $(SEPOLICY_DIR_EL6)
-	touch $(SEPOLICY_DIR_EL6)/auoms.pp
-
 $(SEPOLICY_DIR)/auoms.pp : $(SEPOLICY_SRC_DIR)/auoms.te $(SEPOLICY_SRC_DIR)/auoms.fc
 	@echo "========================= Building selinux policy module"
 	$(MKPATH) $(SEPOLICY_DIR)
 	touch $(SEPOLICY_DIR)/auoms.pp
 endif
 
-sepolicy : $(SEPOLICY_DIR_EL5)/auoms.pp $(SEPOLICY_DIR_EL6)/auoms.pp $(SEPOLICY_DIR)/auoms.pp
+sepolicy : $(SEPOLICY_DIR)/auoms.pp
 
 ifeq ($(ULINUX),1)
 test : $(AUOMS_BIN)

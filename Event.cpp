@@ -275,12 +275,28 @@ void EventBuilder::SetEventFlags(uint32_t flags) {
     EVENT_FLAGS(_data) = flags;
 }
 
+uint32_t EventBuilder::GetEventFlags() {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    return EVENT_FLAGS(_data);
+}
+
 void EventBuilder::SetEventPid(int32_t pid) {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
 
     EVENT_PID(_data) = pid;
+}
+
+int32_t EventBuilder::GetEventPid() {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    return EVENT_PID(_data);
 }
 
 int EventBuilder::EndEvent() {
@@ -389,7 +405,7 @@ int EventBuilder::AddField(const char *field_name, const char* raw_value, const 
     size_t raw_size = strlen(raw_value)+1;
     size_t fsize = FIELD_HEADER_SIZE + name_size + raw_size;
     size_t interp_size = 0;
-    if (interp_value != nullptr && raw_value != interp_value) {
+    if (interp_value != nullptr && (raw_value == nullptr || strcmp(raw_value, interp_value) != 0)) {
         interp_size = strlen(interp_value)+1;
         fsize += interp_size;
     }
@@ -404,6 +420,10 @@ int EventBuilder::AddField(const char *field_name, const char* raw_value, const 
 
     if (interp_size > UINT16_MAX) {
         throw std::runtime_error("interp_value length exceeds limit");
+    }
+
+    if (_field_idx >= _num_fields) {
+        throw std::runtime_error("field count exceeds allocated number");
     }
 
     size_t size = _size+fsize;
@@ -435,6 +455,10 @@ int EventBuilder::AddField(const char *field_name, const char* raw_value, const 
     _field_idx += 1;
 
     return 1;
+}
+
+int EventBuilder::GetFieldCount() {
+    return _field_idx;
 }
 
 /*****************************************************************************

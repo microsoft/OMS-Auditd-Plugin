@@ -26,6 +26,8 @@
 #include <rapidjson/document.h>
 #include "rapidjson/filereadstream.h"
 #include "rapidjson/error/en.h"
+#include "rapidjson/filewritestream.h"
+#include "rapidjson/writer.h"
 
 extern "C" {
 #include <unistd.h>
@@ -101,8 +103,10 @@ bool write_text_ack(FILE* fp, const EventId& event_id) {
 
 void handle_oms_connection(int fd, bool ack) {
     FILE* fp = fdopen(fd, "r");
-    std::array<char, 4096> buffer;
-    rapidjson::FileReadStream frs(fp, buffer.data(), buffer.size());
+    std::array<char, 4096> in_buffer;
+    std::array<char, 4096> out_buffer;
+    rapidjson::FileReadStream frs(fp, in_buffer.data(), in_buffer.size());
+
 
     for(;;) {
         rapidjson::Document d;
@@ -112,10 +116,15 @@ void handle_oms_connection(int fd, bool ack) {
         }
         EventId event_id;
         get_event_id_from_json(d, event_id);
+        printf("\n======================================================================\n");
         printf("%lld.%ld:%lld\n",
                 static_cast<unsigned long long>(event_id.Seconds()),
                 static_cast<unsigned long>(event_id.Milliseconds()),
                 static_cast<unsigned long long>(event_id.Serial()));
+
+        rapidjson::FileWriteStream fws(stdout, out_buffer.data(), out_buffer.size());
+        rapidjson::Writer<rapidjson::FileWriteStream> w(fws);
+        d.Accept(w);
 
         if (ack) {
             write_text_ack(fp, event_id);
@@ -161,10 +170,18 @@ void handle_raw_connection(int fd, bool ack) {
         }
 
         Event event(data.data(), size);
+        printf("\n======================================================================\n");
         printf("%lld.%ld:%lld\n",
                static_cast<unsigned long long>(event.Seconds()),
                static_cast<unsigned long>(event.Milliseconds()),
                static_cast<unsigned long long>(event.Serial()));
+
+        for (auto rec : event) {
+            printf("    %s\n", rec.RecordTypeName());
+            for (auto f : rec) {
+                printf("\t%s\n\t    RAW: %s\n\t    INTERP: %s\n", f.FieldName(), f.RawValue(), f.InterpValue());
+            }
+        }
 
         if (ack) {
             std::array<uint8_t, 8+8+4> ack_data;
@@ -178,6 +195,22 @@ void handle_raw_connection(int fd, bool ack) {
         }
     }
 
+}
+
+void handle_tst_connection(int fd, bool ack) {
+    char data;
+
+    for(;;) {
+        int nr = read(fd, &data, 1);
+        if (nr == 0) {
+            throw std::runtime_error("Read EOF");
+        }
+        else if (nr != 1) {
+            throw std::runtime_error("Read failed");
+        }
+
+        write(1, &data, 1);
+    }
 }
 
 int main(int argc, char**argv) {
@@ -202,8 +235,12 @@ int main(int argc, char**argv) {
         }
     }
 
-    if (protocol != "oms" && protocol != "raw") {
+    if (protocol != "oms" && protocol != "raw" && protocol != "tst") {
         throw std::runtime_error("Invalid protocol");
+    }
+
+    if (protocol == "tst" && ack_mode) {
+        throw std::runtime_error("Ack mode not allowed when protocol is 'tst'");
     }
 
     if (sock_path.empty()) {
@@ -248,6 +285,8 @@ int main(int argc, char**argv) {
             handle_oms_connection(fd, ack_mode);
         } else if (protocol == "raw") {
             handle_raw_connection(fd, ack_mode);
+        } else if (protocol == "tst") {
+            handle_tst_connection(fd, ack_mode);
         } else {
             throw std::runtime_error("Unexpected protocol value: " + protocol);
         }

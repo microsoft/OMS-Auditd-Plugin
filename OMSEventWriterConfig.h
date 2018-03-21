@@ -31,6 +31,7 @@ public:
         RecordTypeNameFieldName = "RecordType";
         RecordsFieldName = "records";
         FieldSuffix = "_r";
+        ProcessFlagsFieldName = "ProcessFlags";
     }
 
     bool LoadFromConfig(const Config& config);
@@ -44,12 +45,16 @@ public:
     std::string RecordTypeFieldName;
     std::string RecordTypeNameFieldName;
     std::string RecordsFieldName;
+    std::string ProcessFlagsFieldName;
 
     std::string FieldSuffix; // The suffix to add to the interpreted field name
 
     std::unordered_map<int, std::string> RecordTypeNameOverrideMap;
     std::unordered_map<std::string, std::string> FieldNameOverrideMap;
     std::unordered_map<std::string, std::string> InterpFieldNameMap;
+    std::unordered_set<std::string> FilterRecordTypeSet;
+    std::unordered_set<std::string> FilterFieldNameSet;
+    uint32_t FilterFlagsMask;
 };
 
 
