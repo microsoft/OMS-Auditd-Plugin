@@ -17,6 +17,7 @@
 
 #include "Queue.h"
 #include "Logger.h"
+#include "OMSEventWriter.h"
 
 #include <stdexcept>
 #include <cassert>
