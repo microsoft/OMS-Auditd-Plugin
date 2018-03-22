@@ -32,6 +32,7 @@ public:
         RecordsFieldName = "records";
         FieldSuffix = "_r";
         ProcessFlagsFieldName = "ProcessFlags";
+        FilterFlagsMask = 0;
     }
 
     bool LoadFromConfig(const Config& config);

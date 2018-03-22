@@ -44,6 +44,7 @@ set(SOURCE_FILES
         Output.cpp
         ProcessInfo.cpp
         ProcFilter.cpp
+        StringUtils.cpp
 )
 
 add_executable(auoms ${SOURCE_FILES})
@@ -151,3 +152,12 @@ add_executable(UserDBTests
 target_link_libraries(UserDBTests ${Boost_LIBRARIES} pthread)
 
 add_test(UserDB ${CMAKE_BINARY_DIR}/UserDBTests --log_sink=UserDBTests.log --report_sink=UserDBTests.report)
+
+add_executable(StringTests
+        StringUtils.cpp
+        StringTests.cpp
+)
+
+target_link_libraries(StringTests ${Boost_LIBRARIES})
+
+add_test(String ${CMAKE_BINARY_DIR}/StringTests --log_sink=StringTests.log --report_sink=StringTests.report)

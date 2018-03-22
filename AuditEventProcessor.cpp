@@ -17,6 +17,7 @@
 
 #include "Queue.h"
 #include "Logger.h"
+#include "StringUtils.h"
 
 #include <stdexcept>
 #include <cassert>
@@ -102,6 +103,15 @@ event_field_type_t field_type_from_auparse_type(int auparse_type)
         return static_cast<event_field_type_t>(auparse_type);
     }
     return FIELD_TYPE_UNCLASSIFIED;
+}
+
+/*****************************************************************************
+ **
+ *****************************************************************************/
+
+
+void interpret_escaped_field(const char* ptr, std::string& str) {
+
 }
 
 /*****************************************************************************
@@ -215,7 +225,7 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    _builder->SetEventFlags(EVENT_FLAG_IS_AUOMS_EVENT);
+    _event_flags = EVENT_FLAG_IS_AUOMS_EVENT;
 
     ret = _builder->BeginRecord(record_type, record_name, "", field_count);
     if (ret != 1) {
@@ -271,7 +281,7 @@ bool AuditEventProcessor::process_execve()
                         _cmdline.push_back(' ');
                     }
 
-                    append_escaped_string(field, strlen(field), _cmdline);
+                    bash_escape_string(_cmdline, field, strlen(field));
                 } while (auparse_next_field(_state) == 1);
 
                 bool cmdline_truncated = false;
@@ -342,7 +352,7 @@ bool AuditEventProcessor::process_execve()
 
         auto filter_flags = _procFilter->GetFilterFlags(_pid, _ppid);
         if (filter_flags != 0) {
-            _builder->SetEventFlags(_builder->GetEventFlags() | filter_flags);
+            _event_flags |= filter_flags;
         }
     }
 
@@ -446,7 +456,7 @@ void AuditEventProcessor::callback(void *ptr)
 
             auto filter_flags = _procFilter->GetFilterFlags(_pid, _ppid);
             if (filter_flags != 0) {
-                _builder->SetEventFlags(_builder->GetEventFlags() | filter_flags);
+                _event_flags |= filter_flags;
             }
         }
 
