@@ -152,6 +152,8 @@ bool AuditEventProcessor::process_execve()
 {
     int record_type;
     const char *record_name;
+    static std::string escaped;
+    static std::string unescaped;
 
     if (auparse_first_record(_state) != 1) {
         return false;
@@ -262,16 +264,19 @@ bool AuditEventProcessor::process_execve()
                         continue;
                     }
 
-                    field = auparse_interpret_field(_state);
-                    if (field == nullptr) {
+                    const char *val_ptr = auparse_get_field_str(_state);
+                    if (val_ptr == nullptr) {
                         continue;
                     }
+
+                    escaped.assign(val_ptr);
+                    OMSEventWriter::unescape(unescaped, escaped);
 
                     if (!_cmdline.empty()) {
                         _cmdline.push_back(' ');
                     }
 
-                    append_escaped_string(field, strlen(field), _cmdline);
+                    append_escaped_string(unescaped.data(), unescaped.length(), _cmdline);
                 } while (auparse_next_field(_state) == 1);
 
                 bool cmdline_truncated = false;

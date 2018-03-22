@@ -33,10 +33,10 @@ public:
     {}
 
     virtual ssize_t WriteEvent(const Event& event, IWriter* writer);
+    static bool unescape(std::string& out, const std::string& in);
 
 private:
     static void decode_hex(std::string& out, const std::string& in);
-    static bool unescape(std::string& out, const std::string& in);
 
     ssize_t write_event(IWriter* writer);
     void reset();
