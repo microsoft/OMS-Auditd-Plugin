@@ -280,16 +280,19 @@ bool AuditEventProcessor::process_execve()
                         continue;
                     }
 
-                    field = auparse_interpret_field(_state);
+                    field = auparse_get_field_str(_state);
                     if (field == nullptr) {
                         continue;
                     }
+
+                    static std::string unescaped;
+                    unescape_raw_field(unescaped, field, strlen(field));
 
                     if (!_cmdline.empty()) {
                         _cmdline.push_back(' ');
                     }
 
-                    bash_escape_string(_cmdline, field, strlen(field));
+                    bash_escape_string(_cmdline, unescaped.data(), unescaped.length());
                 } while (auparse_next_field(_state) == 1);
 
                 bool cmdline_truncated = false;

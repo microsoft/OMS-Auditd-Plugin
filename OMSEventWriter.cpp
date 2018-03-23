@@ -51,7 +51,7 @@ void OMSEventWriter::end_object() {
 
 void OMSEventWriter::add_int32_field(const std::string& name, int32_t value)
 {
-    if (_config.FilterFieldNameSet.count(name) != 0) {
+    if (_config.FilterFieldNameSet.count(name) == 0) {
         _writer.Key(name.c_str(), name.size(), true);
         _writer.Int(value);
     }
@@ -59,7 +59,7 @@ void OMSEventWriter::add_int32_field(const std::string& name, int32_t value)
 
 void OMSEventWriter::add_int64_field(const std::string& name, int64_t value)
 {
-    if (_config.FilterFieldNameSet.count(name) != 0) {
+    if (_config.FilterFieldNameSet.count(name) == 0) {
         _writer.Key(name.c_str(), name.size(), true);
         _writer.Int64(value);
     }
@@ -77,7 +77,7 @@ void OMSEventWriter::add_string(const std::string& value)
 
 void OMSEventWriter::add_string_field(const std::string& name, const std::string& value)
 {
-    if (_config.FilterFieldNameSet.count(name) != 0) {
+    if (_config.FilterFieldNameSet.count(name) == 0) {
         _writer.Key(name.c_str(), name.size(), true);
         _writer.String(value.c_str(), value.size(), true);
     }
@@ -85,7 +85,7 @@ void OMSEventWriter::add_string_field(const std::string& name, const std::string
 
 void OMSEventWriter::add_string_field(const std::string& name, const char* value_data, size_t value_size)
 {
-    if (_config.FilterFieldNameSet.count(name) != 0) {
+    if (_config.FilterFieldNameSet.count(name) == 0) {
         _writer.Key(name.c_str(), name.size(), true);
         _writer.String(value_data, value_size, true);
     }
@@ -136,7 +136,7 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
                 }
             }
 
-            if (_config.FilterRecordTypeSet.count(record_type_name) != 0) {
+            if (_config.FilterRecordTypeSet.count(record_type_name) == 0) {
                 process_record(rec, record_type, record_type_name);
                 records++;
             }
