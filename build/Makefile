@@ -96,6 +96,7 @@ ifeq ($(ULINUX),1)
 $(AUOMS_BIN) : $(INTERMEDIATE_DIR)/ext_include $(INTERMEDIATE_DIR)/boost_root $(BUILD_DIR) $(BASE_DIR)/*.cpp $(BASE_DIR)/*.h
 	@echo "========================= Building auoms"
 	cd $(BUILD_DIR); PATH=/opt/rh/devtoolset-2/root/usr/bin:$(PATH) make install
+	cd $(BUILD_DIR); PATH=/opt/rh/devtoolset-2/root/usr/bin:$(PATH) make test
 
 $(BUILD_DIR) :
 	@echo "========================= Creating cmake builddir dir"

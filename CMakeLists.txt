@@ -161,3 +161,28 @@ add_executable(StringTests
 target_link_libraries(StringTests ${Boost_LIBRARIES})
 
 add_test(String ${CMAKE_BINARY_DIR}/StringTests --log_sink=StringTests.log --report_sink=StringTests.report)
+
+add_executable(EventProcessorTests
+        EventProcessorTests.cpp
+        Event.cpp
+        TextEventWriter.cpp
+        AuditEventProcessor.cpp
+        Signals.cpp
+        Logger.cpp
+        Config.cpp
+        UserDB.cpp
+        RunBase.cpp
+        ProcessInfo.cpp
+        ProcFilter.cpp
+        StringUtils.cpp
+        TempDir.cpp
+)
+
+target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
+        audit
+        auparse
+        dl
+        pthread
+)
+
+add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=EventProcessorTests.log --report_sink=EventProcessorTests.report)

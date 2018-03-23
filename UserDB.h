@@ -24,16 +24,10 @@
 
 class UserDB {
 public:
-    UserDB(): _dir("/etc"), _stop(true), _inotify_fd(-1), _need_update(true) {
-        _passwd_file_path = _dir + "/passwd";
-        _group_file_path = _dir + "/group";
-    }
+    UserDB(): _dir("/etc"), _stop(true), _inotify_fd(-1), _need_update(true) {}
 
     // This constructor exists solely to enable testing.
-    UserDB(const std::string& dir): _dir(dir), _stop(true), _inotify_fd(-1), _need_update(true) {
-        _passwd_file_path = _dir + "/passwd";
-        _group_file_path = _dir + "/group";
-    }
+    UserDB(const std::string& dir): _dir(dir), _stop(true), _inotify_fd(-1), _need_update(true) {}
 
     std::string GetUserName(int uid);
     std::string GetGroupName(int gid);
@@ -41,18 +35,17 @@ public:
     void Start();
     void Stop();
 
+    void update(); // Exposed only to simplify tests
+
 private:
     void inotify_task();
 
     void update_task();
-    void update();
 
     std::mutex _lock;
     std::condition_variable _cond;
 
     std::string _dir;
-    std::string _passwd_file_path;
-    std::string _group_file_path;
     bool _stop;
 
     std::unordered_map<int, std::string> _users;

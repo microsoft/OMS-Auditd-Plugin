@@ -89,7 +89,7 @@ int unescape_raw_field(std::string& out, const char* in, size_t in_len) {
         }
     } else if (*in == '(') {
         out.assign(in, in_len);
-        if (strncmp(in, "(null)", 6) == 0) {
+        if (in[in_len-1] == ')') {
             return 0;
         } else {
             return -1;

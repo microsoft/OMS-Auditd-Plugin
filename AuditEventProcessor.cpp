@@ -167,10 +167,8 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    if (auparse_get_type(_state) == AUDIT_EXECVE) {
-        record_type = FRAGMENT_RECORD_TYPE;
-        record_name = FRAGMENT_RECORD_NAME;
-    } else if (auparse_get_type(_state) == AUDIT_SYSCALL && _num_records > 2) {
+    // return false if first record is not SYSCALL(execve[at]) or EXECVE
+    if (auparse_get_type(_state) == AUDIT_SYSCALL) {
         auparse_find_field(_state, "syscall");
         const char *syscall = auparse_interpret_field(_state);
         auparse_first_field(_state);
@@ -178,14 +176,13 @@ bool AuditEventProcessor::process_execve()
         if (syscall == nullptr || strncmp(syscall, "execve", 6) != 0) {
             return false;
         }
-
-        record_type = PROCESS_CREATE_RECORD_TYPE;
-        record_name = PROCESS_CREATE_RECORD_NAME;
-    } else {
+    } else if (auparse_get_type(_state) != AUDIT_EXECVE) {
         return false;
     }
 
     int field_count = 0;
+    bool has_syscall = false;
+    bool has_other = false;
 
     do {
         switch (auparse_get_type(_state)) {
@@ -193,13 +190,16 @@ bool AuditEventProcessor::process_execve()
                 field_count++;
                 break;
             case AUDIT_SYSCALL:
+                has_syscall = true;
                 // remove type, items, a0, a1, a2 and a3 
                 field_count += auparse_get_num_fields(_state) - 6;
                 break;
             case AUDIT_CWD:
+                has_other = true;
                 field_count++;
                 break;
             case AUDIT_PATH: {
+                has_other = true;
                 const char* item = auparse_find_field(_state, "item");
                 if (item == nullptr || strcmp(item, "0") != 0) {
                     continue;
@@ -215,6 +215,14 @@ bool AuditEventProcessor::process_execve()
 
     if (auparse_first_record(_state) != 1) {
         return false;
+    }
+
+    if (has_syscall && has_other) {
+        record_type = PROCESS_CREATE_RECORD_TYPE;
+        record_name = PROCESS_CREATE_RECORD_NAME;
+    } else {
+        record_type = FRAGMENT_RECORD_TYPE;
+        record_name = FRAGMENT_RECORD_NAME;
     }
 
     auto ret = _builder->BeginEvent(_current_event_sec, _current_event_msec, _current_event_serial, 1);
@@ -345,14 +353,17 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    if (_pid != 0 && _ppid != 0) {
-        if (syscall_success) {
-            _procFilter->AddProcess(_pid, _ppid);
-        }
+    if (_pid != 0) {
+        _builder->SetEventPid(_pid);
+        if (_ppid != 0) {
+            if (syscall_success) {
+                _procFilter->AddProcess(_pid, _ppid);
+            }
 
-        auto filter_flags = _procFilter->GetFilterFlags(_pid, _ppid);
-        if (filter_flags != 0) {
-            _event_flags |= filter_flags;
+            auto filter_flags = _procFilter->GetFilterFlags(_pid, _ppid);
+            if (filter_flags != 0) {
+                _event_flags |= filter_flags;
+            }
         }
     }
 
@@ -375,13 +386,20 @@ void AuditEventProcessor::callback(void *ptr)
     assert(audit_msg_type_to_name != nullptr);
 
     // Process the event
-    _pid = 0;
-    _ppid = 0;
     _event_flags = 0;
     const au_event_t *e = auparse_get_timestamp(_state);
-    _current_event_sec = static_cast<uint64_t>(e->sec);
-    _current_event_msec = static_cast<uint32_t>(e->milli);
-    _current_event_serial = static_cast<uint64_t>(e->serial);
+
+    // Only reset the _pid and _ppid if this events time/serial is different from the previous event.
+    if (_current_event_sec != static_cast<uint64_t>(e->sec) ||
+        _current_event_msec != static_cast<uint32_t>(e->milli) ||
+        _current_event_serial != static_cast<uint64_t>(e->serial))
+    {
+        _current_event_sec = static_cast<uint64_t>(e->sec);
+        _current_event_msec = static_cast<uint32_t>(e->milli);
+        _current_event_serial = static_cast<uint64_t>(e->serial);
+        _pid = 0;
+        _ppid = 0;
+    }
 
     _num_records = auparse_get_num_records(_state);
     if (_num_records == 0) {
@@ -451,12 +469,15 @@ void AuditEventProcessor::callback(void *ptr)
             }
         } while (auparse_next_field(_state) == 1);
 
-        if (_pid != 0 && _ppid != 0) {
-            _procFilter->AddProcess(_pid, _ppid);
+        if (_pid != 0) {
+            _builder->SetEventPid(_pid);
+            if (_ppid != 0) {
+                _procFilter->AddProcess(_pid, _ppid);
 
-            auto filter_flags = _procFilter->GetFilterFlags(_pid, _ppid);
-            if (filter_flags != 0) {
-                _event_flags |= filter_flags;
+                auto filter_flags = _procFilter->GetFilterFlags(_pid, _ppid);
+                if (filter_flags != 0) {
+                    _event_flags |= filter_flags;
+                }
             }
         }
 
@@ -536,9 +557,6 @@ bool AuditEventProcessor::process_field(const char *name_ptr)
 
             if (_pid == 0 && NAME_EQUAL_PID(name_ptr)) {
                 _pid = atoi(val_ptr);
-                if (_pid != 0) {
-                    _builder->SetEventPid(_pid);
-                }
             } else if (_ppid == 0 && NAME_EQUAL_PPID(name_ptr)) {
                 _ppid = atoi(val_ptr);
             }

@@ -104,6 +104,16 @@ BOOST_AUTO_TEST_CASE( unescape_raw_null_str ) {
     BOOST_REQUIRE_EQUAL(out, expected);
 }
 
+BOOST_AUTO_TEST_CASE( unescape_raw_none_str ) {
+    std::string in = "(none)";
+    std::string expected = "(none)";
+    std::string out;
+
+    auto ret = unescape_raw_field(out, in.data(), in.size());
+    BOOST_REQUIRE_EQUAL(ret, 0);
+    BOOST_REQUIRE_EQUAL(out, expected);
+}
+
 BOOST_AUTO_TEST_CASE( unescape_raw_quoted ) {
     std::string in = "\"value\"";
     std::string expected = "value";
