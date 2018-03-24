@@ -26,11 +26,21 @@
 extern "C" {
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/sysinfo.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <time.h>
 }
 
+// Return boot time in seconds since epoch
+time_t boot_time() {
+    struct sysinfo sinfo;
+    struct timespec ts;
+    ::sysinfo(&sinfo);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return ts.tv_sec - sinfo.uptime;
+}
 
 bool read_file(const std::string& path, std::vector<uint8_t>& data, size_t limit, bool& truncated) {
     errno = 0;
@@ -155,6 +165,31 @@ bool ProcessInfo::parse_stat() {
     // sid
     errno = 0;
     _ses = static_cast<int>(strtol(ptr, &f_end, 10));
+    if (errno != 0 || *f_end != ' ') {
+        return false;
+    }
+
+    ptr = f_end+1;
+
+    if (ptr >= end) {
+        return false;
+    }
+
+    // Skip to starttime
+    for (int i = 0; i < 15; ++i) {
+        f_end = strchr(ptr, ' ');
+        if (f_end == nullptr || f_end >= end) {
+            return false;
+        }
+        ptr = f_end + 1;
+        if (ptr >= end) {
+            return false;
+        }
+    }
+
+    // starttime
+    errno = 0;
+    _starttime = strtoull(ptr, &f_end, 10);
     if (errno != 0 || *f_end != ' ') {
         return false;
     }
@@ -335,8 +370,27 @@ bool ProcessInfo::get_arg1(std::string& str) {
     return size != 0;
 }
 
+std::string ProcessInfo::starttime() {
+    static auto clk_tick = sysconf(_SC_CLK_TCK);
+    if (_starttime_str.empty()) {
+        char fmt[256];
+        char buf[256];
+        struct tm tm;
+        uint64_t st = _boot_time + ((_starttime * 1000) / clk_tick);
+        time_t st_s = st / 1000;
+        uint32_t st_m = static_cast<uint32_t>(st - (st_s * 1000));
+
+        sprintf(fmt, "%%Y-%%m-%%dT%%H:%%M:%%S.%03uZ", st_m);
+        gmtime_r(&st_s, &tm);
+        auto tsize = strftime(buf, sizeof(buf), fmt, &tm);
+        _starttime_str.assign(buf, tsize);
+    }
+    return _starttime_str;
+}
+
 ProcessInfo::ProcessInfo(void* dp) {
     _dp = reinterpret_cast<DIR*>(dp);
+    _boot_time = boot_time() * 1000;
 }
 
 ProcessInfo::~ProcessInfo() {
@@ -350,6 +404,7 @@ void ProcessInfo::clear() {
     _pid = -1;
     _ppid = -1;
     _ses = -1;
+    _starttime = 0;
     _uid = -1;
     _euid = -1;
     _suid = -1;
@@ -362,6 +417,7 @@ void ProcessInfo::clear() {
     _comm.clear();
     _cmdline.clear();
     _cmdline_truncated = false;
+    _starttime_str.clear();
 }
 
 std::unique_ptr<ProcessInfo> ProcessInfo::Open() {

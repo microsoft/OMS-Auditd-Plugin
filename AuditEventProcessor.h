@@ -70,6 +70,7 @@ private:
     pid_t _pid;
     pid_t _ppid;
     std::string _cmdline;
+    std::string _unescaped_arg;
     std::string _tmp_val;
     std::string _raw_val;
     std::string _interp_val;

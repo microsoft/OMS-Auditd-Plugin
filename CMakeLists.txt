@@ -60,6 +60,7 @@ target_link_libraries(auoms
         auparse
         dl
         pthread
+        rt
 )
 
 install(TARGETS
@@ -176,6 +177,7 @@ add_executable(EventProcessorTests
         ProcFilter.cpp
         StringUtils.cpp
         TempDir.cpp
+        TestEventData.cpp
 )
 
 target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
@@ -183,6 +185,24 @@ target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
         auparse
         dl
         pthread
+        rt
 )
 
 add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=EventProcessorTests.log --report_sink=EventProcessorTests.report)
+
+
+add_executable(OMSEventWriterTests
+        OMSEventWriterTests.cpp
+        OMSEventWriter.cpp
+        OMSEventWriterConfig.cpp
+        Event.cpp
+        TextEventWriter.cpp
+        Logger.cpp
+        Config.cpp
+        StringUtils.cpp
+        TestEventData.cpp
+)
+
+target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES})
+
+add_test(OMSEventWriter ${CMAKE_BINARY_DIR}/OMSEventWriterTests --log_sink=OMSEventWriterTests.log --report_sink=OMSEventWriterTests.report)

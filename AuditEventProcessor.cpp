@@ -272,6 +272,11 @@ bool AuditEventProcessor::process_execve()
             case AUDIT_EXECVE: {
                 _cmdline.clear();
 
+                /*
+                 * TODO: Deal with the case where one or more args are empty.
+                 * For example "/bin/echo '' '' 'test' ''" will result in an EXECVE of: argc=5 a0="/bin/echo" a3="test""
+                 * The resulting cmdline will be "/bin/echo test" when it should be "'' '' test ''".
+                 */
                 do {
                     int number;
                     const char* field = auparse_get_field_name(_state);
@@ -285,14 +290,13 @@ bool AuditEventProcessor::process_execve()
                         continue;
                     }
 
-                    static std::string unescaped;
-                    unescape_raw_field(unescaped, field, strlen(field));
+                    unescape_raw_field(_unescaped_arg, field, strlen(field));
 
                     if (!_cmdline.empty()) {
                         _cmdline.push_back(' ');
                     }
 
-                    bash_escape_string(_cmdline, unescaped.data(), unescaped.length());
+                    bash_escape_string(_cmdline, _unescaped_arg.data(), _unescaped_arg.length());
                 } while (auparse_next_field(_state) == 1);
 
                 bool cmdline_truncated = false;
@@ -684,7 +688,7 @@ bool AuditEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, 
 
     _builder->SetEventFlags(EVENT_FLAG_IS_AUOMS_EVENT);
 
-    uint16_t num_fields = 15;
+    uint16_t num_fields = 16;
 
     ret = _builder->BeginRecord(PROCESS_INVENTORY_RECORD_TYPE, PROCESS_INVENTORY_RECORD_NAME, "", num_fields);
     if (ret != 1) {
@@ -704,6 +708,10 @@ bool AuditEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, 
     }
 
     if (!add_int_field("ses", pinfo->ses(), FIELD_TYPE_SESSION)) {
+        return false;
+    }
+
+    if (!add_str_field("starttime", pinfo->starttime().c_str(), FIELD_TYPE_UNCLASSIFIED)) {
         return false;
     }
 

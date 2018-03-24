@@ -165,6 +165,16 @@ BOOST_AUTO_TEST_CASE( tty_escape_test ) {
     BOOST_REQUIRE_EQUAL(out, expected);
 }
 
+BOOST_AUTO_TEST_CASE( bash_escape_empty ) {
+    std::string in = "";
+    std::string expected = "''";
+    std::string out;
+
+    auto ret = bash_escape_string(out, in.data(), in.size());
+    BOOST_REQUIRE_EQUAL(ret, in.size());
+    BOOST_REQUIRE_EQUAL(out, expected);
+}
+
 BOOST_AUTO_TEST_CASE( bash_escape_bare ) {
     std::string in = "123";
     std::string expected = "123";

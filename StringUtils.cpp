@@ -258,6 +258,11 @@ size_t bash_escape_string(std::string& out, const char* in, size_t in_len) {
         }
     }
 
+    if (size == 0) {
+        out.append("''");
+        return 0;
+    }
+
     if (flags == 0) {
         out.append(in, size);
         return size;
