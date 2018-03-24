@@ -19,7 +19,6 @@
 
 #include <cstring>
 #include <system_error>
-#include <chrono>
 #include <thread>
 
 extern "C" {

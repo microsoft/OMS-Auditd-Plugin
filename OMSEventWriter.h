@@ -35,9 +35,6 @@ public:
     virtual ssize_t WriteEvent(const Event& event, IWriter* writer);
 
 private:
-    static void decode_hex(std::string& out, const std::string& in);
-    static bool unescape(std::string& out, const std::string& in);
-
     ssize_t write_event(IWriter* writer);
     void reset();
     void begin_array();
@@ -58,7 +55,7 @@ private:
     std::string _field_name;
     std::string _raw_name;
     std::string _interp_name;
-    std::string _raw_value;
+    std::string _escaped_value;
     std::string _interp_value;
 
     rapidjson::StringBuffer _buffer;

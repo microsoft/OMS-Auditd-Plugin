@@ -327,7 +327,7 @@ int EventBuilder::CancelEvent() {
     return _allocator->Rollback();
 }
 
-int EventBuilder::BeginRecord(uint16_t record_type, const char* record_name, const char* record_text, uint16_t num_fields) {
+int EventBuilder::BeginRecord(uint32_t record_type, const char* record_name, const char* record_text, uint16_t num_fields) {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
@@ -573,14 +573,14 @@ EventRecordField EventRecord::FieldByName(const char* name) const {
     const uint32_t* end = INDEX_PTR(_data, idxoffset, num_fields);
 
     auto res = std::lower_bound(start, end, name, [this](uint32_t e, const char* v) -> bool {
-        return strcmp(CHAR_PTR(this->_data, e+FIELD_NAME_OFFSET), v) < 0;
+        return strcmp(CHAR_PTR(this->_data, this->_roffset + e + FIELD_NAME_OFFSET), v) < 0;
     });
 
     if (res == end) {
         return EventRecordField();
     }
 
-    const char* found = CHAR_PTR(_data, *res+FIELD_NAME_OFFSET);
+    const char* found = CHAR_PTR(_data, _roffset + *res + FIELD_NAME_OFFSET);
 
     if (strcmp(name, found) != 0) {
         return EventRecordField();

@@ -44,6 +44,7 @@ set(SOURCE_FILES
         Output.cpp
         ProcessInfo.cpp
         ProcFilter.cpp
+        StringUtils.cpp
 )
 
 add_executable(auoms ${SOURCE_FILES})
@@ -59,6 +60,7 @@ target_link_libraries(auoms
         auparse
         dl
         pthread
+        rt
 )
 
 install(TARGETS
@@ -151,3 +153,56 @@ add_executable(UserDBTests
 target_link_libraries(UserDBTests ${Boost_LIBRARIES} pthread)
 
 add_test(UserDB ${CMAKE_BINARY_DIR}/UserDBTests --log_sink=UserDBTests.log --report_sink=UserDBTests.report)
+
+add_executable(StringTests
+        StringUtils.cpp
+        StringTests.cpp
+)
+
+target_link_libraries(StringTests ${Boost_LIBRARIES})
+
+add_test(String ${CMAKE_BINARY_DIR}/StringTests --log_sink=StringTests.log --report_sink=StringTests.report)
+
+add_executable(EventProcessorTests
+        EventProcessorTests.cpp
+        Event.cpp
+        TextEventWriter.cpp
+        AuditEventProcessor.cpp
+        Signals.cpp
+        Logger.cpp
+        Config.cpp
+        UserDB.cpp
+        RunBase.cpp
+        ProcessInfo.cpp
+        ProcFilter.cpp
+        StringUtils.cpp
+        TempDir.cpp
+        TestEventData.cpp
+)
+
+target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
+        audit
+        auparse
+        dl
+        pthread
+        rt
+)
+
+add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=EventProcessorTests.log --report_sink=EventProcessorTests.report)
+
+
+add_executable(OMSEventWriterTests
+        OMSEventWriterTests.cpp
+        OMSEventWriter.cpp
+        OMSEventWriterConfig.cpp
+        Event.cpp
+        TextEventWriter.cpp
+        Logger.cpp
+        Config.cpp
+        StringUtils.cpp
+        TestEventData.cpp
+)
+
+target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES})
+
+add_test(OMSEventWriter ${CMAKE_BINARY_DIR}/OMSEventWriterTests --log_sink=OMSEventWriterTests.log --report_sink=OMSEventWriterTests.report)

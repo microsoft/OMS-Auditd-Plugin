@@ -16,6 +16,7 @@
 
 #include "ProcessInfo.h"
 #include "Logger.h"
+#include "StringUtils.h"
 
 #include <climits>
 #include <cerrno>
@@ -25,100 +26,20 @@
 extern "C" {
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/sysinfo.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <time.h>
 }
 
-// code meanings:
-//      'Z' - NULL end of string
-//      '-' - Character needs to be quoted
-//      '*' - Character doesn't need escaping or quoting.
-//      other - Character must be escaped
-const char* escape_codes =
-    "Z---------------"  // 0x00 - 0x0F
-    "----------------"  // 0x10 - 0x1F
-    "-*\"*$***********"  // 0x20 - 0x2F
-    "****************"  // 0x30 - 0x3F
-    "****************"  // 0x40 - 0x4F
-    "************\\***" // 0x50 - 0x5F
-    "`***************"  // 0x60 - 0x6F
-    "***************-"  // 0x70 - 0x7F
-    "----------------"  // 0x80 - 0x8F
-    "----------------"  // 0x90 - 0x9F
-    "****************"  // 0xA0 - 0xAF
-    "****************"  // 0xB0 - 0xBF
-    "****************"  // 0xC0 - 0xCF
-    "****************"  // 0xD0 - 0xDF
-    "****************"  // 0xE0 - 0xEF
-    "****************"; // 0xF0 - 0xFF
-
-const char* hex_codes = "0123456789ABCDEF";
-
-size_t escape_string(const uint8_t* start, const uint8_t* end, std::string& str) {
-    bool quote_needed = false;
-    size_t size = 0;
-    size_t size_needed = 0;
-    for(const uint8_t *ptr = start; ptr < end; ++ptr) {
-        switch (*ptr) {
-            default:
-                switch (escape_codes[*ptr]) {
-                    case 'Z':
-                        ptr = end;
-                        break;
-                    case '-':
-                        quote_needed = true;
-                        size_needed += 1;
-                        break;
-                    case '*':
-                        size_needed += 1;
-                        break;
-                    default:
-                        size_needed += 2;
-                        break;
-                }
-        }
-    }
-
-    if (quote_needed) {
-        size_needed += 2;
-    }
-
-    if (str.capacity() - str.size() < size_needed) {
-        str.reserve(str.size() + size_needed);
-    }
-
-    if (quote_needed) {
-        str.push_back('"');
-    }
-
-    for(const uint8_t *ptr = start; ptr < end; ++ptr, ++size) {
-        switch (escape_codes[*ptr]) {
-            case 'Z':
-                ptr = end;
-                break;
-            case '-':
-            case '*':
-                str.push_back(*ptr);
-                break;
-            default:
-                str.push_back('\\');
-                str.push_back(*ptr);
-                break;
-        }
-    }
-
-    if (quote_needed) {
-        str.push_back('"');
-    }
-
-    return size;
-}
-
-size_t append_escaped_string(const char* ptr, size_t len, std::string& str) {
-    const uint8_t* start = reinterpret_cast<const uint8_t*>(ptr);
-    const uint8_t* end = start+len;
-    return escape_string(start, end, str);
+// Return boot time in seconds since epoch
+time_t boot_time() {
+    struct sysinfo sinfo;
+    struct timespec ts;
+    ::sysinfo(&sinfo);
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return ts.tv_sec - sinfo.uptime;
 }
 
 bool read_file(const std::string& path, std::vector<uint8_t>& data, size_t limit, bool& truncated) {
@@ -244,6 +165,31 @@ bool ProcessInfo::parse_stat() {
     // sid
     errno = 0;
     _ses = static_cast<int>(strtol(ptr, &f_end, 10));
+    if (errno != 0 || *f_end != ' ') {
+        return false;
+    }
+
+    ptr = f_end+1;
+
+    if (ptr >= end) {
+        return false;
+    }
+
+    // Skip to starttime
+    for (int i = 0; i < 15; ++i) {
+        f_end = strchr(ptr, ' ');
+        if (f_end == nullptr || f_end >= end) {
+            return false;
+        }
+        ptr = f_end + 1;
+        if (ptr >= end) {
+            return false;
+        }
+    }
+
+    // starttime
+    errno = 0;
+    _starttime = strtoull(ptr, &f_end, 10);
     if (errno != 0 || *f_end != ' ') {
         return false;
     }
@@ -384,25 +330,32 @@ bool ProcessInfo::read(int pid) {
 }
 
 void ProcessInfo::format_cmdline(std::string& str) {
-    uint8_t *ptr = _cmdline.data();
-    uint8_t *end = ptr+_cmdline.size();
+    const char* ptr = reinterpret_cast<const char*>(_cmdline.data());
+    size_t size = _cmdline.size();
 
     str.clear();
 
-    while(ptr < end) {
+    while(size > 0) {
         if (!str.empty()) {
             str.push_back(' ');
         }
-        size_t size = escape_string(ptr, end, str);
-        ptr += size+1;
+        size_t n = bash_escape_string(str, ptr, size);
+        size -= n;
+        ptr += n;
+        while(size > 0 && *ptr == 0) {
+            --size;
+            ++ptr;
+        }
     }
 }
 
 bool ProcessInfo::get_arg1(std::string& str) {
-    uint8_t *ptr = _cmdline.data();
-    uint8_t *end = ptr+_cmdline.size();
+    str.clear();
+
+    const char* ptr = reinterpret_cast<const char*>(_cmdline.data());
 
     // Skip arg 0
+    const char* end = ptr+_cmdline.size();
     while(ptr < end && *ptr != 0) {
         ++ptr;
     }
@@ -412,14 +365,32 @@ bool ProcessInfo::get_arg1(std::string& str) {
     }
 
     ++ptr;
-    str.clear();
 
-    size_t size = escape_string(ptr, end, str);
+    size_t size = bash_escape_string(str, ptr, end-ptr);
     return size != 0;
+}
+
+std::string ProcessInfo::starttime() {
+    static auto clk_tick = sysconf(_SC_CLK_TCK);
+    if (_starttime_str.empty()) {
+        char fmt[256];
+        char buf[256];
+        struct tm tm;
+        uint64_t st = _boot_time + ((_starttime * 1000) / clk_tick);
+        time_t st_s = st / 1000;
+        uint32_t st_m = static_cast<uint32_t>(st - (st_s * 1000));
+
+        sprintf(fmt, "%%Y-%%m-%%dT%%H:%%M:%%S.%03uZ", st_m);
+        gmtime_r(&st_s, &tm);
+        auto tsize = strftime(buf, sizeof(buf), fmt, &tm);
+        _starttime_str.assign(buf, tsize);
+    }
+    return _starttime_str;
 }
 
 ProcessInfo::ProcessInfo(void* dp) {
     _dp = reinterpret_cast<DIR*>(dp);
+    _boot_time = boot_time() * 1000;
 }
 
 ProcessInfo::~ProcessInfo() {
@@ -433,6 +404,7 @@ void ProcessInfo::clear() {
     _pid = -1;
     _ppid = -1;
     _ses = -1;
+    _starttime = 0;
     _uid = -1;
     _euid = -1;
     _suid = -1;
@@ -445,6 +417,7 @@ void ProcessInfo::clear() {
     _comm.clear();
     _cmdline.clear();
     _cmdline_truncated = false;
+    _starttime_str.clear();
 }
 
 std::unique_ptr<ProcessInfo> ProcessInfo::Open() {

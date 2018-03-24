@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,53 +13,18 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_USERDB_H
-#define AUOMS_USERDB_H
+
+#ifndef AUOMS_STRINGUTILS_H
+#define AUOMS_STRINGUTILS_H
 
 #include <string>
-#include <unordered_map>
-#include <mutex>
-#include <condition_variable>
-#include <thread>
 
-class UserDB {
-public:
-    UserDB(): _dir("/etc"), _stop(true), _inotify_fd(-1), _need_update(true) {}
+int decode_hex(std::string& out, const char* hex, size_t len);
 
-    // This constructor exists solely to enable testing.
-    UserDB(const std::string& dir): _dir(dir), _stop(true), _inotify_fd(-1), _need_update(true) {}
+int unescape_raw_field(std::string& out, const char* in, size_t in_len);
 
-    std::string GetUserName(int uid);
-    std::string GetGroupName(int gid);
+void tty_escape_string(std::string& out, const char* in, size_t in_len);
 
-    void Start();
-    void Stop();
+size_t bash_escape_string(std::string& out, const char* in, size_t in_len);
 
-    void update(); // Exposed only to simplify tests
-
-private:
-    void inotify_task();
-
-    void update_task();
-
-    std::mutex _lock;
-    std::condition_variable _cond;
-
-    std::string _dir;
-    bool _stop;
-
-    std::unordered_map<int, std::string> _users;
-    std::unordered_map<int, std::string> _groups;
-
-    std::chrono::time_point<std::chrono::steady_clock> _last_update;
-    std::chrono::time_point<std::chrono::steady_clock> _need_update_ts;
-    bool _need_update;
-
-    int _inotify_fd;
-
-    std::thread _inotify_thread;
-    std::thread _update_thread;
-};
-
-
-#endif //AUOMS_USERDB_H
+#endif //AUOMS_STRINGUTILS_H

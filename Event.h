@@ -86,7 +86,7 @@ public:
     int32_t GetEventPid();
     int EndEvent();
     int CancelEvent();
-    int BeginRecord(uint16_t record_type, const char* record_name, const char* record_text, uint16_t num_fields);
+    int BeginRecord(uint32_t record_type, const char* record_name, const char* record_text, uint16_t num_fields);
     int EndRecord();
     int AddField(const char *field_name, const char* raw_value, const char* interp_value, event_field_type_t field_type);
     int GetFieldCount();

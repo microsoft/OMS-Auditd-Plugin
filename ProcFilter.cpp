@@ -281,7 +281,7 @@ void ProcFilter::AddProcess(int pid, int ppid)
     } else {
         auto pit = _previous_filter_pids.find(ppid);
         if (pit != _previous_filter_pids.end()) {
-            _filter_pids.insert(std::pair<int, uint32_t>(pid, it->second));
+            _filter_pids.insert(std::pair<int, uint32_t>(pid, pit->second));
             return;
         }
     }
