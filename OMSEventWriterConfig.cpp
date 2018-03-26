@@ -169,7 +169,7 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
                 if (mask > 0xFFFF) {
                     return false;
                 }
-                et_config.FilterFlagsMask = static_cast<uint32_t>(mask);
+                et_config.FilterFlagsMask = static_cast<uint32_t>(mask) << 16;
             }
             return true;
         }},
