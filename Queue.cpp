@@ -208,8 +208,8 @@ void Queue::Open()
             Logger::Warn(
                     "Queue file version mismatch, discarding existing contents: Expected version %d, found version %d",
                     VERSION, hdr.version);
+            hdr.version = VERSION;
             hdr.size = _file_size;
-            hdr.size = 0;
             hdr.tail = 0;
             hdr.head = 0;
             hdr.next_id = 1;
