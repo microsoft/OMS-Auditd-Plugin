@@ -58,12 +58,14 @@ extern "C" {
 *
 ******************************************************************************/
 
-#define PROCESS_CREATE_RECORD_TYPE 14688
+#define EXECVE_RECORD_TYPE 14688
 #define FRAGMENT_RECORD_TYPE 11309
 #define PROCESS_INVENTORY_RECORD_TYPE 10000
-#define PROCESS_CREATE_RECORD_NAME "AUOMS_EXECVE"
+#define CONNECT_RECORD_TYPE 11306
+#define EXECVE_RECORD_NAME "AUOMS_EXECVE"
 #define FRAGMENT_RECORD_NAME "AUOMS_EXECVE_FRAGMENT"
 #define PROCESS_INVENTORY_RECORD_NAME "AUOMS_PROCESS_INVENTORY"
+#define CONNECT_RECORD_NAME "AUOMS_CONNECT"
 
 #define PROCESS_INVENTORY_FETCH_INTERVAL 300
 #define PROCESS_INVENTORY_EVENT_INTERVAL 3600
@@ -158,7 +160,7 @@ void AuditEventProcessor::static_callback(void *au, dummy_enum_t cb_event_type, 
     processor->callback(au);
 }
 
-bool AuditEventProcessor::process_execve()
+bool AuditEventProcessor::process_aggregate()
 {
     int record_type;
     const char *record_name;
@@ -167,22 +169,36 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    // return false if first record is not SYSCALL(execve[at]) or EXECVE
-    if (auparse_get_type(_state) == AUDIT_SYSCALL) {
-        auparse_find_field(_state, "syscall");
-        const char *syscall = auparse_interpret_field(_state);
-        auparse_first_field(_state);
+    switch (auparse_get_type(_state))
+    {
+        case AUDIT_SYSCALL: {
+            auparse_find_field(_state, "syscall");
+            const char *syscall = auparse_interpret_field(_state);
+            auparse_first_field(_state);
 
-        if (syscall == nullptr || strncmp(syscall, "execve", 6) != 0) {
-            return false;
+            if (syscall == nullptr) {
+                return false;
+            } else if (strncmp(syscall, "execve", 6) == 0) {
+                record_type = EXECVE_RECORD_TYPE;
+                record_name = EXECVE_RECORD_NAME;
+            } else if (strcmp(syscall, "connect") == 0) {
+                record_type = CONNECT_RECORD_TYPE;
+                record_name = CONNECT_RECORD_NAME;
+            } else {
+                return false;
+            }
+            break;
         }
-    } else if (auparse_get_type(_state) != AUDIT_EXECVE) {
-        return false;
+        case AUDIT_EXECVE:
+            record_type = FRAGMENT_RECORD_TYPE;
+            record_name = FRAGMENT_RECORD_NAME;
+            break;
+        default:
+            return false;
     }
 
     int field_count = 0;
-    bool has_syscall = false;
-    bool has_other = false;
+    bool has_cwd = false;
 
     do {
         switch (auparse_get_type(_state)) {
@@ -190,16 +206,14 @@ bool AuditEventProcessor::process_execve()
                 field_count++;
                 break;
             case AUDIT_SYSCALL:
-                has_syscall = true;
                 // remove type, items, a0, a1, a2 and a3 
                 field_count += auparse_get_num_fields(_state) - 6;
                 break;
             case AUDIT_CWD:
-                has_other = true;
+                has_cwd = true;
                 field_count++;
                 break;
             case AUDIT_PATH: {
-                has_other = true;
                 const char* item = auparse_find_field(_state, "item");
                 if (item == nullptr || strcmp(item, "0") != 0) {
                     continue;
@@ -208,6 +222,9 @@ bool AuditEventProcessor::process_execve()
                 field_count += auparse_get_num_fields(_state) - 2;
                 break;
             }
+            case AUDIT_SOCKADDR:
+                field_count++;
+                break;
             default:
                 break;
         }
@@ -217,10 +234,7 @@ bool AuditEventProcessor::process_execve()
         return false;
     }
 
-    if (has_syscall && has_other) {
-        record_type = PROCESS_CREATE_RECORD_TYPE;
-        record_name = PROCESS_CREATE_RECORD_NAME;
-    } else {
+    if (record_type == EXECVE_RECORD_TYPE && !has_cwd) {
         record_type = FRAGMENT_RECORD_TYPE;
         record_name = FRAGMENT_RECORD_NAME;
     }
@@ -347,6 +361,13 @@ bool AuditEventProcessor::process_execve()
                 } while (auparse_next_field(_state) == 1);
                 break;
             }
+            case AUDIT_SOCKADDR: {
+                const char* saddr = auparse_find_field(_state, "saddr");
+                if (saddr == nullptr || !process_field("saddr")) {
+                    continue;
+                }
+                break;
+            }
             case 0:
                 Logger::Warn("auparse_get_type() failed!");
                 break;
@@ -414,7 +435,7 @@ void AuditEventProcessor::callback(void *ptr)
         return;
     }
 
-    if (process_execve()) {
+    if (process_aggregate()) {
         return;
     }
 
@@ -434,17 +455,17 @@ void AuditEventProcessor::callback(void *ptr)
             Logger::Warn("auparse_get_type() failed!");
         }
 
+        // Ignore the end-of-event (EOE) record
+        if (record_type != AUDIT_EOE) {
+            num_non_eoe_records++;
+        }
+
         std::string record_type_name;
         const char* name_ptr = audit_msg_type_to_name(record_type);
         if (name_ptr != nullptr) {
             record_type_name = name_ptr;
         } else {
             record_type_name = std::string("UNKNOWN[") + std::to_string(record_type) + "]";
-        }
-
-        // Ignore the end-of-event (EOE) record
-        if (record_type_name != "EOE") {
-            num_non_eoe_records++;
         }
 
         const char *text = auparse_get_record_text(_state);

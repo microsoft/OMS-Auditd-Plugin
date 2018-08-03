@@ -49,7 +49,7 @@ private:
     bool begin_event();
     void end_event();
     void cancel_event();
-    bool process_execve();
+    bool process_aggregate();
     bool process_field(const char *name_ptr);
     bool process_field();
     bool add_int_field(const char* name, int val, event_field_type_t ft);
