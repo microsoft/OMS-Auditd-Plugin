@@ -455,17 +455,17 @@ void AuditEventProcessor::callback(void *ptr)
             Logger::Warn("auparse_get_type() failed!");
         }
 
-        // Ignore the end-of-event (EOE) record
-        if (record_type != AUDIT_EOE) {
-            num_non_eoe_records++;
-        }
-
         std::string record_type_name;
         const char* name_ptr = audit_msg_type_to_name(record_type);
         if (name_ptr != nullptr) {
             record_type_name = name_ptr;
         } else {
             record_type_name = std::string("UNKNOWN[") + std::to_string(record_type) + "]";
+        }
+
+        // Ignore the end-of-event (EOE) record
+        if (record_type_name != "EOE") {
+            num_non_eoe_records++;
         }
 
         const char *text = auparse_get_record_text(_state);
