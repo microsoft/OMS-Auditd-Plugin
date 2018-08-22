@@ -274,7 +274,7 @@ try {
                 if (nr == StdinReader::TIMEOUT && Signals::IsExit()) {
                     break;
                 }
-            } else { // nr == StdinReader::CLOSED
+            } else { // nr == StdinReader::CLOSED or StdinReader::FAILED
                 break;
             }
         }
