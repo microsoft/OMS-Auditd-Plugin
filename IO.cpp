@@ -104,8 +104,10 @@ ssize_t IOBase::WaitReadable(long timeout) {
 
     if ((fds.revents & POLLIN) != 0) {
         return OK;
+    } if ((fds.revents & (POLLHUP&POLLRDHUP)) != 0) {
+        return CLOSED;
     } else {
-        throw std::runtime_error("Poll returned a fd status other than POLLIN");
+        return FAILED;
     }
 }
 
@@ -132,8 +134,10 @@ ssize_t IOBase::WaitWritable(long timeout) {
 
     if ((fds.revents & POLLOUT) != 0) {
         return OK;
+    } if ((fds.revents & (POLLHUP&POLLRDHUP)) != 0) {
+        return CLOSED;
     } else {
-        throw std::runtime_error("Poll returned a fd status other than POLLIN");
+        return FAILED;
     }
 }
 
