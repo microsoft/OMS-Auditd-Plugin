@@ -133,6 +133,18 @@ void tty_escape_string(std::string& out, const char* in, size_t in_len) {
  * - -> Requires bash quoting
  * e -> Requires escaping
  * S -> Has single quote
+ *
+ * 0x20 Space -> q
+ * 0x21 ! -> s
+ * 0x22 " -> e
+ * 0x24 $ -> e
+ * 0x26 & -> q
+ * 0x27 ' -> S
+ * 0x28 ( -> q
+ * 0x29 ) -> q
+ * 0x5C ~ -> e
+ * 0x60 ` -> e
+ * 0x7C | -> q
  */
 const char* char_category_codes =
                 "Z---------------"  // 0x00 - 0x0F
@@ -258,17 +270,21 @@ size_t bash_escape_string(std::string& out, const char* in, size_t in_len) {
         }
     }
 
+    // String is empty, use '' to represent empty string on bash commandline
     if (size == 0) {
         out.append("''");
         return 0;
     }
 
+    // There are no flags, so string doesn't need any bash quoting/escaping
     if (flags == 0) {
         out.append(in, size);
         return size;
     }
 
-    if ((flags & __SINGLE_QUOTE_NEEDED) != 0) {
+    // If bash quoting isn't required and single quoting is required, check to see if the string has a single quote
+    // if it does, switch to bash quoting instead.
+    if ((flags & __SINGLE_QUOTE_NEEDED) != 0 && (flags & __BASH_QUOTE_NEEDED) == 0) {
         if ((flags & __HAS_SINGLE_QUOTE) != 0) {
             flags |= __BASH_QUOTE_NEEDED;
         } else {
