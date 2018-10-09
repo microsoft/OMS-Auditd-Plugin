@@ -117,30 +117,27 @@ cp $SOURCE_DIR/$BUNDLE_FILE .
 
 # See if we can resolve git references for output
 # (See if we can find the master project)
-if [ -f ../../../.gitmodules ]; then
-    TEMP_FILE=/tmp/create_bundle.$$
+TEMP_FILE=/tmp/create_bundle.$$
 
-    # Get the git reference hashes in a file
-    (
-	cd ../../..
-	echo "Entering 'superproject'" > $TEMP_FILE
-	git rev-parse HEAD >> $TEMP_FILE
-	git submodule foreach git rev-parse HEAD >> $TEMP_FILE
-    )
+# Get the git reference hashes in a file
+(
+cd ../..
+echo "Entering 'OMS-Auditd-Plugin'" > $TEMP_FILE
+git rev-parse HEAD >> $TEMP_FILE
+cd ../pal
+echo "Entering 'pal'" >> $TEMP_FILE
+git rev-parse HEAD >> $TEMP_FILE
+)
 
-    # Change lines like: "Entering 'dsc'\n<refhash>" to "dsc: <refhash>"
-    perl -i -pe "s/Entering '([^\n]*)'\n/\$1: /" $TEMP_FILE
+# Change lines like: "Entering 'pal'\n<refhash>" to "pal: <refhash>"
+perl -i -pe "s/Entering '([^\n]*)'\n/\$1: /" $TEMP_FILE
 
-    # Grab the reference hashes in a variable
-    SOURCE_REFS=`cat $TEMP_FILE`
-    rm $TEMP_FILE
+# Grab the reference hashes in a variable
+SOURCE_REFS=`cat $TEMP_FILE`
+rm $TEMP_FILE
 
-    # Update the bundle file w/the ref hash (much easier with perl since multi-line)
-    perl -i -pe "s/-- Source code references --/${SOURCE_REFS}/" $BUNDLE_FILE
-else
-    echo "Unable to find git superproject!" >& 2
-    exit 1
-fi
+# Update the bundle file w/the ref hash (much easier with perl since multi-line)
+perl -i -pe "s/-- Source code references --/${SOURCE_REFS}/" $BUNDLE_FILE
 
 # Edit the bundle file for hard-coded values
 sed -i "s/TAR_FILE=<TAR_FILE>/TAR_FILE=$TAR_FILE/" $BUNDLE_FILE
