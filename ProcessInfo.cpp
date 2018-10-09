@@ -287,21 +287,28 @@ bool ProcessInfo::read(int pid) {
     bool truncated;
 
     if (!read_file(path+"/stat", _stat, 2048, truncated)) {
-        // Only generate a log message if the error was something other than ENOENT
-        if (errno != ENOENT) {
+        // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
+        if (errno != ENOENT && errno != ESRCH) {
             Logger::Warn("Failed to read /proc/%d/stat: %s", pid, strerror(errno));
         }
         return false;
     }
 
     if (!read_file(path+"/status", _status, 8192, truncated)) {
-        Logger::Warn("Failed to read /proc/%d/status: %s", pid, strerror(errno));
+        // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
+        if (errno != ENOENT && errno != ESRCH) {
+            Logger::Warn("Failed to read /proc/%d/status: %s", pid, strerror(errno));
+        }
         return false;
     }
 
     auto exe_status = read_link(path+"/exe", _exe);
     if (exe_status < 0) {
-            Logger::Warn("Failed to readlink /proc/%d/exe: %s", pid, strerror(errno));
+            // EACCES (Permission denied) will be seen occasionally (probably due to racy nature of /proc iteration)
+            // ONly emit error if it wasn't EACCES or ESRCH
+            if (errno != EACCES && errno != ESRCH) {
+                Logger::Warn("Failed to readlink /proc/%d/exe: %s", pid, strerror(errno));
+            }
             return false;
     }
 
@@ -310,7 +317,10 @@ bool ProcessInfo::read(int pid) {
     if (exe_status == 1) {
         // The Event field value size limit is UINT16_MAX (including NULL terminator)
         if (!read_file(path + "/cmdline", _cmdline, UINT16_MAX - 1, _cmdline_truncated)) {
-            Logger::Warn("Failed to read /proc/%d/cmdline: %s", pid, strerror(errno));
+            // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
+            if (errno != ENOENT && errno != ESRCH) {
+                Logger::Warn("Failed to read /proc/%d/cmdline: %s", pid, strerror(errno));
+            }
             return false;
         }
     }
