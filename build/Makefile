@@ -134,8 +134,13 @@ endif
 
 sepolicy : $(SEPOLICY_DIR)/auoms.pp
 
+ifeq ($(ULINUX),1)
 test : $(AUOMS_BIN)
 	cd $(BUILD_DIR); PATH=$(DEV_TOOLS_PATH)$(PATH) make test
+else
+test : $(AUOMS_BIN)
+	cd $(BUILD_DIR); make test
+endif
 
 tests : test
 
