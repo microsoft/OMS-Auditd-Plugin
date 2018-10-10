@@ -6,12 +6,19 @@
 SHELL=/bin/bash
 BASE_DIR := $(subst /build,,$(CURDIR))
 PAL_DIR := $(shell cd ../../pal; pwd -P)
-ROOT_DIR := $(shell cd ../..; pwd -P)
 
 PF_POSIX := 1
 include $(BASE_DIR)/build/config.mak
 include $(BASE_DIR)/build/Makefile.version
 include $(PAL_DIR)/build/Makefile.pal
+
+ifeq ($(CENTOS5_BUILD_ENV),1)
+ROOT_DIR := $(shell cd ../../..; pwd -P)
+DEV_TOOLS_PATH=/opt/rh/devtoolset-2/root/usr/bin:
+else
+ROOT_DIR := $(shell cd ../..; pwd -P)
+DEV_TOOLS_PATH=
+endif
 
 ifndef ENABLE_DEBUG
 $(error "ENABLE_DEBUG is not set.  Please re-run configure")
@@ -95,12 +102,12 @@ clean-status :
 ifeq ($(ULINUX),1)
 $(AUOMS_BIN) : $(INTERMEDIATE_DIR)/ext_include $(INTERMEDIATE_DIR)/boost_root $(BUILD_DIR) $(BASE_DIR)/*.cpp $(BASE_DIR)/*.h
 	@echo "========================= Building auoms"
-	cd $(BUILD_DIR); make install
+	cd $(BUILD_DIR); PATH=$(DEV_TOOLS_PATH)$(PATH) make install
 
 $(BUILD_DIR) :
 	@echo "========================= Creating cmake builddir dir"
 	$(MKPATH) $(BUILD_DIR)
-	cd $(BUILD_DIR); BOOST_ROOT=$(INTERMEDIATE_DIR)/boost_root cmake -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) $(BASE_DIR)
+	cd $(BUILD_DIR); PATH=$(DEV_TOOLS_PATH)$(PATH) BOOST_ROOT=$(INTERMEDIATE_DIR)/boost_root cmake -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) $(BASE_DIR)
 else
 $(AUOMS_BIN) : $(INTERMEDIATE_DIR)/ext_include $(BUILD_DIR) $(BASE_DIR)/*.cpp $(BASE_DIR)/*.h
 	@echo "========================= Building auoms"
@@ -128,7 +135,7 @@ endif
 sepolicy : $(SEPOLICY_DIR)/auoms.pp
 
 test : $(AUOMS_BIN)
-	cd $(BUILD_DIR); make test
+	cd $(BUILD_DIR); PATH=$(DEV_TOOLS_PATH)$(PATH) make test
 
 tests : test
 
