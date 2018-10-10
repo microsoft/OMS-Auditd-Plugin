@@ -187,16 +187,18 @@ if [ "$opensource_distro" -eq 1 ]; then
     NOULINUX=1
 fi
 
-if [ "$CENTOS5_BUILD_ENV" -eq 1 ]; then
-    if [ ! -e /opt/rh/devtoolset-2/root/usr/bin/g++ ]; then
-        echo "devtools-2 packages are not installed!" >& 2
+if [ "$ULINUX" -eq 1 ]; then
+    if [ "$CENTOS5_BUILD_ENV" -eq 1 ]; then
+        if [ ! -e /opt/rh/devtoolset-2/root/usr/bin/g++ ]; then
+            echo "devtools-2 packages are not installed!" >& 2
+            exit 1
+        fi
+    fi
+
+    if [ ! -e /usr/include/boost148 ]; then
+        echo "boost148-devel package is not installed!" >& 2
         exit 1
     fi
-fi
-
-if [ ! -e /usr/include/boost148 ]; then
-    echo "boost148-devel package is not installed!" >& 2
-    exit 1
 fi
 
 # Note: Most of this code came from the PAL configure file
