@@ -255,3 +255,22 @@ BOOST_AUTO_TEST_CASE( bash_escape_bashquote ) {
     BOOST_REQUIRE_EQUAL(ret, in.size());
     BOOST_REQUIRE_EQUAL(out, expected);
 }
+
+BOOST_AUTO_TEST_CASE( bash_escape_bashquote2 ) {
+    std::string in;
+    std::string expected;
+    std::string out;
+
+    in.push_back(0xC9);
+    in.push_back(0x28); // (
+    in.push_back(0x21); // !
+
+    expected.append("$'");
+    expected.append("\\xC9");
+    expected.append("(!");
+    expected.append("'");
+
+    auto ret = bash_escape_string(out, in.data(), in.size());
+    BOOST_REQUIRE_EQUAL(ret, in.size());
+    BOOST_REQUIRE_EQUAL(out, expected);
+}
