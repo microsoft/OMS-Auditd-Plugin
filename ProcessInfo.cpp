@@ -114,7 +114,7 @@ bool ProcessInfo::parse_stat() {
     if (*ptr != '(') {
         return false;
     }
-    f_end = strchr(ptr, ')');
+    f_end = strstr(ptr, ") ");
     if (f_end == nullptr || f_end >= end) {
         return false;
     }
