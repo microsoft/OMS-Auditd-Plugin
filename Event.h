@@ -16,51 +16,13 @@
 #ifndef AUOMS_EVENT_H
 #define AUOMS_EVENT_H
 
+#include "LookupTables.h"
+
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <string_view>
 
-// This enum mirrors the auparse_type_t found in auparse-defs.h
-// The values here must appear in the same order as their counterpart in the definition of auparse_type_t
-typedef enum:uint16_t {
-    FIELD_TYPE_UNCLASSIFIED,
-    FIELD_TYPE_UID,
-    FIELD_TYPE_GID,
-    FIELD_TYPE_SYSCALL,
-    FIELD_TYPE_ARCH,
-    FIELD_TYPE_EXIT,
-    FIELD_TYPE_ESCAPED,
-    FIELD_TYPE_PERM,
-    FIELD_TYPE_MODE,
-    FIELD_TYPE_SOCKADDR,
-    FIELD_TYPE_FLAGS,
-    FIELD_TYPE_PROMISC,
-    FIELD_TYPE_CAPABILITY,
-    FIELD_TYPE_SUCCESS,
-    FIELD_TYPE_A0,
-    FIELD_TYPE_A1,
-    FIELD_TYPE_A2,
-    FIELD_TYPE_A3,
-    FIELD_TYPE_SIGNAL,
-    FIELD_TYPE_LIST,
-    FIELD_TYPE_TTY_DATA,
-    FIELD_TYPE_SESSION,
-    FIELD_TYPE_CAP_BITMAP,
-    FIELD_TYPE_NFPROTO,
-    FIELD_TYPE_ICMPTYPE,
-    FIELD_TYPE_PROTOCOL,
-    FIELD_TYPE_ADDR,
-    FIELD_TYPE_PERSONALITY,
-    FIELD_TYPE_SECCOMP,
-    FIELD_TYPE_OFLAG,
-    FIELD_TYPE_MMAP,
-    FIELD_TYPE_MODE_SHORT,
-    FIELD_TYPE_MAC_LABEL,
-    FIELD_TYPE_PROCTITLE
-} event_field_type_t;
-
-constexpr event_field_type_t MIN_FIELD_TYPE = FIELD_TYPE_UNCLASSIFIED;
-constexpr event_field_type_t MAX_FIELD_TYPE = FIELD_TYPE_PROCTITLE;
 
 constexpr uint32_t EVENT_FLAG_IS_AUOMS_EVENT = 1;
 
@@ -87,8 +49,10 @@ public:
     int EndEvent();
     int CancelEvent();
     int BeginRecord(uint32_t record_type, const char* record_name, const char* record_text, uint16_t num_fields);
+    int BeginRecord(uint32_t record_type, const std::string_view& record_name, const std::string_view& record_text, uint16_t num_fields);
     int EndRecord();
-    int AddField(const char *field_name, const char* raw_value, const char* interp_value, event_field_type_t field_type);
+    int AddField(const char *field_name, const char* raw_value, const char* interp_value, field_type_t field_type);
+    int AddField(const std::string_view& field_name, const std::string_view& raw_value, const std::string_view& interp_value, field_type_t field_type);
     int GetFieldCount();
 
 private:
@@ -104,6 +68,8 @@ private:
     uint16_t _num_fields;
     uint32_t _field_idx;
 };
+
+class EventRecord;
 
 class EventRecordField {
 public:
@@ -127,16 +93,23 @@ public:
     EventRecordField& operator=(const EventRecordField& other) = default;
     EventRecordField& operator=(EventRecordField&& other) = default;
 
-    const char* FieldName() const;
+    const char* FieldNamePtr() const;
     uint16_t FieldNameSize() const;
+    std::string_view FieldName() const;
 
-    const char* RawValue() const;
+    const char* RawValuePtr() const;
     uint16_t RawValueSize() const;
+    std::string_view RawValue() const;
 
-    const char* InterpValue() const;
+    const char* InterpValuePtr() const;
     uint16_t InterpValueSize() const;
+    std::string_view InterpValue() const;
 
-    event_field_type_t FieldType() const;
+    field_type_t FieldType() const;
+
+    uint32_t RecordType() const;
+
+    EventRecord Record() const;
 
     operator bool() const {
         return _data != nullptr;
@@ -202,14 +175,24 @@ public:
 
 
     uint32_t RecordType() const;
-    const char* RecordTypeName() const;
+    const char* RecordTypeNamePtr() const;
     uint16_t RecordTypeNameSize() const;
-    const char* RecordText() const;
+    std::string_view RecordTypeName() const;
+
+    const char* RecordTextPtr() const;
     uint16_t RecordTextSize() const;
+    std::string_view RecordText() const;
+
     uint16_t NumFields() const;
 
     EventRecordField FieldAt(uint32_t idx) const;
-    EventRecordField FieldByName(const char* name) const;
+    EventRecordField FieldByName(const char* name) const {
+        return FieldByName(std::string_view(name));
+    }
+    EventRecordField FieldByName(const std::string& name) const {
+        return FieldByName(std::string_view(name));
+    }
+    EventRecordField FieldByName(const std::string_view& name) const;
 
     operator bool() const {
         return _data != nullptr;

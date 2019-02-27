@@ -23,9 +23,20 @@
 
 class StdinReader: public IOBase {
 public:
-    StdinReader(): IOBase(0) {
+    StdinReader(): IOBase(0), _size(0), _start_idx(0), _cur_idx(0) {
         SetNonBlock(true);
     }
+
+    ssize_t ReadLine(char* buf, size_t buf_len, long timeout, std::function<bool()> fn);
+
+private:
+    std::array<char,10240> _data;
+    size_t _size;
+    size_t _start_idx;
+    size_t _cur_idx;
+
+    bool have_line();
+    ssize_t get_data(long timeout, std::function<bool()> fn);
 };
 
 

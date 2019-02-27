@@ -127,7 +127,7 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
         begin_array(); // Records
         for (auto rec : event) {
             int record_type = rec.RecordType();
-            std::string record_type_name = std::string(rec.RecordTypeName(), rec.RecordTypeNameSize());
+            std::string record_type_name = std::string(rec.RecordTypeNamePtr(), rec.RecordTypeNameSize());
             // Exclude the EOE (end-of-event) record
             if (!_config.RecordTypeNameOverrideMap.empty()) {
                 auto it = _config.RecordTypeNameOverrideMap.find(record_type);
@@ -169,7 +169,7 @@ void OMSEventWriter::process_record(const EventRecord& rec, int record_type, con
     }
 
     if (_config.IncludeFullRawText) {
-        add_string_field(_config.RawTextFieldName, std::string(rec.RecordText(), rec.RecordTextSize()));
+        add_string_field(_config.RawTextFieldName, std::string(rec.RecordTextPtr(), rec.RecordTextSize()));
     }
 
     end_object();
@@ -205,13 +205,13 @@ void OMSEventWriter::process_field(const EventRecordField& field)
         _raw_name.append(_config.FieldSuffix);
     }
 
-    if (field.FieldType() == FIELD_TYPE_ESCAPED || field.FieldType() == FIELD_TYPE_PROCTITLE) {
+    if (field.FieldType() == field_type_t::ESCAPED || field.FieldType() == field_type_t::PROCTITLE) {
         // If the field type is FIELD_TYPE_ESCAPED, then there is no interp value in the event.
-        switch (unescape_raw_field(_interp_value, field.RawValue(), field.RawValueSize())) {
+        switch (unescape_raw_field(_interp_value, field.RawValuePtr(), field.RawValueSize())) {
             case -1: // _interp_value is identical to _raw_value
             case 0: // _raw_value was "(null)"
             default:
-                add_string_field(_interp_name, field.RawValue(), field.RawValueSize());
+                add_string_field(_interp_name, field.RawValuePtr(), field.RawValueSize());
                 break;
             case 1: // _raw_value was double quoted
             case 2: // _raw_value was hex encoded
@@ -225,23 +225,23 @@ void OMSEventWriter::process_field(const EventRecordField& field)
     } else {
         if (field.InterpValueSize() > 0) {
             switch (field.FieldType()) {
-                case FIELD_TYPE_SESSION:
+                case field_type_t::SESSION:
                     // Since the interpreted value for SES is also (normally) an int
                     // Replace "unset" and "4294967295" with "-1"
-                    if ((field.InterpValueSize() == 5 && std::strncmp("unset", field.InterpValue(), field.InterpValueSize()) == 0) ||
-                            (field.InterpValueSize() == 10 && strncmp("4294967295", field.InterpValue(), field.InterpValueSize()) == 0)) {
+                    if ((field.InterpValueSize() == 5 && std::strncmp("unset", field.InterpValuePtr(), field.InterpValueSize()) == 0) ||
+                            (field.InterpValueSize() == 10 && strncmp("4294967295", field.InterpValuePtr(), field.InterpValueSize()) == 0)) {
                         add_string_field(_interp_name, "-1");
                     } else {
-                        add_string_field(_interp_name, field.InterpValue(), field.InterpValueSize());
+                        add_string_field(_interp_name, field.InterpValuePtr(), field.InterpValueSize());
                     }
                     break;
                 default:
-                    add_string_field(_interp_name, field.InterpValue(), field.InterpValueSize());
+                    add_string_field(_interp_name, field.InterpValuePtr(), field.InterpValueSize());
             }
-            add_string_field(_raw_name, field.RawValue(), field.RawValueSize());
+            add_string_field(_raw_name, field.RawValuePtr(), field.RawValueSize());
         } else {
             // Use interp name for raw value because there is no interp value
-            add_string_field(_interp_name, field.RawValue(), field.RawValueSize());
+            add_string_field(_interp_name, field.RawValuePtr(), field.RawValueSize());
         }
     }
 }

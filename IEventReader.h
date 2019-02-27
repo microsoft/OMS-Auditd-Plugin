@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,35 +13,19 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_CONFIG_H
-#define AUOMS_CONFIG_H
 
-#include <cstdint>
-#include <unordered_map>
-#include <unordered_set>
+#ifndef AUOMS_IEVENTREADER_H
+#define AUOMS_IEVENTREADER_H
 
-#include <rapidjson/document.h>
+#include "IO.h"
+#include "Event.h"
+#include "EventId.h"
 
-class Config {
+class IEventReader {
 public:
-    Config() = default;
-    explicit Config(std::unordered_map<std::string, std::string> map): _map(map) {}
-
-    void Load(const std::string& path);
-
-    bool HasKey(const std::string& name) const;
-    bool GetBool(const std::string& name) const;
-    int64_t GetInt64(const std::string& name) const;
-    uint64_t GetUint64(const std::string& name) const;
-    std::string GetString(const std::string& name) const;
-    rapidjson::Document GetJSON(const std::string& name) const;
-
-    bool operator==(const Config& other) { return _map == other._map; }
-    bool operator!=(const Config& other) { return _map != other._map; }
-
-private:
-    std::unordered_map<std::string, std::string> _map;
+    virtual ssize_t ReadEvent(void *buf, size_t buf_size, IReader* reader, std::function<bool()> fn) = 0;
+    virtual ssize_t WriteAck(const Event& event, IWriter* writer) = 0;
+    virtual ssize_t WriteAck(const EventId& event_id, IWriter* writer) = 0;
 };
 
-
-#endif //AUOMS_CONFIG_H
+#endif //AUOMS_IEVENTREADER_H

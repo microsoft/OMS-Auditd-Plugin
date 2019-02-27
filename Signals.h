@@ -27,12 +27,14 @@ public:
     static void Start();
     static bool IsExit();
     static void SetHupHandler(std::function<void()> fn) { _hup_fn = fn; }
+    static void SetExitHandler(std::function<void()> fn) { _exit_fn = fn; }
 
 private:
     static void run();
 
     static std::atomic<bool> _exit;
     static std::function<void()> _hup_fn;
+    static std::function<void()> _exit_fn;
     static pthread_t _main_id;
 };
 

@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,35 +13,32 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_CONFIG_H
-#define AUOMS_CONFIG_H
 
-#include <cstdint>
-#include <unordered_map>
-#include <unordered_set>
+#ifndef AUOMS_INPUT_H
+#define AUOMS_INPUT_H
 
-#include <rapidjson/document.h>
+#include "RunBase.h"
+#include "IO.h"
+#include "InputBuffer.h"
+#include "RawEventReader.h"
 
-class Config {
+class Input: public RunBase {
 public:
-    Config() = default;
-    explicit Config(std::unordered_map<std::string, std::string> map): _map(map) {}
+    Input(std::unique_ptr<IOBase> conn, std::shared_ptr<InputBuffer> buffer, std::function<void()> stop_fn)
+    : _conn(std::move(conn)), _fd(_conn->GetFd()), _buffer(std::move(buffer)), _stop_fn(std::move(stop_fn)) {}
 
-    void Load(const std::string& path);
-
-    bool HasKey(const std::string& name) const;
-    bool GetBool(const std::string& name) const;
-    int64_t GetInt64(const std::string& name) const;
-    uint64_t GetUint64(const std::string& name) const;
-    std::string GetString(const std::string& name) const;
-    rapidjson::Document GetJSON(const std::string& name) const;
-
-    bool operator==(const Config& other) { return _map == other._map; }
-    bool operator!=(const Config& other) { return _map != other._map; }
+protected:
+    void on_stopping() override;
+    void on_stop() override;
+    void run() override;
 
 private:
-    std::unordered_map<std::string, std::string> _map;
+    std::unique_ptr<IOBase> _conn;
+    int _fd;
+    RawEventReader _reader;
+    std::shared_ptr<InputBuffer> _buffer;
+    std::function<void()> _stop_fn;
 };
 
 
-#endif //AUOMS_CONFIG_H
+#endif //AUOMS_INPUT_H

@@ -39,15 +39,15 @@ ssize_t MsgPackEventWriter::WriteEvent(const Event& event, IWriter* writer) {
         _packer.pack(rec.RecordType());
         _packer.pack("type-name");
         _packer.pack_str(rec.RecordTypeNameSize());
-        _packer.pack_str_body(rec.RecordTypeName(), rec.RecordTypeNameSize());
+        _packer.pack_str_body(rec.RecordTypeNamePtr(), rec.RecordTypeNameSize());
         _packer.pack("raw-text");
         _packer.pack_str(rec.RecordTextSize());
-        _packer.pack_str_body(rec.RecordText(), rec.RecordTextSize());
+        _packer.pack_str_body(rec.RecordTextPtr(), rec.RecordTextSize());
         _packer.pack("field-names");
         _packer.pack_array(rec.NumFields());
         for (auto f: rec) {
             _packer.pack_str(f.FieldNameSize());
-            _packer.pack_str_body(f.FieldName(), f.FieldNameSize());
+            _packer.pack_str_body(f.FieldNamePtr(), f.FieldNameSize());
         }
         _packer.pack("field-types");
         _packer.pack_array(rec.NumFields());
@@ -58,14 +58,14 @@ ssize_t MsgPackEventWriter::WriteEvent(const Event& event, IWriter* writer) {
         _packer.pack_array(rec.NumFields());
         for (auto f: rec) {
             _packer.pack_str(f.RawValueSize());
-            _packer.pack_str_body(f.RawValue(), f.RawValueSize());
+            _packer.pack_str_body(f.RawValuePtr(), f.RawValueSize());
         }
         _packer.pack("interp-values");
         _packer.pack_array(rec.NumFields());
         for (auto f: rec) {
             if (f.InterpValueSize() > 0) {
                 _packer.pack_str(f.InterpValueSize());
-                _packer.pack_str_body(f.InterpValue(), f.InterpValueSize());
+                _packer.pack_str_body(f.InterpValuePtr(), f.InterpValueSize());
             } else {
                 _packer.pack_nil();
             }

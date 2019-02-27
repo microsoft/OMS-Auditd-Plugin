@@ -19,6 +19,7 @@
 
 #include <cstdio>
 #include <atomic>
+#include <functional>
 
 extern "C" {
 #include <unistd.h>
@@ -43,7 +44,10 @@ public:
      * Return FAILED if read failed
      * Return INTERRUPTED if signal received
      */
-    virtual ssize_t Read(void *buf, size_t buf_size) = 0;
+    virtual ssize_t Read(void *buf, size_t buf_size, std::function<bool()> fn) = 0;
+    ssize_t Read(void *buf, size_t buf_size) {
+        return Read(buf, buf_size, nullptr);
+    }
 
     /*
      * Return >0 on success
@@ -52,7 +56,10 @@ public:
      * Return TIMEOUT if read timeout occurred
      * Return INTERRUPTED if signal received
      */
-    virtual ssize_t Read(void *buf, size_t buf_size, long timeout) = 0;
+    virtual ssize_t Read(void *buf, size_t buf_size, long timeout, std::function<bool()> fn) = 0;
+    ssize_t Read(void *buf, size_t buf_size, long timeout) {
+        return Read(buf, buf_size, timeout, nullptr);
+    }
 
 
     /*
@@ -62,11 +69,15 @@ public:
      * Return TIMEOUT if read timeout occurred
      * Return INTERRUPTED if signal received
      */
-    virtual ssize_t ReadAll(void *buf, size_t buf_size) = 0;
+    virtual ssize_t ReadAll(void *buf, size_t buf_size, std::function<bool()> fn) = 0;
+    ssize_t ReadAll(void *buf, size_t buf_size) {
+        return ReadAll(buf, buf_size, nullptr);
+    }
 };
 
 class IWriter: public IO {
 public:
+    virtual ssize_t WaitWritable(long timeout) = 0;
 
     /*
      * Return OK on success
@@ -74,21 +85,21 @@ public:
      * Return FAILED if read failed
      * Return INTERRUPTED if signal received
      */
-    virtual ssize_t WriteAll(const void *buf, size_t size) = 0;
+    virtual ssize_t WriteAll(const void *buf, size_t size, std::function<bool()> fn) = 0;
+    ssize_t WriteAll(const void *buf, size_t size) {
+        return WriteAll(buf, size, nullptr);
+    }
 };
-
 
 class IOBase: public IReader, public IWriter {
 public:
-    IOBase(int fd) {
-        _fd.store(fd);
-        _rclosed.store(fd < 0);
-        _wclosed.store(fd < 0);
-    }
+    explicit IOBase(int fd): _fd(fd), _rclosed(fd < 0), _wclosed(fd < 0) {}
 
     virtual ~IOBase() {
         Close();
     }
+
+    int GetFd() { return _fd.load(); }
 
     virtual bool IsOpen();
     virtual bool Open();
@@ -98,12 +109,12 @@ public:
 
     virtual void SetNonBlock(bool enable);
 
-    virtual ssize_t WaitReadable(long timeout);
-    virtual ssize_t WaitWritable(long timeout);
-    virtual ssize_t Read(void *buf, size_t buf_size);
-    virtual ssize_t Read(void *buf, size_t buf_size, long timeout);
-    virtual ssize_t ReadAll(void *buf, size_t buf_size);
-    virtual ssize_t WriteAll(const void *buf, size_t size);
+    ssize_t WaitReadable(long timeout) override;
+    ssize_t WaitWritable(long timeout) override;
+    ssize_t Read(void *buf, size_t buf_size, std::function<bool()> fn) override;
+    ssize_t Read(void *buf, size_t buf_size, long timeout, std::function<bool()> fn) override;
+    ssize_t ReadAll(void *buf, size_t buf_size, std::function<bool()> fn) override;
+    ssize_t WriteAll(const void *buf, size_t size, std::function<bool()> fn) override;
 
 protected:
     std::atomic<int> _fd;

@@ -23,6 +23,7 @@ extern "C" {
 
 std::atomic<bool> Signals::_exit(false);
 std::function<void()> Signals::_hup_fn;
+std::function<void()> Signals::_exit_fn;
 pthread_t Signals::_main_id;
 
 void handle_sigquit(int sig) {
@@ -93,6 +94,9 @@ void Signals::run() {
             }
         } else {
             _exit.store(true);
+            if (_exit_fn) {
+                _exit_fn();
+            }
             // Break main thread out of blocking syscall
             pthread_kill(_main_id, SIGQUIT);
             return;

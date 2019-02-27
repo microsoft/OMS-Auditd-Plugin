@@ -16,6 +16,7 @@
 #ifndef AUOMS_EVENTQUEUE_H
 #define AUOMS_EVENTQUEUE_H
 
+#include "Event.h"
 #include "Queue.h"
 
 class EventQueue: public IEventBuilderAllocator {

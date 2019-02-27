@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,35 +13,42 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_CONFIG_H
-#define AUOMS_CONFIG_H
 
-#include <cstdint>
+#ifndef AUOMS_UNIXDOMAINLISTENER_H
+#define AUOMS_UNIXDOMAINLISTENER_H
+
+#include "IO.h"
+#include "RunBase.h"
+#include "InputBuffer.h"
+#include "Input.h"
+
+#include <string>
 #include <unordered_map>
-#include <unordered_set>
 
-#include <rapidjson/document.h>
-
-class Config {
+class Inputs: public RunBase {
 public:
-    Config() = default;
-    explicit Config(std::unordered_map<std::string, std::string> map): _map(map) {}
+    explicit Inputs(std::string addr): _addr(std::move(addr)), _listener_fd(-1), _buffer(std::make_shared<InputBuffer>()) {}
 
-    void Load(const std::string& path);
+    bool Initialize();
 
-    bool HasKey(const std::string& name) const;
-    bool GetBool(const std::string& name) const;
-    int64_t GetInt64(const std::string& name) const;
-    uint64_t GetUint64(const std::string& name) const;
-    std::string GetString(const std::string& name) const;
-    rapidjson::Document GetJSON(const std::string& name) const;
+    bool HandleData(std::function<void(void*,size_t)> fn) {
+        return _buffer->HandleData(std::move(fn));
+    }
 
-    bool operator==(const Config& other) { return _map == other._map; }
-    bool operator!=(const Config& other) { return _map != other._map; }
+protected:
+    void on_stopping() override;
+    void on_stop() override;
+    void run() override;
 
 private:
-    std::unordered_map<std::string, std::string> _map;
+    std::string _addr;
+    std::function<void(IOBase&)> _handler_fn;
+    int _listener_fd;
+    std::unordered_map<int, std::shared_ptr<Input>> _inputs;
+    std::shared_ptr<InputBuffer> _buffer;
+
+    void add_connection(int fd);
 };
 
 
-#endif //AUOMS_CONFIG_H
+#endif //AUOMS_UNIXDOMAINLISTENER_H

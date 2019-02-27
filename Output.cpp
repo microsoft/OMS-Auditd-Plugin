@@ -217,6 +217,8 @@ void AckReader::run() {
             _cursor_writer->UpdateCursor(cursor);
         }
     }
+    // The connection is lost, Close writer here so that Output::handle_events will exit
+    _writer->Close();
 }
 
 /****************************************************************************
@@ -353,22 +355,19 @@ bool Output::handle_events() {
         _ack_reader->Start();
     }
 
-    while(!IsStopping()) {
+    while(!IsStopping() && _writer->IsOpen()) {
         QueueCursor cursor;
         size_t size = data.size();
 
-        auto ret = _queue->Get(_cursor, data.data(), &size, &cursor, -1);
-        if (ret == Queue::CLOSED) {
-            break;
-        }
+        int ret;
+        do {
+            ret = _queue->Get(_cursor, data.data(), &size, &cursor, 100);
+        } while(ret == Queue::TIMEOUT && _writer->IsOpen());
 
-        if (ret == Queue::OK) {
+        if (ret == Queue::OK && _writer->IsOpen() && !IsStopping()) {
             Event event(data.data(), size);
             auto ret = _event_writer->WriteEvent(event, _writer.get());
             if (ret != IWriter::OK) {
-                if (ret == IO::FAILED) {
-                    Logger::Info("Output(%s): Connection lost", _name.c_str());
-                }
                 break;
             }
             _cursor = cursor;
@@ -383,7 +382,17 @@ bool Output::handle_events() {
     if (_ack_mode) {
         // Wait a short time for final acks to arrive
         _ack_queue->Wait(100);
+    }
+
+    // writer must be closed before calling _ack_reader->Stop(), or the stop may hang until the connection is closed remotely.
+    _writer->Close();
+
+    if (_ack_mode) {
         _ack_reader->Stop();
+    }
+
+    if (!IsStopping()) {
+        Logger::Info("Output(%s): Connection lost", _name.c_str());
     }
 
     _cursor_writer->Stop();
@@ -431,7 +440,6 @@ void Output::run() {
             if (!handle_events()) {
                 return;
             }
-            _writer->Close();
         }
     }
 }
