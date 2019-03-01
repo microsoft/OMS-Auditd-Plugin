@@ -215,10 +215,14 @@ void handle_raw_connection(int fd, int out_fd, bool ack, bool raw_out) {
                     static_cast<unsigned long long>(event.Serial()));
 
             for (auto rec : event) {
-                fprintf(out, "    %s\n", rec.RecordTypeNamePtr());
+                fprintf(out, "    %d: %s\n", rec.RecordType(), rec.RecordTypeNamePtr());
                 for (auto f : rec) {
-                    fprintf(out, "\t%s\n\t    RAW: %s\n\t    INTERP: %s\n", f.FieldNamePtr(), f.RawValuePtr(),
-                            f.InterpValuePtr());
+                    if (f.InterpValueSize() > 0) {
+                        fprintf(out, "\t%s\n\t    RAW: %s\n\t    INTERP: %s\n", f.FieldNamePtr(), f.RawValuePtr(),
+                                f.InterpValuePtr());
+                    } else {
+                        fprintf(out, "\t%s\n\t    RAW: %s\n", f.FieldNamePtr(), f.RawValuePtr());
+                    }
                 }
             }
         }

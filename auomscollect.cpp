@@ -25,6 +25,9 @@
 #include "RawEventRecord.h"
 #include "RawEventAccumulator.h"
 #include "Netlink.h"
+#include "FileWatcher.h"
+#include "Defer.h"
+#include "Gate.h"
 
 #include <iostream>
 #include <fstream>
@@ -116,6 +119,19 @@ void DoStdinCollection(RawEventAccumulator& accumulator) {
 
 void DoNetlinkCollection(RawEventAccumulator& accumulator) {
     Netlink netlink;
+    Gate _stop_gate;
+
+    FileWatcher::notify_fn_t fn = [&_stop_gate](const std::string& dir, const std::string& name, uint32_t mask) {
+        if (name == "auditd" && (mask & (IN_CREATE|IN_MOVED_TO)) != 0) {
+            Logger::Info("/sbin/auditd found on the system, exiting.");
+            _stop_gate.Open();
+        }
+    };
+
+    FileWatcher watcher(fn, {
+            {"/sbin", IN_CREATE|IN_MOVED_TO},
+    });
+
     std::function handler = [&accumulator](uint16_t type, uint16_t flags, void* data, size_t len) -> bool {
         if (type >= AUDIT_FIRST_USER_MSG) {
             std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();
@@ -134,6 +150,10 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
         Logger::Error("Failed to open AUDIT NETLINK connection");
         return;
     }
+    Defer _close_netlink([&netlink]() { netlink.Close(); });
+
+    watcher.Start();
+    Defer _stop_watcher([&watcher]() { watcher.Stop(); });
 
     uint32_t our_pid = getpid();
 
@@ -154,31 +174,30 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
     ret = netlink.AuditSetPid(our_pid);
     if (ret != Netlink::SUCCESS) {
         Logger::Error("Failed to set audit pid");
-        netlink.Close();
         return;
     }
 
+    Signals::SetExitHandler([&_stop_gate]() { _stop_gate.Open(); });
+
     while(!Signals::IsExit()) {
-        sleep(1);
+        if (_stop_gate.Wait(Gate::OPEN, 1000)) {
+            return;
+        }
 
         pid = 0;
         auto ret = netlink.AuditGetPid(pid);
         if (ret != 1) {
             if (ret < 0) {
                 Logger::Error("Failed to get audit pid");
-                break;
-            } else {
-                continue;
+                return;
             }
         } else {
             if (pid != our_pid) {
                 Logger::Warn("Another process (pid = %d) has taken over AUDIT NETLINK event collection.", pid);
-                break;
+                return;
             }
         }
     }
-
-    netlink.Close();
 }
 
 int main(int argc, char**argv) {

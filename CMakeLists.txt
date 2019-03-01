@@ -46,6 +46,9 @@ add_executable(auomscollect
         LookupTables.cpp
         StdinReader.cpp
         Netlink.cpp
+        FileWatcher.cpp
+        Gate.h
+        Defer.h
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -81,7 +84,7 @@ add_executable(auomsforward
         Config.cpp
         UserDB.cpp
         RunBase.cpp
-        InputBuffer.cpp
+        InputBuffer.h
         Inputs.cpp
         Input.cpp
         Outputs.cpp
