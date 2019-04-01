@@ -359,6 +359,43 @@ void ProcessInfo::format_cmdline(std::string& str) {
     }
 }
 
+bool ProcessInfo::get_args(std::string& str) {
+    const char* ptr = reinterpret_cast<const char*>(_cmdline.data());
+    size_t size = _cmdline.size();
+    size_t output_size = 0;
+
+    str.clear();
+
+    while (size > 0 && *ptr != 0) {
+        --size;
+        ++ptr;
+    }
+
+    if (size == 0) {
+        return false;
+    }
+
+    --size;
+    ++ptr;
+
+    while(size > 0) {
+        if (!str.empty()) {
+            str.push_back(' ');
+            ++output_size;
+        }
+        size_t n = bash_escape_string(str, ptr, size);
+        output_size += n;
+        size -= n;
+        ptr += n;
+        while(size > 0 && *ptr == 0) {
+            --size;
+            ++ptr;
+        }
+    }
+
+    return output_size != 0;
+}
+
 bool ProcessInfo::get_arg1(std::string& str) {
     str.clear();
 

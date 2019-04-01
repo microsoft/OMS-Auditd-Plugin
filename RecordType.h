@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,34 +13,23 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_CONFIG_H
-#define AUOMS_CONFIG_H
 
-#include <cstdint>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
-#include <regex>
+/*****************************************************************************
+* New record types are in 10000 range to avoid collision with existing codes.
+*
+* 14688 was chosen for aggregate process creation records, given similarity
+* to windows 4688 events.
+*
+* 11309 was chosen for fragmented EXECVE records, following use of 1309 for
+* native AUDIT_EXECVE.
+*
+******************************************************************************/
 
-#include <rapidjson/document.h>
+#define SYSCALL_RECORD_TYPE 14688
+#define FRAGMENT_RECORD_TYPE 11309
+#define PROCESS_INVENTORY_RECORD_TYPE 10000
+#define SYSCALL_RECORD_NAME "AUOMS_SYSCALL"
+#define FRAGMENT_RECORD_NAME "AUOMS_FRAGMENT"
+#define PROCESS_INVENTORY_RECORD_NAME "AUOMS_PROCESS_INVENTORY"
+#define PROCESS_INVENTORY_RECORD_KEY "oms-inventory"
 
-class Config {
-public:
-    void Load(const std::string& path);
-
-    bool HasKey(const std::string& name) const;
-    bool GetBool(const std::string& name) const;
-    int64_t GetInt64(const std::string& name) const;
-    uint64_t GetUint64(const std::string& name) const;
-    std::string GetString(const std::string& name) const;
-    rapidjson::Document GetJSON(const std::string& name) const;
-
-    bool operator==(const Config& other) { return _map == other._map; }
-    bool operator!=(const Config& other) { return _map != other._map; }
-
-private:
-    std::unordered_map<std::string, std::string> _map;
-};
-
-
-#endif //AUOMS_CONFIG_H

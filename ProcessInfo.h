@@ -33,6 +33,7 @@ public:
     bool next();
 
     void format_cmdline(std::string& str);
+    bool get_args(std::string& str);
     bool get_arg1(std::string& str);
 
     inline int pid()   { return _pid; }
@@ -46,6 +47,7 @@ public:
     inline int egid()  { return _egid; }
     inline int sgid()  { return _sgid; }
     inline int fsgid() { return _fsgid; }
+    inline uint64_t start() { return _starttime; }
 
     inline std::string comm() { return _comm; }
     inline std::string exe() { return _exe; }

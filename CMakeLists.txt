@@ -199,10 +199,13 @@ add_executable(OMSEventWriterTests
         TextEventWriter.cpp
         Logger.cpp
         Config.cpp
+        ProcessInfo.cpp
+        ProcFilter.cpp
         StringUtils.cpp
         TestEventData.cpp
+        UserDB.cpp
 )
 
-target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES})
+target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES} pthread)
 
 add_test(OMSEventWriter ${CMAKE_BINARY_DIR}/OMSEventWriterTests --log_sink=OMSEventWriterTests.log --report_sink=OMSEventWriterTests.report)

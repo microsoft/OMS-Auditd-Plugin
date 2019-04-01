@@ -30,8 +30,8 @@
 
 class Outputs: public RunBase {
 public:
-    Outputs(std::shared_ptr<Queue>& queue, const std::string& conf_dir, const std::string& cursor_dir, const std::vector<std::string>& allowed_socket_dirs):
-            _queue(queue), _conf_dir(conf_dir), _cursor_dir(cursor_dir), _allowed_socket_dirs(allowed_socket_dirs), _do_reload(false) {}
+    Outputs(std::shared_ptr<Queue>& queue, const std::string& conf_dir, const std::string& cursor_dir, const std::vector<std::string>& allowed_socket_dirs, std::shared_ptr<UserDB>& user_db, std::shared_ptr<EventBuilder>& event_builder):
+            _queue(queue), _conf_dir(conf_dir), _cursor_dir(cursor_dir), _allowed_socket_dirs(allowed_socket_dirs), _do_reload(false), _user_db(user_db), _event_builder(event_builder) {}
 
     void Reload(const std::vector<std::string>& allowed_socket_dirs);
 
@@ -49,6 +49,8 @@ private:
     std::string _cursor_dir;
     std::vector<std::string> _allowed_socket_dirs;
     bool _do_reload;
+    std::shared_ptr<UserDB> _user_db;
+    std::shared_ptr<EventBuilder> _event_builder;
     std::mutex _mutex;
     std::condition_variable _cond;
     std::unordered_map<std::string, std::shared_ptr<Output>> _outputs;

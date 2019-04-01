@@ -198,7 +198,7 @@ void Outputs::do_conf_sync() {
             }
         } else {
             auto cursor_file = _cursor_dir + "/" + ent.first + ".cursor";
-            auto o = std::make_shared<Output>(ent.first, cursor_file, _queue);
+            auto o = std::make_shared<Output>(ent.first, cursor_file, _queue, _user_db, _event_builder);
             it = _outputs.insert(std::make_pair(ent.first, o)).first;
             load = true;
         }

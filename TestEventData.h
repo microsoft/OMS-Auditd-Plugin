@@ -92,14 +92,12 @@ struct TestEvent {
     TestEvent(uint64_t seconds,
               uint32_t milliseconds,
               uint64_t serial,
-              uint32_t flags,
               int32_t pid,
               const std::vector<TestEventRecord>& records): _records(records)
     {
         _seconds = seconds;
         _milliseconds = milliseconds;
         _serial = serial;
-        _flags = flags;
         _pid = pid;
     }
 
@@ -107,13 +105,11 @@ struct TestEvent {
     uint32_t _milliseconds;
     uint64_t _serial;
 
-    uint32_t _flags;
     int32_t _pid;
     std::vector<TestEventRecord> _records;
 
     void Write(const std::shared_ptr<EventBuilder>& builder) {
         builder->BeginEvent(_seconds, _milliseconds, _serial, _records.size());
-        builder->SetEventFlags(_flags);
         builder->SetEventPid(_pid);
         for (auto rec : _records) {
             rec.Write(builder);

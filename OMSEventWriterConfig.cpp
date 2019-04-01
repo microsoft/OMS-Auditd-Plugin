@@ -163,16 +163,6 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
-        {"filter_flags_mask", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
-            if (config.HasKey(name)) {
-                auto mask = config.GetUint64(name);
-                if (mask > 0xFFFF) {
-                    return false;
-                }
-                et_config.FilterFlagsMask = static_cast<uint32_t>(mask) << 16;
-            }
-            return true;
-        }},
 };
 
 bool OMSEventWriterConfig::LoadFromConfig(const Config& config)
@@ -189,5 +179,6 @@ bool OMSEventWriterConfig::LoadFromConfig(const Config& config)
             good = false;
         }
     }
+
     return good;
 }

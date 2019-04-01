@@ -1,0 +1,20 @@
+## First rule - delete all
+-D
+
+## Increase the buffers to survive stress events.
+## Make this bigger for busy systems
+-b 8192
+
+## This determine how long to wait in burst of events
+--backlog_wait_time 0
+
+## Set failure mode to syslog
+-f 1
+
+# Ensure we continue to load even if a line causes an error
+# in order to ensure all working rules are loaded.
+# (The alternative is that we stop loading rules upon a single
+# error and fail to load any rules after that which is a
+# "Very Bad Thing" (TM).
+-i
+

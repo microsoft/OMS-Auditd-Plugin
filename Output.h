@@ -29,6 +29,9 @@
 #include <memory>
 #include <vector>
 
+#define PROCESS_INVENTORY_EVENT_INTERVAL 3600
+#define PROCESS_INVENTORY_FETCH_INTERVAL 300
+
 /****************************************************************************
  *
  ****************************************************************************/
@@ -128,11 +131,13 @@ public:
     static constexpr int MAX_SLEEP_PERIOD = 60;
     static constexpr int DEFAULT_ACK_QUEUE_SIZE = 1000;
 
-    Output(const std::string& name, const std::string& cursor_path, std::shared_ptr<Queue>& queue):
-            _name(name), _cursor_path(cursor_path), _queue(queue), _ack_mode(false)
+    Output(const std::string& name, const std::string& cursor_path, std::shared_ptr<Queue>& queue, std::shared_ptr<UserDB>& user_db, std::shared_ptr<EventBuilder>& event_builder):
+            _name(name), _cursor_path(cursor_path), _queue(queue), _ack_mode(false), _user_db(user_db), _event_builder(event_builder)
     {
         _cursor_writer = std::make_shared<CursorWriter>(name, cursor_path);
         _ack_reader = std::unique_ptr<AckReader>(new AckReader(name));
+        _last_proc_fetch = 0;
+        _last_proc_event_gen = 0;
     }
 
     bool IsConfigDifferent(const Config& config);
@@ -142,6 +147,8 @@ public:
 
     // Delete any resources associated with the output
     void Delete();
+
+    ssize_t DoProcessInventory(IWriter *writer, bool output_events);
 
 protected:
     friend class AckReader;
@@ -156,12 +163,25 @@ protected:
     // Return true if writer closed and Output should reconnect, false if Output should stop.
     bool handle_events();
 
+    bool generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t msec, IWriter *writer);
+
+    bool add_int_field(const char* name, int val, event_field_type_t ft);
+    bool add_uid_field(const char* name, int uid, event_field_type_t ft);
+    bool add_gid_field(const char* name, int gid, event_field_type_t ft);
+    bool add_str_field(const char* name, const char *, event_field_type_t ft);
+
+    void cancel_event();
+
+
     std::mutex _mutex;
     std::string _name;
     std::string _cursor_path;
     std::string _socket_path;
     std::shared_ptr<Queue> _queue;
     bool _ack_mode;
+    std::shared_ptr<UserDB> _user_db;
+    std::shared_ptr<EventBuilder> _event_builder;
+    std::shared_ptr<ProcFilter> _procFilter;
     std::unique_ptr<Config> _config;
     QueueCursor _cursor;
     QueueCursor _ack_cursor;
@@ -170,6 +190,12 @@ protected:
     std::shared_ptr<AckQueue> _ack_queue;
     std::unique_ptr<AckReader> _ack_reader;
     std::shared_ptr<CursorWriter> _cursor_writer;
+
+    uint64_t _last_proc_fetch;
+    uint64_t _last_proc_event_gen;
+
+    std::string _tmp_val;
+    std::string _cmdline;
 };
 
 

@@ -250,7 +250,7 @@ size_t bash_escape_string(std::string& out, const char* in, size_t in_len) {
     for(; ptr < end; ++ptr, ++size) {
         switch (char_category_codes[static_cast<uint8_t>(*ptr)]) {
             case 'Z':
-                goto endloop;
+		goto endloop;
             case '-':
                 flags |= __BASH_QUOTE_NEEDED;
                 break;

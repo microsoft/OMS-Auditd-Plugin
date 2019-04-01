@@ -31,8 +31,6 @@ ssize_t JSONEventWriter::WriteEvent(const Event& event, IWriter* writer) {
     _writer.Int64(event.Milliseconds());
     _writer.Key("serial");
     _writer.Int64(event.Serial());
-    _writer.Key("flags");
-    _writer.Int64(event.Flags());
     _writer.Key("pid");
     _writer.Int64(event.Pid());
     _writer.Key("records");
@@ -84,3 +82,4 @@ ssize_t JSONEventWriter::WriteEvent(const Event& event, IWriter* writer) {
     }
     return writer->WriteAll(_buffer.GetString(), _buffer.GetSize());
 }
+

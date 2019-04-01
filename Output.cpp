@@ -246,13 +246,16 @@ bool Output::Load(std::unique_ptr<Config>& config) {
 
     auto socket_path = _config->GetString("output_socket");
 
+    _procFilter = std::shared_ptr<ProcFilter>(new ProcFilter(_user_db));
+    _procFilter->ParseConfig(_config);
+
     if (format == "oms") {
         OMSEventWriterConfig oms_config;
         if (!oms_config.LoadFromConfig(*_config)) {
             return false;
         }
 
-        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new OMSEventWriter(oms_config)));
+        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new OMSEventWriter(oms_config, _user_db)));
     } else if (format == "json") {
         _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new JSONEventWriter()));
     } else if (format == "msgpack") {
@@ -354,6 +357,30 @@ bool Output::handle_events() {
     }
 
     while(!IsStopping()) {
+		std::ostringstream timestamp_str;
+
+		// Update the process inventory and emit inventory events if appropriate
+		struct timeval tv;
+		gettimeofday(&tv, nullptr);
+
+		uint64_t sec = static_cast<uint64_t>(tv.tv_sec);
+		uint32_t msec = static_cast<uint32_t>(tv.tv_usec)/1000;
+
+		if (_last_proc_fetch+PROCESS_INVENTORY_FETCH_INTERVAL <= sec) {
+			bool gen_events = false;
+			if (_last_proc_event_gen+PROCESS_INVENTORY_EVENT_INTERVAL <= sec) {
+				gen_events = true;
+			}
+
+            DoProcessInventory(_writer.get(), gen_events);
+
+			_last_proc_fetch = sec;
+			if (gen_events) {
+				_last_proc_event_gen = sec;
+			}
+
+		}
+
         QueueCursor cursor;
         size_t size = data.size();
 
@@ -364,13 +391,52 @@ bool Output::handle_events() {
 
         if (ret == Queue::OK) {
             Event event(data.data(), size);
-            auto ret = _event_writer->WriteEvent(event, _writer.get());
-            if (ret != IWriter::OK) {
-                if (ret == IO::FAILED) {
-                    Logger::Info("Output(%s): Connection lost", _name.c_str());
+
+            // Check if this event should be filtered.
+			std::string exe, args, user, syscall;
+			int pid, ppid;
+
+            for (auto rec : event) {
+                for (auto field : rec) {
+                    std::string field_name;
+                    field_name.assign(field.FieldName(), field.FieldNameSize());
+                    if (field_name == "exe") {
+                        exe = field.RawValue();
+                    } else if (field_name == "cmdline") {
+                        std::string value;
+                        value.assign(field.RawValue(), field.RawValueSize());
+                        auto idx = value.find(" ");
+                        if ((idx == std::string::npos) || (value.length() == idx+1)) {
+                            args = "";
+                        } else {
+                            args = value.substr(idx+1, std::string::npos);
+                        }
+                    } else if (field_name == "uid") {
+                        user = field.InterpValue();
+                    } else if (field_name == "syscall") {
+                        syscall = field.InterpValue();
+                    } else if (field_name == "pid") {
+                        pid = std::stoi(field.RawValue());
+                    } else if (field_name == "ppid") {
+                        ppid = std::stoi(field.RawValue());
+                    }
                 }
-                break;
             }
+
+            if (syscall == "execve") {
+                _procFilter->AddProcess(pid, ppid, exe, args, user);
+            }
+
+            if (!_procFilter->FilterProcessSyscall(pid, syscall)) {
+                auto ret = _event_writer->WriteEvent(event, _writer.get());
+                if (ret != IWriter::OK) {
+                    if (ret == IO::FAILED) {
+                        Logger::Info("Output(%s): Connection lost", _name.c_str());
+                    }
+                    break;
+                }
+            }
+
             _cursor = cursor;
             if (_ack_mode) {
                 _ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()), _cursor);
@@ -435,3 +501,200 @@ void Output::run() {
         }
     }
 }
+
+bool Output::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t msec, IWriter *writer) {
+    auto ret = _event_builder->BeginEvent(sec, msec, 0, 1);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        return false;
+    }
+
+//    uint16_t num_fields = 16;
+    uint16_t num_fields = 17;
+
+    ret = _event_builder->BeginRecord(PROCESS_INVENTORY_RECORD_TYPE, PROCESS_INVENTORY_RECORD_NAME, "", num_fields);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+
+    if (!add_int_field("pid", pinfo->pid(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_int_field("ppid", pinfo->ppid(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_int_field("ses", pinfo->ses(), FIELD_TYPE_SESSION)) {
+        return false;
+    }
+
+    if (!add_str_field("starttime", pinfo->starttime().c_str(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_uid_field("uid", pinfo->uid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_uid_field("euid", pinfo->euid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_uid_field("suid", pinfo->suid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_uid_field("fsuid", pinfo->fsuid(), FIELD_TYPE_UID)) {
+        return false;
+    }
+
+    if (!add_gid_field("gid", pinfo->gid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_gid_field("egid", pinfo->egid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_gid_field("sgid", pinfo->sgid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_gid_field("fsgid", pinfo->fsgid(), FIELD_TYPE_GID)) {
+        return false;
+    }
+
+    if (!add_str_field("comm", pinfo->comm().c_str(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_str_field("exe", pinfo->exe().c_str(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    pinfo->format_cmdline(_cmdline);
+
+    bool cmdline_truncated = false;
+    if (_cmdline.size() > UINT16_MAX-1) {
+        _cmdline.resize(UINT16_MAX-1);
+        cmdline_truncated = true;
+    }
+
+    if (!add_str_field("cmdline", _cmdline.c_str(), FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_str_field("cmdline_truncated", cmdline_truncated ? "true" : "false", FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!add_str_field("key", PROCESS_INVENTORY_RECORD_KEY, FIELD_TYPE_UNCLASSIFIED)) {
+        return false;
+    }
+
+    ret = _event_builder->EndRecord();
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+
+    ret = _event_builder->EndEvent();
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        return false;
+    }
+}
+
+ssize_t Output::DoProcessInventory(IWriter *writer, bool output_events) {
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+
+    uint64_t sec = static_cast<uint64_t>(tv.tv_sec);
+    uint32_t msec = static_cast<uint32_t>(tv.tv_usec)/1000;
+
+    auto pinfo = ProcessInfo::Open();
+    if (!pinfo) {
+        Logger::Error("Failed to open '/proc': %s", strerror(errno));
+        return IO::FAILED;
+    }
+
+    std::multimap<uint64_t, ProcInfo> procs;
+
+    while (pinfo->next()) {
+        procs.insert(std::pair<uint64_t, ProcInfo>(pinfo->start(), pinfo.get()));
+        if (output_events) {
+            generate_proc_event(pinfo.get(), sec, msec, writer);
+        }
+    }
+
+    _procFilter->UpdateProcesses(procs);
+
+    return IO::OK;
+}
+
+bool Output::add_int_field(const char* name, int val, event_field_type_t ft) {
+    _tmp_val.assign(std::to_string(val));
+    return add_str_field(name, _tmp_val.c_str(), ft);
+}
+
+bool Output::add_str_field(const char* name, const char* val, event_field_type_t ft) {
+    int ret = _event_builder->AddField(name, val, nullptr, ft);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+    return true;
+}
+
+bool Output::add_uid_field(const char* name, int uid, event_field_type_t ft) {
+    _tmp_val.assign(std::to_string(uid));
+    std::string user = _user_db->GetUserName(uid);
+    int ret = _event_builder->AddField(name, _tmp_val.c_str(), user.c_str(), ft);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+    return true;
+    return add_str_field(name, _tmp_val.c_str(), ft);
+}
+
+bool Output::add_gid_field(const char* name, int gid, event_field_type_t ft) {
+    _tmp_val.assign(std::to_string(gid));
+    std::string user = _user_db->GetGroupName(gid);
+    int ret = _event_builder->AddField(name, _tmp_val.c_str(), user.c_str(), ft);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+    return true;
+    return add_str_field(name, _tmp_val.c_str(), ft);
+}
+
+void Output::cancel_event()
+{
+    if (_event_builder->CancelEvent() != 1) {
+        throw std::runtime_error("Queue Closed");
+    }
+}
+

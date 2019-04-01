@@ -1,0 +1,13 @@
+#Loading / Unloading of LKM's
+-w /bin/kmod -p x -k kernelmodules
+
+# Some file and directory watches
+-w /var/log/audit/ -p wxa -k oms-audittamper
+-w /etc/audit/ -p wxa -k oms-audittamper
+-w /etc/passwd -p wxa -k oms-authtamper
+-w /etc/group -p wxa -k oms-authtamper
+-w /etc/pam.d/ -p wxa -k oms-authtamper
+
+# # Monitor certain syscalls.
+-a always,exit -F arch=b32 -S execve,execveat -k oms-execve
+-a always,exit -F arch=b64 -S execve,execveat -k oms-execve

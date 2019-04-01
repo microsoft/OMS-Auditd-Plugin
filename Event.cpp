@@ -35,7 +35,6 @@
  *      uint32_t msec
  *      uint64_t serial
  *      uint16_t num_records
- *      uint32_t flags
  *      int32_t pid
  *      RecordIndex:
  *          uint32_t[] offsets (from start of event)
@@ -109,12 +108,7 @@ constexpr uint32_t EVENT_NUM_RECORDS_SIZE = sizeof(uint16_t);
 inline uint16_t& EVENT_NUM_RECORDS(uint8_t* data) { return *reinterpret_cast<uint16_t*>(data+EVENT_NUM_RECORDS_OFFSET); }
 inline uint16_t EVENT_NUM_RECORDS(const uint8_t* data) { return *reinterpret_cast<const uint16_t*>(data+EVENT_NUM_RECORDS_OFFSET); }
 
-constexpr uint32_t EVENT_FLAGS_OFFSET = EVENT_NUM_RECORDS_OFFSET + EVENT_NUM_RECORDS_SIZE;
-constexpr uint32_t EVENT_FLAGS_SIZE = sizeof(int32_t);
-inline uint32_t& EVENT_FLAGS(uint8_t* data) { return *reinterpret_cast<uint32_t*>(data+EVENT_FLAGS_OFFSET); }
-inline uint32_t EVENT_FLAGS(const uint8_t* data) { return *reinterpret_cast<const uint32_t*>(data+EVENT_FLAGS_OFFSET); }
-
-constexpr uint32_t EVENT_PID_OFFSET = EVENT_FLAGS_OFFSET + EVENT_FLAGS_SIZE;
+constexpr uint32_t EVENT_PID_OFFSET = EVENT_NUM_RECORDS_OFFSET + EVENT_NUM_RECORDS_SIZE;
 constexpr uint32_t EVENT_PID_SIZE = sizeof(int32_t);
 inline int32_t& EVENT_PID(uint8_t* data) { return *reinterpret_cast<int32_t*>(data+EVENT_PID_OFFSET); }
 inline int32_t EVENT_PID(const uint8_t* data) { return *reinterpret_cast<const int32_t*>(data+EVENT_PID_OFFSET); }
@@ -265,22 +259,6 @@ int EventBuilder::BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint1
     EVENT_PID(_data) = -1;
 
     return 1;
-}
-
-void EventBuilder::SetEventFlags(uint32_t flags) {
-    if (_data == nullptr) {
-        throw std::runtime_error("Event not started!");
-    }
-
-    EVENT_FLAGS(_data) = flags;
-}
-
-uint32_t EventBuilder::GetEventFlags() {
-    if (_data == nullptr) {
-        throw std::runtime_error("Event not started!");
-    }
-
-    return EVENT_FLAGS(_data);
 }
 
 void EventBuilder::SetEventPid(int32_t pid) {
@@ -675,10 +653,6 @@ uint64_t Event::Serial() const {
 
 uint16_t Event::NumRecords() const {
     return EVENT_NUM_RECORDS(_data);
-}
-
-uint32_t Event::Flags() const {
-    return EVENT_FLAGS(_data);
 }
 
 int32_t Event::Pid() const {

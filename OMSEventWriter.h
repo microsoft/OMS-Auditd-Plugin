@@ -18,6 +18,10 @@
 
 #include "OMSEventWriterConfig.h"
 #include "TextEventWriter.h"
+#include "RecordType.h"
+#include "UserDB.h"
+#include "ProcFilter.h"
+#include "UnixDomainWriter.h"
 
 #include <string>
 #include <memory>
@@ -28,9 +32,10 @@
 
 class OMSEventWriter: public TextEventWriter {
 public:
-    OMSEventWriter(OMSEventWriterConfig config):
-    _config(config), _buffer(0, 256*1024), _writer(_buffer)
-    {}
+    OMSEventWriter(OMSEventWriterConfig config, std::shared_ptr<UserDB> user_db):
+    _config(config), _buffer(0, 256*1024), _writer(_buffer), _user_db(user_db)
+    {
+    }
 
     virtual ssize_t WriteEvent(const Event& event, IWriter* writer);
 
@@ -51,6 +56,8 @@ private:
     void process_record(const EventRecord& rec, int record_type, const std::string& record_name);
     void process_field(const EventRecordField& field);
 
+    void override_and_interp_fieldname(std::string fieldname, std::string& override_name, std::string& interp_name);
+
     OMSEventWriterConfig _config;
     std::string _field_name;
     std::string _raw_name;
@@ -60,6 +67,10 @@ private:
 
     rapidjson::StringBuffer _buffer;
     rapidjson::Writer<rapidjson::StringBuffer> _writer;
+
+    std::shared_ptr<UserDB> _user_db;
+
+    uint32_t _recordTypeCode;
 };
 
 

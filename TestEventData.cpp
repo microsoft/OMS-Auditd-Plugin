@@ -44,7 +44,7 @@ type=PROCTITLE msg=audit(1521757638.392:262332): proctitle=6C6F67676572002D74007
 };
 
 const std::vector<TestEvent> test_events {
-        {1521757638, 392, 262332, 1, 26918, {
+        {1521757638, 392, 262332, 26918, {
                                                     {14688, "AUOMS_EXECVE", "", {
                                                                                         // SYSCALL
                                                                                         {"arch", "c000003e", "x86_64", FIELD_TYPE_ARCH},
@@ -84,7 +84,7 @@ const std::vector<TestEvent> test_events {
                                                     },
                                             }
         },
-        {1521757638, 392, 262332, 1, 26918, {
+        {1521757638, 392, 262332, 26918, {
                                                     {11309, "AUOMS_EXECVE_FRAGMENT", "", {
                                                                                         // SYSCALL
                                                                                         {"arch", "c000003e", "x86_64", FIELD_TYPE_ARCH},
@@ -113,7 +113,7 @@ const std::vector<TestEvent> test_events {
                                                     },
                                             }
         },
-        {1521757638, 392, 262332, 1, 26918, {
+        {1521757638, 392, 262332, 26918, {
                                                     {11309, "AUOMS_EXECVE_FRAGMENT", "", {
                                                                                         // EXECVE
                                                                                         {"cmdline", "logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \"", nullptr, FIELD_TYPE_UNCLASSIFIED},
@@ -132,7 +132,7 @@ const std::vector<TestEvent> test_events {
                                                     },
                                             }
         },
-        {1521773704, 435, 270957, 0, -1, {
+        {1521773704, 435, 270957, -1, {
                                                     {1321, "BPRM_FCAPS", "type=BPRM_FCAPS msg=audit(1521773704.435:270957): fver=0 fp=0000000000000000 fi=0000000000000000 fe=0 old_pp=0000000000000000 old_pi=0000000000000000 old_pe=0000000000000000 new_pp=0000003fffffffff new_pi=0000000000000000 new_pe=0000003fffffffff", {
                                                                                         {"type", "BPRM_FCAPS", nullptr, FIELD_TYPE_UNCLASSIFIED},
                                                                                         {"fver", "0", nullptr, FIELD_TYPE_UNCLASSIFIED},
@@ -149,7 +149,7 @@ const std::vector<TestEvent> test_events {
                                                     },
                                             }
         },
-        {1521757801, 424, 262683, 0, 27127, {
+        {1521757801, 424, 262683, 27127, {
                                                     {1006, "LOGIN", "type=LOGIN msg=audit(1521757801.424:262683): pid=27127 uid=0 old-auid=4294967295 auid=0 old-ses=4294967295 ses=844 res=1", {
                                                                                         {"type", "LOGIN", nullptr, FIELD_TYPE_UNCLASSIFIED},
                                                                                         {"pid", "27127", nullptr, FIELD_TYPE_UNCLASSIFIED},

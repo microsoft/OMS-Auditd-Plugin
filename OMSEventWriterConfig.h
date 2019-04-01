@@ -18,6 +18,23 @@
 
 #include "Config.h"
 
+struct ProcSyscallFilterSpec {
+    ProcSyscallFilterSpec(const std::string& exe, const std::string& args, const std::string& user, const std::vector<std::string>& syscalls, int depth) {
+        _exe = std::regex(exe, std::regex::optimize);
+        _args = std::regex(args, std::regex::optimize);
+        _user = user;
+        std::copy(syscalls.cbegin(), syscalls.cend(), std::inserter(_syscalls, _syscalls.end()));
+        _depth = depth;
+    }
+
+    std::regex _exe;
+    std::regex _args;
+    std::string _user;
+    std::vector<std::string> _syscalls;
+    int _depth;
+};
+
+
 class OMSEventWriterConfig {
 public:
     explicit OMSEventWriterConfig()
@@ -55,7 +72,9 @@ public:
     std::unordered_map<std::string, std::string> InterpFieldNameMap;
     std::unordered_set<std::string> FilterRecordTypeSet;
     std::unordered_set<std::string> FilterFieldNameSet;
+    std::vector<ProcSyscallFilterSpec> FilterProcSyscall;
     uint32_t FilterFlagsMask;
+
 };
 
 

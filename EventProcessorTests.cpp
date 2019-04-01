@@ -24,6 +24,7 @@
 #include "TestEventData.h"
 #include <fstream>
 #include <stdexcept>
+#include <unordered_set>
 
 extern "C" {
 #include <sys/types.h>
@@ -64,10 +65,6 @@ void diff_event(int idx, const Event& e, const Event& a) {
     }
     if (e.Serial() != a.Serial()) {
         msg << "Event["<<idx<<"] Serial Mismatch: expected " << e.Serial() << ", got " << a.Serial();
-        throw std::runtime_error(msg.str());
-    }
-    if (e.Flags() != a.Flags()) {
-        msg << "Event["<<idx<<"] Flags Mismatch: expected " << e.Flags() << ", got " << a.Flags();
         throw std::runtime_error(msg.str());
     }
     if (e.Pid() != a.Pid()) {
@@ -221,7 +218,6 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     auto actual_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_queue);
     auto expected_builder = std::make_shared<EventBuilder>(expected_allocator);
     auto actual_builder = std::make_shared<EventBuilder>(actual_allocator);
-    auto proc_filter = std::make_shared<ProcFilter>(user_db);
 
     for (auto e : test_events) {
         e.Write(expected_builder);
@@ -229,7 +225,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
 
     load_libaudit_symbols();
 
-    AuditEventProcessor aep(actual_builder, user_db, proc_filter);
+    AuditEventProcessor aep(actual_builder, user_db);
 
     aep.Initialize();
 

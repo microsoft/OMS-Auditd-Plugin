@@ -116,7 +116,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
             "syscall_r",
     };
 
-    OMSEventWriter oms_writer(config);
+    OMSEventWriter oms_writer(config, nullptr);
 
     for (size_t i = 0; i < queue->GetEventCount(); ++i) {
         oms_writer.WriteEvent(queue->GetEvent(i), &writer);

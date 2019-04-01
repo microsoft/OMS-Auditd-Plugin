@@ -27,8 +27,6 @@ ssize_t MsgPackEventWriter::WriteEvent(const Event& event, IWriter* writer) {
     _packer.pack(event.Milliseconds());
     _packer.pack("serial");
     _packer.pack(event.Serial());
-    _packer.pack("flags");
-    _packer.pack(event.Flags());
     _packer.pack("pid");
     _packer.pack(event.Pid());
     _packer.pack("records");
@@ -86,3 +84,4 @@ ssize_t MsgPackEventWriter::ReadAck(EventId& event_id, IReader* reader) {
                        *reinterpret_cast<uint64_t*>(data.data()+12));
     return IO::OK;
 }
+

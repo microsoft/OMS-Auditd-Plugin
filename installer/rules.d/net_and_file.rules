@@ -1,0 +1,31 @@
+# Network rules
+-a always,exit -F arch=b64 -S connect -F a2=0x10 -k oms-network
+-a always,exit -F arch=b64 -S connect -F a2=0x10 -k oms-network
+-a always,exit -F arch=b32 -S connect -F a2=0x1c -k oms-network
+-a always,exit -F arch=b32 -S connect -F a2=0x1c -k oms-network
+-a always,exit -F arch=b64 -S accept -F a1!=0x0 -k oms-network
+-a always,exit -F arch=b32 -S accept -F a1!=0x0 -k oms-network
+
+# Aggressive file monitoring rules minus oms configuration files
+# Note, we could consider not omitting the OMS files and filtering them out in Scuba isntead
+# in order to avoid an attacker specifically targetting OMS to bypass auditing.
+-a never,exit -S all -F dir=/etc/opt/omi/conf/omsconfig -F key=oms-filetamper
+-a never,exit -S all -F dir=/etc/opt/microsoft/omsagent -F key=oms-filetamper
+-a never,exit -S all -F dir=/etc/azsec/lastScan.xml -F key=oms-filetamper
+-w /bin -p wa -k oms-filetamper
+-w /boot -p wa -k oms-filetamper
+-w /etc -p wa -k oms-filetamper
+-w /lib -p wa -k oms-filetamper
+-w /lib64 -p wa -k oms-filetamper
+-w /opt -p wa -k oms-filetamper
+-w /sbin -p wa -k oms-filetamper
+-w /snap -p wa -k oms-filetamper
+-w /usr/bin -p wa -k oms-filetamper
+-w /usr/lib -p wa -k oms-filetamper
+-w /usr/local/bin -p wa -k oms-filetamper
+-w /usr/local/etc -p wa -k oms-filetamper
+-w /usr/local/lib -p wa -k oms-filetamper
+-w /usr/local/sbin -p wa -k oms-filetamper
+-w /usr/local/share -p wa -k oms-filetamper
+-w /usr/sbin -p wa -k oms-filetamper
+-w /usr/share -p wa -k oms-filetamper

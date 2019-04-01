@@ -26,9 +26,8 @@
 #include <unistd.h>
 #include <limits.h>
 
-#define RELOAD_INTERVAL 300 // 5 minutes
 
-const std::string CONFIG_PARAM_NAME = "process_flags";
+const std::string CONFIG_PARAM_NAME = "filter_process_syscalls";
 
 /*****************************************************************************
  ** ProcessInfo
@@ -40,7 +39,7 @@ ProcInfo::ProcInfo(ProcessInfo* proc)
     pid = proc->pid();
     ppid = proc->ppid();
     uid = proc->uid();
-    proc->get_arg1(arg1);
+    proc->get_args(args);
 }
 
 inline bool ProcInfo::operator==(const ProcInfo& x) const
@@ -58,88 +57,14 @@ inline bool ProcInfo::operator!=(const ProcInfo& x) const
  ** ProcFilter
  *****************************************************************************/
 
-// -------- helper functions -----------------------------
-int ProcFilter::is_dir(std::string path)
+ProcFilter::ProcFilter(const std::shared_ptr<UserDB>& user_db)
 {
-    struct stat stat_buf;
-    stat(path.c_str(), &stat_buf);
-    int is_directory = S_ISDIR(stat_buf.st_mode);
-    return (is_directory ? 1: 0);
+    _user_db = user_db;
 }
 
-bool ProcFilter::is_number(const std::string& s)
-{
-    return !s.empty() &&
-           std::find_if(s.begin(), s.end(), [](char c) { return !std::isdigit(c); }) == s.end();
-}
-
-std::string ProcFilter::do_readlink(std::string const& path) {
-    char buff[PATH_MAX];
-    ssize_t len = ::readlink(path.c_str(), buff, sizeof(buff)-1);
-    if (len != -1) {
-      buff[len] = '\0';
-      return std::string(buff);
-    }
-    Logger::Warn("Failed to read exe link '%s': %s", path.c_str(), std::strerror(errno));
-    return std::string();
-}
-
-uint32_t ProcFilter::is_root_filter_proc(const ProcInfo& proc) {
-    std::string user_name = _user_db->GetUserName(proc.uid);
-    for (auto ent : _filters)
-    {
-        if (proc.exe.compare(0, ent._exe.length(), ent._exe) == 0) {
-            if (!ent._user.empty() && user_name != ent._user) {
-                continue;
-            }
-            if (!ent._arg1.empty() && proc.arg1.compare(0, ent._arg1.length(), ent._arg1) != 0) {
-                continue;
-            }
-            return ent._flags;
-        }
-    }
-    return 0;
-}
-
-
-// --------- end helper functions -------------------------
-
-void ProcFilter::compile_filter_pids(std::vector<ProcInfo>& allProcs)
-{
-    std::unordered_multimap<int, int> procs;
-    std::vector<std::pair<int,uint32_t>> search_pids;
-    std::vector<std::pair<int,uint32_t>> tmp_pids;
-    // add root blocking processes
-    for (const ProcInfo& proc : allProcs)
-    {
-        auto flags = is_root_filter_proc(proc);
-        if (flags != 0) {
-            _filter_pids.insert(std::pair<int,uint32_t>(proc.pid, flags));
-            search_pids.push_back(std::pair<int,uint32_t>(proc.pid, flags));
-        }
-        procs.insert(std::pair<int, int>(proc.ppid, proc.pid));
-    }
-
-    // Starting with initial root set of procs to filter
-    // Look for children and add them to the filter set
-    while(!search_pids.empty()) {
-        for (auto ent : search_pids) {
-            for (auto procPair : procs) {
-                if (procPair.first == ent.first) {
-                    _filter_pids.insert(std::pair<int, uint32_t>(procPair.second, ent.second));
-                    tmp_pids.push_back(std::pair<int, uint32_t>(procPair.second, ent.second));
-                }
-
-            }
-        }
-        search_pids = tmp_pids;
-        tmp_pids.clear();
-    }
-}
-
-bool ProcFilter::ParseConfig(const Config& config) {
-    if (config.HasKey(CONFIG_PARAM_NAME)) {
-        auto doc = config.GetJSON(CONFIG_PARAM_NAME);
+bool ProcFilter::ParseConfig(std::unique_ptr<Config>& config) {
+    if (config->HasKey(CONFIG_PARAM_NAME)) {
+        auto doc = config->GetJSON(CONFIG_PARAM_NAME);
         if (!doc.IsArray()) {
             return false;
         }
@@ -147,10 +72,11 @@ bool ProcFilter::ParseConfig(const Config& config) {
         for (auto it = doc.Begin(); it != doc.End(); ++it, idx++) {
             if (it->IsObject()) {
                 std::string exe;
-                std::string arg1;
-                uint32_t flags = 0;
+                std::string args;
                 std::string user;
-                auto mi = it->FindMember("exe_prefix");
+                std::vector<std::string> syscalls;
+                int depth = 0;
+                auto mi = it->FindMember("exe");
                 if (mi != it->MemberEnd()) {
                     if (mi->value.IsString()) {
                         exe = std::string(mi->value.GetString(), mi->value.GetStringLength());
@@ -160,39 +86,19 @@ bool ProcFilter::ParseConfig(const Config& config) {
                         return false;
                     }
                 } else {
-                    Logger::Error("Invalid entry (exe_prefix) at (%d) in config for '%s' is missing", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                    Logger::Error("Invalid entry (exe) at (%d) in config for '%s' is missing", idx, CONFIG_PARAM_NAME.c_str());
                     _filters.clear();
                     return false;
                 }
-                mi = it->FindMember("arg1_prefix");
+                mi = it->FindMember("args");
                 if (mi != it->MemberEnd()) {
                     if (mi->value.IsString()) {
-                        arg1 = std::string(mi->value.GetString(), mi->value.GetStringLength());
+                        args = std::string(mi->value.GetString(), mi->value.GetStringLength());
                     } else {
                         Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
                         _filters.clear();
                         return false;
                     }
-                }
-                mi = it->FindMember("flags");
-                if (mi != it->MemberEnd()) {
-                    if (mi->value.IsInt()) {
-                        int i = mi->value.GetInt();
-                        if (i <= 0 || i > 0xFFFF) {
-                            Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
-                            _filters.clear();
-                            return false;
-                        }
-                        flags = static_cast<uint32_t>(i) << 16;
-                    } else {
-                        Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
-                        _filters.clear();
-                        return false;
-                    }
-                } else {
-                    Logger::Error("Entry (flags) at (%d) in config for '%s' is missing", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
-                    _filters.clear();
-                    return false;
                 }
                 mi = it->FindMember("user");
                 if (mi != it->MemberEnd()) {
@@ -204,7 +110,35 @@ bool ProcFilter::ParseConfig(const Config& config) {
                         return false;
                     }
                 }
-                _filters.emplace(_filters.end(), exe, arg1, flags, user);
+				mi = it->FindMember("syscalls");
+				if (mi != it->MemberEnd()) {
+					if (mi->value.IsArray()) {
+						for (auto it2 = mi->value.Begin(); it2 != mi->value.End(); ++it2) {
+							syscalls.emplace_back(std::string(it2->GetString(), it2->GetStringLength()));
+						}
+					} else {
+						Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+						_filters.clear();
+						return false;
+					}
+				}
+				for (auto it2 : syscalls) {
+					if (it2.substr(0, 1) == "!") {
+						syscalls.emplace_back(std::string("*"));
+						break;
+					}
+				}
+				mi = it->FindMember("depth");
+				if (mi != it->MemberEnd()) {
+					if (mi->value.IsInt()) {
+						depth = mi->value.GetInt();
+					} else {
+						Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+						_filters.clear();
+						return false;
+					}
+				}
+                _filters.emplace(_filters.end(), exe, args, user, syscalls, depth);
             } else {
                 Logger::Error("Invalid entry (%d) in config for '%s'", idx, CONFIG_PARAM_NAME.c_str());
                 _filters.clear();
@@ -215,51 +149,54 @@ bool ProcFilter::ParseConfig(const Config& config) {
     return true;
 }
 
-void ProcFilter::UpdateProcesses(std::vector<ProcInfo>& procs) {
+
+std::vector<procSyscall> ProcFilter::is_root_filter_proc(const std::string exe, const std::string args, const std::string user_name)
+{
+    std::vector<procSyscall> syscalls;
+
+    for (auto ent : _filters)
+    {
+        if (std::regex_search(exe, ent._exe)) {
+            if (std::regex_search(args, ent._args)) {
+                if (ent._user.empty() || (user_name == ent._user)) {
+                    if (ent._syscalls.empty()) {
+                        procSyscall pSyscall;
+                        pSyscall.propagates = ent._depth;
+                        pSyscall.syscall = "*";
+                        syscalls.emplace_back(pSyscall);
+                        return syscalls;
+                    } else {
+                        for (auto syscallStr : ent._syscalls) {
+                            procSyscall pSyscall;
+                            pSyscall.propagates = ent._depth;
+                            pSyscall.syscall = syscallStr;
+                            syscalls.emplace_back(pSyscall);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return syscalls;
+}
+
+void ProcFilter::UpdateProcesses(std::multimap<uint64_t, ProcInfo>& procs) {
     if (_filters.empty()) {
         return;
     }
     _previous_filter_pids.clear();
     _previous_filter_pids = _filter_pids;
     _filter_pids.clear();
-    compile_filter_pids(procs);
+
+    for (std::pair<uint64_t, ProcInfo> proc : procs) {
+        auto p = proc.second;
+        std::string user_name = _user_db->GetUserName(p.uid);
+        AddProcess(p.pid, p.ppid, p.exe, p.args, user_name);
+    }
 }
 
-ProcFilter::ProcFilter(const std::shared_ptr<UserDB>& user_db)
-{
-    _user_db = user_db;
-}
-
-bool ProcFilter::IsFilterEnabled() {
-    return !_filters.empty();
-}
-
-uint32_t ProcFilter::GetFilterFlags(int pid, int ppid)
-{
-    auto it = _filter_pids.find(pid);
-    if (it != _filter_pids.end()) {
-        return it->second;
-    }
-
-    it = _filter_pids.find(ppid);
-    if (it != _filter_pids.end()) {
-        return it->second;
-    }
-
-    it = _previous_filter_pids.find(pid);
-    if (it != _previous_filter_pids.end()) {
-        return it->second;
-    }
-
-    it = _previous_filter_pids.find(ppid);
-    if (it != _previous_filter_pids.end()) {
-        return it->second;
-    }
-
-    return 0;
-}
-
-void ProcFilter::AddProcess(int pid, int ppid)
+void ProcFilter::AddProcess(int pid, int ppid, std::string exe, std::string args, std::string user)
 {
 
     // Do nothing if there are no filters
@@ -273,26 +210,104 @@ void ProcFilter::AddProcess(int pid, int ppid)
     // parent pid check, or during the root filter prod check.
     _filter_pids.erase(pid);
 
-    // Look for the parent pid in set
+    std::pair<int, std::vector<procSyscall>> procsys;
+    std::vector<procSyscall> syscalls, syscalls_exc, syscalls_inc, syscalls_star;
+
+    // Check if this process is a root filter
+    syscalls = is_root_filter_proc(exe, args, user);
+
+    // Now check if this is a child of an existing filtered process
+    // and reduce the propagates (depth) value by 1
     auto it = _filter_pids.find(ppid);
     if (it != _filter_pids.end()) {
-        _filter_pids.insert(std::pair<int, uint32_t>(pid, it->second));
-        return;
+        for (auto s : it->second) {
+            if (s.propagates >= 0) {
+                s.propagates--;
+            }
+            syscalls.push_back(s);
+        }
+
     } else {
         auto pit = _previous_filter_pids.find(ppid);
         if (pit != _previous_filter_pids.end()) {
-            _filter_pids.insert(std::pair<int, uint32_t>(pid, pit->second));
-            return;
+            for (auto s : pit->second) {
+                if (s.propagates >= 0) {
+                    s.propagates--;
+                }
+                syscalls.push_back(s);
+            }
         }
     }
 
-    // Parent wasn't found, check to see if it is a root filter proc
-    auto pinfo = ProcessInfo::Open(pid);
-    if (pinfo) {
-        ProcInfo proc(pinfo.get());
-        auto flags = is_root_filter_proc(proc);
-        if (flags != 0) {
-            _filter_pids.insert(std::pair<int, uint32_t>(pid, flags));
+    if (syscalls.empty()) {
+        return;
+    }
+
+    // Sort the syscalls so the excluded ones are first, followed by the included ones, potentially
+    // followed by a '*' if exclusions exist
+    int max_prop = 0;
+    for (auto s : syscalls) {
+        if (s.syscall.substr(0,1) == "!") {
+            syscalls_exc.push_back(s);
+            if (s.propagates > max_prop) {
+                max_prop = s.propagates;
+            }
+        } else if (s.syscall.substr(0,1) == "*") {
+            syscalls_star.push_back(s);
+        } else {
+            syscalls_inc.push_back(s);
         }
     }
+
+    syscalls.clear();
+    for (auto s : syscalls_exc) {
+        if (s.propagates >= 0) {
+            syscalls.push_back(s);
+        }
+    }
+    for (auto s : syscalls_inc) {
+        if (s.propagates >= 0) {
+            syscalls.push_back(s);
+        }
+    }
+    if (!syscalls_exc.empty()) {
+        procSyscall s;
+        s.propagates = max_prop;
+        s.syscall = "*";
+        syscalls.push_back(s);
+    }
+    for (auto s : syscalls_star) {
+        if (s.propagates >= 0) {
+            syscalls.push_back(s);
+        }
+    }
+
+    if (syscalls.empty()) {
+        return;
+    }
+
+    procsys = std::make_pair(pid, syscalls);
+    _filter_pids.insert(procsys);
+
 }
+
+bool ProcFilter::FilterProcessSyscall(int pid, std::string syscall)
+{
+    std::unordered_map<int, std::vector<procSyscall>>::const_iterator got = _filter_pids.find(pid);
+    if (got != _filter_pids.end()) {
+        for (auto it : got->second) {
+            if (it.propagates >= 0) {
+                if (it.syscall == "*") {
+                    return true;
+                } else if (it.syscall == syscall) {
+                    return true;
+                } else if (it.syscall == ("!" + syscall)) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+

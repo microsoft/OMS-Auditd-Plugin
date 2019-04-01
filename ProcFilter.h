@@ -27,13 +27,14 @@
 #include "Config.h"
 #include "UserDB.h"
 #include "ProcessInfo.h"
+#include "OMSEventWriterConfig.h"
 
 struct ProcInfo {
     int pid;
     int ppid;
     int uid;
     std::string exe;
-    std::string arg1;
+    std::string args;
 
     ProcInfo(ProcessInfo* proc);
     static const ProcInfo Empty;
@@ -42,16 +43,21 @@ struct ProcInfo {
     inline bool operator!=(const ProcInfo& x) const;
 };
 
+struct procSyscall {
+    int propagates;
+    std::string syscall;
+};
+
 struct ProcFilterSpec {
-    ProcFilterSpec(const std::string& exe, const std::string& arg1, uint32_t flags, const std::string& user) {
+    ProcFilterSpec(const std::string& exe, const std::string& args, uint32_t flags, const std::string& user) {
         _exe = exe;
-        _arg1 = arg1;
+        _args = args;
         _flags = flags;
         _user = user;
     }
 
     std::string _exe;
-    std::string _arg1;
+    std::string _args;
     uint32_t _flags;
     std::string _user;
 };
@@ -61,27 +67,20 @@ public:
     
     ~ProcFilter() = default;
     ProcFilter(const std::shared_ptr<UserDB>& user_db);
-    bool IsFilterEnabled();
-    void UpdateProcesses(std::vector<ProcInfo>& procs);
-    uint32_t GetFilterFlags(int pid, int ppid);
-    void AddProcess(int pid, int ppid);
+    void UpdateProcesses(std::multimap<uint64_t, ProcInfo>& procs);
+    void AddProcess(int pid, int ppid, std::string exe, std::string args, std::string user);
+    bool FilterProcessSyscall(int pid, std::string syscall);
 
-    bool ParseConfig(const Config& config);
+    bool ParseConfig(std::unique_ptr<Config>& config);
 
 private:
-    std::unordered_map<int, uint32_t> _filter_pids;
-    std::unordered_map<int, uint32_t> _previous_filter_pids;
-    std::vector<ProcFilterSpec> _filters;
+    std::unordered_map<int, std::vector<procSyscall>> _filter_pids;
+    std::unordered_map<int, std::vector<procSyscall>> _previous_filter_pids;
+    std::vector<ProcSyscallFilterSpec> _filters;
     std::shared_ptr<UserDB> _user_db;
     struct timeval _last_time_initiated;
 
-    void compile_filter_pids(std::vector<ProcInfo>& allProcs);
-
-    // helper methods
-    static int is_dir(std::string path);
-    static bool is_number(const std::string& s);
-    static std::string do_readlink(std::string const& path);
-    uint32_t is_root_filter_proc(const ProcInfo& proc);
+    std::vector<procSyscall> is_root_filter_proc(const std::string exe, const std::string args, const std::string user_name);
 };
 
 #endif //AUOMS_PROC_FILTER_H

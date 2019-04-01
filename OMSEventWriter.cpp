@@ -95,9 +95,7 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
 {
     std::ostringstream timestamp_str;
 
-    if ((event.Flags() & _config.FilterFlagsMask) != 0) {
-        return IWriter::OK;
-    }
+    _recordTypeCode = 0;
 
     double time = static_cast<double>(event.Seconds());
     time += static_cast<double>(event.Milliseconds())/1000;
@@ -106,11 +104,7 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
     add_double(time);
     begin_object(); // Event
 
-    if ((event.Flags() & EVENT_FLAG_IS_AUOMS_EVENT) != 0) {
-        add_string_field(_config.MsgTypeFieldName, "AUOMS_EVENT");
-    } else {
-        add_string_field(_config.MsgTypeFieldName, "AUDIT_EVENT");
-    }
+    add_string_field(_config.MsgTypeFieldName, "AUDIT_EVENT");
 
     timestamp_str << event.Seconds() << "."
                  << std::setw(3) << std::setfill('0')
@@ -118,7 +112,6 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
 
     add_string_field(_config.TimestampFieldName, timestamp_str.str());
     add_int64_field(_config.SerialFieldName, event.Serial());
-    add_int64_field(_config.ProcessFlagsFieldName, event.Flags()>>16);
     add_string(_config.RecordsFieldName);
 
     int records = 0;
@@ -127,6 +120,7 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
         begin_array(); // Records
         for (auto rec : event) {
             int record_type = rec.RecordType();
+            _recordTypeCode = record_type;
             std::string record_type_name = std::string(rec.RecordTypeName(), rec.RecordTypeNameSize());
             // Exclude the EOE (end-of-event) record
             if (!_config.RecordTypeNameOverrideMap.empty()) {
@@ -153,6 +147,7 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
     if (records == 0) {
         return IWriter::OK;
     }
+
     return write_event(writer);
 }
 
@@ -175,35 +170,41 @@ void OMSEventWriter::process_record(const EventRecord& rec, int record_type, con
     end_object();
 }
 
+
+void OMSEventWriter::override_and_interp_fieldname(std::string fieldname, std::string& override_name, std::string& interp_name)
+{
+    if (!_config.FieldNameOverrideMap.empty()) {
+        auto it = _config.FieldNameOverrideMap.find(fieldname);
+        if (it != _config.FieldNameOverrideMap.end()) {
+            override_name.assign(it->second);
+        } else {
+            override_name.assign(fieldname);
+        }
+    } else {
+        override_name.assign(fieldname);
+    }
+
+    if (!_config.InterpFieldNameMap.empty()) {
+        auto it = _config.InterpFieldNameMap.find(fieldname);
+        if (it != _config.InterpFieldNameMap.end()) {
+            interp_name.assign(it->second);
+        } else {
+            interp_name.assign(override_name);
+        }
+    } else {
+        interp_name.assign(override_name);
+    }
+
+    if (override_name == interp_name) {
+        override_name.append(_config.FieldSuffix);
+    }
+}
+
 void OMSEventWriter::process_field(const EventRecordField& field)
 {
     _field_name.assign(field.FieldName(), field.FieldNameSize());
 
-    if (!_config.FieldNameOverrideMap.empty()) {
-        auto it = _config.FieldNameOverrideMap.find(_field_name);
-        if (it != _config.FieldNameOverrideMap.end()) {
-            _raw_name.assign(it->second);
-        } else {
-            _raw_name.assign(_field_name);
-        }
-    } else {
-        _raw_name.assign(_field_name);
-    }
-
-    if (!_config.InterpFieldNameMap.empty()) {
-        auto it = _config.InterpFieldNameMap.find(_field_name);
-        if (it != _config.InterpFieldNameMap.end()) {
-            _interp_name.assign(it->second);
-        } else {
-            _interp_name.assign(_raw_name);
-        }
-    } else {
-        _interp_name.assign(_raw_name);
-    }
-
-    if (_raw_name == _interp_name) {
-        _raw_name.append(_config.FieldSuffix);
-    }
+    override_and_interp_fieldname(_field_name, _raw_name, _interp_name);
 
     if (field.FieldType() == FIELD_TYPE_ESCAPED || field.FieldType() == FIELD_TYPE_PROCTITLE) {
         // If the field type is FIELD_TYPE_ESCAPED, then there is no interp value in the event.
@@ -245,3 +246,5 @@ void OMSEventWriter::process_field(const EventRecordField& field)
         }
     }
 }
+
+
