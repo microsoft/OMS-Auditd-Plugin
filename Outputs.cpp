@@ -142,7 +142,7 @@ void Outputs::do_conf_sync() {
 
     std::unordered_map<std::string, std::string> new_outputs;
 
-    std::array<char, 1024> buffer;
+    std::array<char, 4096> buffer;
 
     auto dir = opendir(_conf_dir.c_str());
     if (dir == nullptr) {

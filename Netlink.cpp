@@ -1,6 +1,18 @@
-//
-// Created by tad on 2/7/19.
-//
+/*
+    microsoft-oms-auditd-plugin
+
+    Copyright (c) Microsoft Corporation
+
+    All rights reserved.
+
+    MIT License
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the ""Software""), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
 
 #include "Netlink.h"
 #include "Logger.h"
@@ -13,22 +25,25 @@
 #include <poll.h>
 
 
-bool Netlink::Open(reply_fn_t default_msg_handler_fn) {
+int Netlink::Open(reply_fn_t default_msg_handler_fn) {
     std::unique_lock<std::mutex> _lock(_run_mutex);
 
     if (_start) {
-        return true;
+        return 0;
     }
 
-    Logger::Info("Opening audit NETLINK socket");
-    int fd = socket(AF_NETLINK, SOCK_RAW, NETLINK_AUDIT);
+    if (!quite) {
+        Logger::Info("Opening audit NETLINK socket");
+    }
+    int fd = socket(AF_NETLINK, SOCK_RAW|SOCK_CLOEXEC, NETLINK_AUDIT);
     if (fd < 0)  {
+        auto saved_errno = errno;
         if (errno == EINVAL || errno == EPROTONOSUPPORT || errno == EAFNOSUPPORT) {
             Logger::Error("Could not open AUDIT NETLINK socket: No support in kernel");
         } else {
             Logger::Error("Error opening AUDIT NETLINK socket: %s", std::strerror(errno));
         }
-        return false;
+        return -saved_errno;
     }
 
     _fd = fd;
@@ -36,26 +51,28 @@ bool Netlink::Open(reply_fn_t default_msg_handler_fn) {
 
     _lock.unlock();
 
-    Logger::Info("Netlink: starting");
+    if (!quite) {
+        Logger::Info("Netlink: starting");
+    }
     Start();
 
-    return true;
+    return 0;
 }
 
 void Netlink::Close() {
     Stop();
 }
 
-int Netlink::Send(uint16_t type, uint16_t flags, void* data, size_t len, reply_fn_t reply_fn) {
+int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t reply_fn) {
     std::unique_lock<std::mutex> _lock(_run_mutex);
 
     if (_stop) {
-        return CLOSED;
+        return -ENOTCONN;
     }
 
     nlmsghdr *nl = reinterpret_cast<nlmsghdr*>(_data.data());
     nl->nlmsg_type = type;
-    nl->nlmsg_flags = flags;
+    nl->nlmsg_flags = NLM_F_REQUEST|NLM_F_ACK;
     nl->nlmsg_seq = _sequence++;
     if (_sequence == 0) {
         _sequence = 1;
@@ -75,10 +92,8 @@ int Netlink::Send(uint16_t type, uint16_t flags, void* data, size_t len, reply_f
     addr.nl_groups = 0;
 
     std::future<int> future;
-    if (flags & (NLM_F_REQUEST|NLM_F_ACK) != 0) {
-        auto ret = _replies.emplace(nl->nlmsg_seq, ReplyRec(std::move(reply_fn), flags));
-        future = ret.first->second._promise.get_future();
-    }
+    auto rep = _replies.emplace(nl->nlmsg_seq, ReplyRec(std::move(reply_fn)));
+    future = rep.first->second._promise.get_future();
 
     int ret;
     do {
@@ -86,15 +101,11 @@ int Netlink::Send(uint16_t type, uint16_t flags, void* data, size_t len, reply_f
     } while (ret < 0 && errno == EINTR);
 
     if (ret < 0) {
+        auto saved_errno = errno;
         Logger::Warn("Netlink: sendto() failed: %s", std::strerror(errno));
-        if (flags & (NLM_F_REQUEST|NLM_F_ACK) != 0) {
-            _replies.erase(nl->nlmsg_seq);
-        }
-        return FAILED;
-    }
-
-    if (flags & (NLM_F_REQUEST|NLM_F_ACK) == 0) {
-        return SUCCESS;
+        _replies.erase(nl->nlmsg_seq);
+        errno = saved_errno;
+        return -saved_errno;
     }
 
     _lock.unlock();
@@ -104,41 +115,23 @@ int Netlink::Send(uint16_t type, uint16_t flags, void* data, size_t len, reply_f
 }
 
 int Netlink::AuditGet(audit_status& status) {
-    int err;
-    auto ret = Send(AUDIT_GET, NLM_F_REQUEST|NLM_F_ACK, nullptr, 0, [&err, &status](uint16_t type, uint16_t flags, void* data, size_t len) -> bool {
-        if (type == NLMSG_ERROR) {
-            err = reinterpret_cast<nlmsgerr*>(data)->error;
-            return err == 0;
-        } else if (type == AUDIT_GET) {
+    return Send(AUDIT_GET, nullptr, 0, [&status](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
+        if (type == AUDIT_GET) {
             std::memcpy(&status, data, std::min(len, sizeof(status)));
             return false;
         }
     });
-    if (err != 0) {
-        return FAILED;
-    }
-    return ret;
 }
 
 // Return 1 on success, 0 on timeout, -1 on failure, throw exception if fn threw an exception
 int Netlink::AuditSet(audit_status& status) {
-    int err;
-    auto ret = Send(AUDIT_SET, NLM_F_REQUEST|NLM_F_ACK, &status, sizeof(status), [&err](uint16_t type, uint16_t flags, void* data, size_t len) -> bool {
-        if (type == NLMSG_ERROR) {
-            err = reinterpret_cast<nlmsgerr*>(data)->error;
-            return false;
-        }
-    });
-    if (err != 0) {
-        return FAILED;
-    }
-    return ret;
+    return Send(AUDIT_SET, &status, sizeof(status), nullptr);
 }
 
 int Netlink::AuditGetPid(uint32_t& pid) {
     audit_status status;
     auto ret = AuditGet(status);
-    if (ret == SUCCESS) {
+    if (ret == 0) {
         pid = status.pid;
     }
     return ret;
@@ -146,8 +139,26 @@ int Netlink::AuditGetPid(uint32_t& pid) {
 
 int Netlink::AuditSetPid(uint32_t pid) {
     audit_status status;
+    ::memset(&status, 0, sizeof(status));
     status.mask = AUDIT_STATUS_PID;
     status.pid = pid;
+    return AuditSet(status);
+}
+
+int Netlink::AuditGetEnabled(uint32_t& enabled) {
+    audit_status status;
+    auto ret = AuditGet(status);
+    if (ret == 0) {
+        enabled = status.enabled;
+    }
+    return ret;
+}
+
+int Netlink::AuditSetEnabled(uint32_t enabled) {
+    audit_status status;
+    ::memset(&status, 0, sizeof(status));
+    status.mask = AUDIT_STATUS_ENABLED;
+    status.enabled = enabled;
     return AuditSet(status);
 }
 
@@ -185,9 +196,9 @@ void Netlink::flush_replies(bool is_exit) {
             if (!itr->second._done) {
                 try {
                     if (is_exit) {
-                        itr->second._promise.set_value(CLOSED);
+                        itr->second._promise.set_value(ECANCELED);
                     } else {
-                        itr->second._promise.set_value(TIMEOUT);
+                        itr->second._promise.set_value(ETIMEDOUT);
                     }
                 } catch (const std::exception &ex) {
                     Logger::Error("Unexpected exception while trying to set promise value for NETLINK reply: %s",
@@ -247,7 +258,7 @@ void Netlink::run() {
         socklen_t nladdrlen = sizeof(nladdr);
         int len;
         do {
-            len = recvfrom(fd, _data.data(), _data.size(), 0, (struct sockaddr *) &nladdr, &nladdrlen);
+            len = recvfrom(fd, _data.data(), 9*1024/*_data.size()*/, 0, (struct sockaddr *) &nladdr, &nladdrlen);
         } while (len < 0 && errno == EINTR && !IsStopping());
 
         if (IsStopping()) {
@@ -255,7 +266,7 @@ void Netlink::run() {
         }
 
         if (len < 0) {
-            Logger::Error("Error receiving packet from AUDIT NETLINK socket: %s", std::strerror((errno)));
+            Logger::Error("Error receiving packet from AUDIT NETLINK socket: (%d) %s", errno, std::strerror((errno)));
             return;
         }
 
@@ -270,7 +281,7 @@ void Netlink::run() {
         }
 
 
-        nlmsghdr *nl = reinterpret_cast<nlmsghdr*>(_data.data());
+        auto nl = reinterpret_cast<nlmsghdr*>(_data.data());
 
         if (!NLMSG_OK(nl, len)) {
             Logger::Error("Received invalid AUDIT NETLINK packet: Type %d, Flags %X, Seq %d", nl->nlmsg_type, nl->nlmsg_flags, nl->nlmsg_seq);
@@ -279,10 +290,8 @@ void Netlink::run() {
 
         size_t payload_len = len - static_cast<size_t>(reinterpret_cast<char*>(NLMSG_DATA(nl)) - reinterpret_cast<char*>(_data.data()));
 
-        //Logger::Debug("Recieved NETLINK packet [%d, %d, %d] %d bytes", nl->nlmsg_type, nl->nlmsg_flags, nl->nlmsg_seq, payload_len);
-
         reply_fn_t fn = _default_msg_handler_fn;
-        uint16_t flags = 0;
+        uint16_t req_flags = 0;
         bool done = false;
 
         if (nl->nlmsg_seq != 0) {
@@ -290,11 +299,11 @@ void Netlink::run() {
             auto itr = _replies.find(nl->nlmsg_seq);
             if (itr != _replies.end()) {
                 fn = itr->second._fn;
-                flags = itr->second._flags;
                 done = itr->second._done;
             } else {
                 done = true;
-                Logger::Info("Received unexpected NETLINK packet (Type: %d, Flags: %X, Seq: %d, Size: %d", nl->nlmsg_type, nl->nlmsg_flags, nl->nlmsg_seq, nl->nlmsg_len);
+                Logger::Warn("Received unexpected NETLINK packet (Type: %d, Flags: %X, Seq: %d, Size: %d",
+                             nl->nlmsg_type, nl->nlmsg_flags, nl->nlmsg_seq, nl->nlmsg_len);
             }
             _lock.unlock();
         } else {
@@ -302,68 +311,74 @@ void Netlink::run() {
                 fn = _default_msg_handler_fn;
             } else {
                 done = true;
-                Logger::Info("Received NETLINK packet With Seq 0 and no default handler is defined (Type: %d, Flags: %X, Size: %d", nl->nlmsg_type, nl->nlmsg_flags, nl->nlmsg_len);
+                Logger::Warn(
+                        "Received NETLINK packet With Seq 0 and no default handler is defined (Type: %d, Flags: %X, Size: %d",
+                        nl->nlmsg_type, nl->nlmsg_flags, nl->nlmsg_len);
             }
         }
 
-        if (!done) {
+        if (!done && fn && nl->nlmsg_type != NLMSG_ERROR && nl->nlmsg_type != NLMSG_DONE) {
             try {
-                if (!fn(nl->nlmsg_type, nl->nlmsg_flags, NLMSG_DATA(nl), payload_len)) {
+                if (!fn(nl->nlmsg_type, nl->nlmsg_flags, NLMSG_DATA(nl), payload_len) && nl->nlmsg_seq > 0) {
                     _lock.lock();
                     auto itr = _replies.find(nl->nlmsg_seq);
                     if (itr != _replies.end()) {
-                        itr->second._promise.set_value(SUCCESS);
+                        itr->second._promise.set_value(0);
                         itr->second._done = true;
                     }
                     _lock.unlock();
                     continue;
                 }
             } catch (const std::exception &ex) {
-                _lock.lock();
-                auto itr = _replies.find(nl->nlmsg_seq);
-                if (itr != _replies.end()) {
-                    try {
-                        itr->second._promise.set_exception(std::current_exception());
-                        itr->second._done = true;
-                    } catch (const std::exception &ex) {
-                        Logger::Error(
-                                "Unexpected exception while trying to set exception in NETLINK msg reply promise: %s",
-                                ex.what());
+                if (nl->nlmsg_seq > 0) {
+                    _lock.lock();
+                    auto itr = _replies.find(nl->nlmsg_seq);
+                    if (itr != _replies.end()) {
+                        try {
+                            itr->second._promise.set_exception(std::current_exception());
+                            itr->second._done = true;
+                        } catch (const std::exception &ex) {
+                            Logger::Error(
+                                    "Unexpected exception while trying to set exception in NETLINK msg reply promise: %s",
+                                    ex.what());
+                        }
+                        _replies.erase(itr);
                     }
-                    _replies.erase(itr);
+                    _lock.unlock();
                 }
-                _lock.unlock();
                 continue;
             }
         }
 
         if (nl->nlmsg_seq != 0) {
             if (nl->nlmsg_type == NLMSG_ERROR) {
-                nlmsgerr *err = reinterpret_cast<nlmsgerr *>(NLMSG_DATA(nl));
-                if (err->error != 0) {
+                auto err = reinterpret_cast<nlmsgerr *>(NLMSG_DATA(nl));
+                if (err->error != 0 || !fn) {
                     if (nl->nlmsg_seq != 0) {
                         _lock.lock();
                         auto itr = _replies.find(nl->nlmsg_seq);
-                        if (itr != _replies.end() && !itr->second._done) {
-                            itr->second._promise.set_value(FAILED);
-                            itr->second._done = true;
+                        if (itr != _replies.end()) {
+                            if (!itr->second._done) {
+                                itr->second._promise.set_value(err->error);
+                                itr->second._done = true;
+                            }
+                            _replies.erase(itr);
                         }
-                        _replies.erase(itr);
                         _lock.unlock();
                     }
                 }
-            } else if (nl->nlmsg_type != NLMSG_ERROR || (flags & NLM_F_ACK) == 0) {
-                if ((flags & NLM_F_MULTI) == 0 || nl->nlmsg_type == NLMSG_DONE) {
-                    if (nl->nlmsg_seq != 0) {
-                        _lock.lock();
-                        auto itr = _replies.find(nl->nlmsg_seq);
-                        if (itr != _replies.end() && !itr->second._done) {
-                            itr->second._promise.set_value(SUCCESS);
+            } else if ((nl->nlmsg_flags & NLM_F_MULTI) == 0 || nl->nlmsg_type == NLMSG_DONE) {
+                if (nl->nlmsg_seq != 0) {
+                    _lock.lock();
+                    auto itr = _replies.find(nl->nlmsg_seq);
+                    if (itr != _replies.end()) {
+                        if (!itr->second._done) {
+                            itr->second._promise.set_value(0);
                             itr->second._done = true;
                         }
                         _replies.erase(itr);
-                        _lock.unlock();
                     }
+                    _lock.unlock();
                 }
             }
         }

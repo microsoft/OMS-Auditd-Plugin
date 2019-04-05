@@ -23,19 +23,27 @@
 class RawEventReader: public IEventReader {
 public:
     ssize_t ReadEvent(void *buf, size_t buf_size, IReader* reader, std::function<bool()> fn) override {
-        uint32_t event_size;
+        uint32_t hdr;
 
-        if (buf_size < sizeof(event_size)) {
+        if (buf_size < sizeof(hdr)) {
             return IO::FAILED;
         }
 
         // Read header (SIZE, MSG_NUM)
-        ssize_t ret = reader->ReadAll(&event_size, sizeof(uint32_t), fn);
+        ssize_t ret = reader->ReadAll(&hdr, sizeof(uint32_t), fn);
         if (ret != IO::OK) {
             if (ret == IO::FAILED) {
                 Logger::Info("RawEventReader: Unexpected error while reading message header");
             }
             return ret;
+        }
+
+        uint32_t version = hdr >> 24;
+        uint32_t event_size = hdr & 0x00FFFFFF;
+
+        if (version != 1) {
+            Logger::Info("RawEventReader: Message version (%d) is not supported", version);
+            return IO::FAILED;
         }
 
         if (event_size > buf_size) {
@@ -44,7 +52,7 @@ public:
         }
 
         // Read message
-        *reinterpret_cast<uint32_t*>(buf) = event_size;
+        *reinterpret_cast<uint32_t*>(buf) = hdr;
         ret = reader->ReadAll(reinterpret_cast<uint32_t*>(buf)+1, event_size-sizeof(uint32_t), fn);
         if (ret != IO::OK) {
             if (ret == IO::FAILED) {

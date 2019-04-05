@@ -15,6 +15,7 @@
 */
 
 #include "RawEventAccumulator.h"
+#include "Translate.h"
 #include "Logger.h"
 
 bool RawEvent::AddRecord(std::unique_ptr<RawEventRecord> record) {
@@ -22,6 +23,11 @@ bool RawEvent::AddRecord(std::unique_ptr<RawEventRecord> record) {
 
     if (rtype == RecordType::EOE) {
         return true;
+    }
+
+    // Ignore the PROCTITLE record because we convert the EXECVE records into cmdline field.
+    if (rtype == RecordType::PROCTITLE) {
+        return false;
     }
 
     if (rtype == RecordType::EXECVE) {
@@ -36,8 +42,7 @@ bool RawEvent::AddRecord(std::unique_ptr<RawEventRecord> record) {
         _records.emplace_back(std::move(record));
     }
 
-    if (rtype == RecordType::PROCTITLE ||
-        rtype < RecordType::FIRST_EVENT ||
+    if (rtype < RecordType::FIRST_EVENT ||
         rtype >= RecordType::FIRST_ANOM_MSG ||
         rtype == RecordType::KERNEL) {
         return true;
@@ -47,7 +52,10 @@ bool RawEvent::AddRecord(std::unique_ptr<RawEventRecord> record) {
 }
 
 int RawEvent::AddEvent(EventBuilder& builder) {
-    auto ret = builder.BeginEvent(_event_id.Seconds(), _event_id.Milliseconds(), _event_id.Seconds(), static_cast<uint16_t>(_records.size()));
+    if (_records.empty() && _num_dropped_records == 0) {
+        return 1;
+    }
+    auto ret = builder.BeginEvent(_event_id.Seconds(), _event_id.Milliseconds(), _event_id.Serial(), static_cast<uint16_t>(_records.size()));
     if (ret != 1) {
         return ret;
     }
@@ -59,13 +67,13 @@ int RawEvent::AddEvent(EventBuilder& builder) {
         }
     }
     if (_num_dropped_records > 0) {
-        ret = builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_DROPPED_RECORDS), std::string_view(LookupTables::RecordTypeCodeToString(RecordType::AUOMS_DROPPED_RECORDS)), std::string_view(""), static_cast<uint16_t>(_drop_count.size()));
+        ret = builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_DROPPED_RECORDS), std::string_view(RecordTypeToName(RecordType::AUOMS_DROPPED_RECORDS)), std::string_view(""), static_cast<uint16_t>(_drop_count.size()));
         if (ret != 1) {
             builder.CancelEvent();
             return ret;
         }
         for (auto& e: _drop_count) {
-            ret = builder.AddField(LookupTables::RecordTypeCodeToString(e.first), std::to_string(e.second), "", field_type_t::UNCLASSIFIED);
+            ret = builder.AddField(RecordTypeToName(e.first), std::to_string(e.second), "", field_type_t::UNCLASSIFIED);
             if (ret != 1) {
                 builder.CancelEvent();
                 return ret;

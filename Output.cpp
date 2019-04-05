@@ -37,7 +37,7 @@ extern "C" {
 
 AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _head(0), _tail(0), _size(0) {
     _ring.reserve(max_size);
-    for (size_t i; i < max_size; i++) {
+    for (size_t i = 0; i < max_size; i++) {
         _ring.emplace_back(EventId(0, 0, 0), QueueCursor(0, 0));
     }
 }
@@ -320,7 +320,7 @@ bool Output::check_open()
         if (_writer->IsOpen()) {
             return true;
         }
-        Logger::Info("Output(%s): Connecting", _name.c_str());
+        Logger::Info("Output(%s): Connecting to %s", _name.c_str(), _socket_path.c_str());
         if (_writer->Open()) {
             if (IsStopping()) {
                 _writer->Close();
@@ -328,6 +328,8 @@ bool Output::check_open()
             }
             Logger::Info("Output(%s): Connected", _name.c_str());
             return true;
+        } else {
+            Logger::Warn("Output(%s): Failed to connect to '%s': %s", _socket_path.c_str(), std::strerror(errno));
         }
 
         Logger::Info("Output(%s): Sleeping %d seconds before re-trying connection", _name.c_str(), sleep_period);

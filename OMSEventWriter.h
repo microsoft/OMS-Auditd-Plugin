@@ -29,7 +29,7 @@
 class OMSEventWriter: public TextEventWriter {
 public:
     OMSEventWriter(OMSEventWriterConfig config):
-    _config(config), _buffer(0, 256*1024), _writer(_buffer)
+    _config(config), _buffer(0, 1024*1024), _writer(_buffer)
     {}
 
     virtual ssize_t WriteEvent(const Event& event, IWriter* writer);

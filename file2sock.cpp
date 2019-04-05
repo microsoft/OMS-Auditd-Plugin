@@ -84,7 +84,9 @@ int main(int argc, char**argv) {
     IOBase input(fd);
 
     UnixDomainWriter output(socket_path);
+    Logger::Info("Connecting to '%s'", socket_path.c_str());
     if (!output.Open()) {
+        Logger::Warn("Failed to connect to '%s': %s", socket_path.c_str(), std::strerror(errno));
         exit(1);
     }
 
@@ -102,7 +104,7 @@ int main(int argc, char**argv) {
                 output.Close();
                 exit(0);
             }
-            ret = output.WriteAll(data, ret, nullptr);
+            ret = output.IWriter::WriteAll(data, ret);
             if (ret != IO::OK) {
                 input.Close();
                 output.Close();

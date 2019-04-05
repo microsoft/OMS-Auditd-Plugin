@@ -22,8 +22,6 @@ class OMSEventWriterConfig {
 public:
     explicit OMSEventWriterConfig()
     {
-        IncludeFullRawText = true;
-        RawTextFieldName = "raw";
         TimestampFieldName = "Timestamp";
         SerialFieldName = "SerialNumber";
         MsgTypeFieldName = "MessageType";
@@ -36,9 +34,6 @@ public:
     }
 
     bool LoadFromConfig(const Config& config);
-
-    bool IncludeFullRawText; // Include the full raw text of the event (or record) in the message
-    std::string RawTextFieldName; // Default "raw"
 
     std::string TimestampFieldName;
     std::string SerialFieldName;

@@ -28,6 +28,7 @@
 #include "FileWatcher.h"
 #include "Defer.h"
 #include "Gate.h"
+#include "FileUtils.h"
 
 #include <iostream>
 #include <fstream>
@@ -35,11 +36,11 @@
 #include <memory>
 #include <thread>
 #include <system_error>
+#include <csignal>
 
-extern "C" {
 #include <unistd.h>
 #include <syslog.h>
-}
+#include <sys/prctl.h>
 
 void usage()
 {
@@ -102,11 +103,17 @@ void DoStdinCollection(RawEventAccumulator& accumulator) {
                     accumulator.AddRecord(std::move(record));
                     record = std::make_unique<RawEventRecord>();
                 } else {
-                    Logger::Warn("Received unparsable event data");
+                    Logger::Warn("Received unparsable event data: '%s'", std::string(record->Data(), nr).c_str());
                 }
             } else if (nr == StdinReader::TIMEOUT && Signals::IsExit()) {
+                Logger::Info("");
                 break;
             } else { // nr == StdinReader::CLOSED, StdinReader::FAILED or StdinReader::INTERRUPTED
+                if (nr == StdinReader::CLOSED) {
+                    Logger::Info("STDIN closed, exiting input loop");
+                } else if (nr == StdinReader::FAILED) {
+                    Logger::Error("Encountered an error while reading STDIN, exiting input loop");
+                }
                 break;
             }
         }
@@ -118,6 +125,12 @@ void DoStdinCollection(RawEventAccumulator& accumulator) {
 }
 
 void DoNetlinkCollection(RawEventAccumulator& accumulator) {
+    // Request that that this process receive a SIGTERM if the parent process (thread in parent) dies/exits.
+    auto ret = prctl(PR_SET_PDEATHSIG, SIGTERM);
+    if (ret != 0) {
+        Logger::Warn("prctl(PR_SET_PDEATHSIG, SIGTERM) failed: %s", std::strerror(errno));
+    }
+
     Netlink netlink;
     Gate _stop_gate;
 
@@ -132,22 +145,24 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
             {"/sbin", IN_CREATE|IN_MOVED_TO},
     });
 
-    std::function handler = [&accumulator](uint16_t type, uint16_t flags, void* data, size_t len) -> bool {
-        if (type >= AUDIT_FIRST_USER_MSG) {
+    std::function handler = [&accumulator](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
+        // Ignore AUDIT_REPLACE for now since replying to it doesn't actually do anything.
+        if (type >= AUDIT_FIRST_USER_MSG && type != static_cast<uint16_t>(RecordType::REPLACE)) {
             std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();
             std::memcpy(record->Data(), data, len);
             if (record->Parse(static_cast<RecordType>(type), len)) {
                 accumulator.AddRecord(std::move(record));
             } else {
-                Logger::Warn("Received unparsable event data");
+                Logger::Warn("Received unparsable event data (type = %d, flags = 0x%X, size=%d)", type, flags, len);
             }
         }
         return false;
     };
 
     Logger::Info("Connecting to AUDIT NETLINK socket");
-    if (!netlink.Open(handler)) {
-        Logger::Error("Failed to open AUDIT NETLINK connection");
+    ret = netlink.Open(handler);
+    if (ret != 0) {
+        Logger::Error("Failed to open AUDIT NETLINK connection: %s", std::strerror(-ret));
         return;
     }
     Defer _close_netlink([&netlink]() { netlink.Close(); });
@@ -158,24 +173,50 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
     uint32_t our_pid = getpid();
 
     Logger::Info("Checking assigned audit pid");
-    uint32_t pid = 0;
-    auto ret = netlink.AuditGetPid(pid);
-    if (ret != Netlink::SUCCESS) {
-        Logger::Error("Failed to get audit pid");
+    audit_status status;
+    ret = netlink.AuditGet(status);
+    if (ret != 0) {
+        Logger::Error("Failed to get audit status: %s", std::strerror(-ret));
         return;
     }
+    uint32_t pid = status.pid;
+    uint32_t enabled = status.enabled;
 
-    if (pid != 0) {
+    if (pid != 0 && PathExists("/proc/" + std::to_string(pid))) {
         Logger::Error("There is another process (pid = %d) already assigned as the audit collector", pid);
         return;
     }
 
-    Logger::Info("Connecting to AUDIT NETLINK socket");
+    Logger::Info("Enabling AUDIT event collection");
     ret = netlink.AuditSetPid(our_pid);
-    if (ret != Netlink::SUCCESS) {
-        Logger::Error("Failed to set audit pid");
+    if (ret != 0) {
+        Logger::Error("Failed to set audit pid: %s", std::strerror(-ret));
         return;
     }
+    if (enabled == 0) {
+        Logger::Info("Enabling auditing");
+        ret = netlink.AuditSetEnabled(1);
+        if (ret != 0) {
+            Logger::Error("Failed to enable auditing: %s", std::strerror(-ret));
+            return;
+        }
+    }
+    Defer _revert_enabled([&netlink,enabled]() {
+        if (enabled == 0) {
+            Logger::Info("Disabling auditing");
+            auto ret = netlink.AuditSetEnabled(0);
+            if (ret != 0) {
+                Logger::Error("Failed to disable auditing: %s", std::strerror(-ret));
+                return;
+            }
+        }
+        Logger::Info("Disabling AUDIT event collection");
+        auto ret = netlink.AuditSetPid(0);
+        if (ret != 0) {
+            Logger::Error("Failed to set audit pid to 0: %s", std::strerror(-ret));
+            return;
+        }
+    });
 
     Signals::SetExitHandler([&_stop_gate]() { _stop_gate.Open(); });
 
@@ -244,10 +285,18 @@ int main(int argc, char**argv) {
         run_dir = config.GetString("run_dir");
     }
 
-    std::string output_socket_path = run_dir + "/input.socket";
+    std::string socket_path = run_dir + "/input.socket";
 
-    std::string output_cursor_path = data_dir + "/input.cursor";
-    std::string queue_file = data_dir + "/input_queue.dat";
+    std::string cursor_path = data_dir + "/collect.cursor";
+    std::string queue_file = data_dir + "/collect_queue.dat";
+
+    if (config.HasKey("socket_path")) {
+        socket_path = config.GetString("socket_path");
+    }
+
+    if (config.HasKey("cursor_path")) {
+        cursor_path = config.GetString("cursor_path");
+    }
 
     size_t queue_size = 10*1024*1024;
 
@@ -303,11 +352,11 @@ int main(int argc, char**argv) {
 
     auto output_config = std::make_unique<Config>(std::unordered_map<std::string, std::string>({
         {"output_format","raw"},
-        {"output_socket", output_socket_path},
+        {"output_socket", socket_path},
         {"enable_ack_mode", "true"},
         {"ack_queue_size", "10"}
     }));
-    Output output("output", output_cursor_path, queue);
+    Output output("output", cursor_path, queue);
     output.Load(output_config);
 
     std::thread autosave_thread([&]() {

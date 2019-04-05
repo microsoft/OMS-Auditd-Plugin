@@ -24,9 +24,9 @@
 class RawEventProcessor {
 public:
     RawEventProcessor(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<UserDB>& user_db, const std::shared_ptr<ProcFilter>& proc_filter):
-    _builder(builder), _user_db(user_db), _state_ptr(nullptr), _procFilter(proc_filter) {};
+    _builder(builder), _user_db(user_db), _state_ptr(nullptr), _procFilter(proc_filter), _event_flags(0), _pid(0), _ppid(0), _last_proc_fetch(0), _last_proc_event_gen(0) {};
 
-    void ProcessData(const char* data, size_t data_len);
+    void ProcessData(const void* data, size_t data_len);
     void DoProcessInventory();
 
 private:
@@ -35,10 +35,10 @@ private:
     void process_event(const Event& event);
     bool process_syscall_event(const Event& event);
     bool process_field(const EventRecord& record, const EventRecordField& field, bool prepend_rec_type);
-    bool add_int_field(const char* name, int val, field_type_t ft);
-    bool add_uid_field(const char* name, int uid, field_type_t ft);
-    bool add_gid_field(const char* name, int gid, field_type_t ft);
-    bool add_str_field(const char* name, const char *, field_type_t ft);
+    bool add_int_field(const std::string_view& name, int val, field_type_t ft);
+    bool add_uid_field(const std::string_view& name, int uid, field_type_t ft);
+    bool add_gid_field(const std::string_view& name, int gid, field_type_t ft);
+    bool add_str_field(const std::string_view& name, const std::string_view& val, field_type_t ft);
     bool generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t nsec);
 
     std::shared_ptr<EventBuilder> _builder;

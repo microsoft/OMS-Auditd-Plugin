@@ -1,0 +1,152 @@
+#!/bin/bash
+#
+# Init file for auoms
+#
+# chkconfig: 2345 75 75
+# description: OMS audit data collection daemon
+#
+### BEGIN INIT INFO
+# Provides:             auoms
+# Default-Start:        2 3 4 5
+# Default-Stop:
+# Short-Description:    OMS audit data collection daemon
+### END INIT INFO
+
+# source function library
+if [ -f /etc/init.d/functions ]; then
+    INIT_STYLE=R      # INIT_STYLE uses R/S/D for its representative platform RedHat/SuSE/Debian
+    . /etc/init.d/functions
+elif [ -f /etc/rc.status ]; then
+    INIT_STYLE=S
+    . /etc/rc.status && rc_reset
+elif [ -f /lib/lsb/init-functions ]; then
+    INIT_STYLE=D
+    . /lib/lsb/init-functions
+else
+    echo -n "Could not source init functions."
+    exit 1
+fi
+
+RETVAL=0
+DESC="OMS Audit Data Collection Daemon"
+NAME=auoms
+
+AUOMS_BIN=/opt/microsoft/auoms/bin/$NAME
+PIDFILE=/var/run/$NAME.pid
+
+# Exit if the package is not installed
+[ -x "$AUOMS_BIN" ] || exit 0
+
+start()
+{
+  if [ ! -e /var/run/auoms ]; then
+    mkdir /var/run/auoms
+    chmod 750 /var/run/auoms
+  fi
+
+  case $INIT_STYLE in
+    D)
+      log_begin_msg "Starting $DESC: "
+      start-stop-daemon --start --pidfile $PIDFILE --make-pidfile --background --exec $AUOMS_BIN
+      RETVAL=$?
+      log_end_msg $RETVAL
+      ;;
+    R | S)
+      echo -n $"Starting $DESC: "
+      PID=`$AUOMS_BIN $AUOMS_OPTIONS > /dev/null 2>&1 & echo $!`
+      echo
+      if [ -z $PID ]; then
+        echo "Fail"
+      else
+        echo $PID > $PIDFILE
+        echo "Ok"
+      fi
+      ;;
+    *)
+      exit 1
+      ;;
+  esac
+}
+
+stop()
+{
+  case $INIT_STYLE in
+    D)
+      log_begin_msg "Stopping $DESC: "
+      start-stop-daemon --stop --retry=TERM/30/KILL/15 --pidfile $PIDFILE --name $NAME
+      RETVAL=$?
+      log_end_msg $RETVAL
+      ;;
+    R)
+      echo -n "Stopping $DESC: "
+      killproc -p $PIDFILE $AUOMS_BIN
+      RETVAL=$?
+      echo
+      ;;
+    S)
+      echo -n "Stopping $DESC: "
+      killproc -p $PIDFILE $AUOMS_BIN
+      rc_status -v
+      ;;
+    *)
+      exit 1
+      ;;
+  esac
+}
+
+status()
+{
+  echo -n "Checking $DESC: "
+  case $INIT_STYLE in
+    D)
+      status_of_proc $AUOMS_BIN
+      RETVAL=$?
+      ;;
+    R)
+      if [ -f $PIDFILE ]; then
+        PID=`cat $PIDFILE`
+        if [ -z "`ps axf | grep ${PID} | grep -v grep`" ]; then
+          echo "Process dead but pidfile exists"
+          RETVAL=3
+        else
+          echo "running"
+          RETVAL=0
+        fi
+      else
+        echo "stopped"
+        RETVAL=3
+      fi
+      ;;
+    S)
+      checkproc -p $PIDFILE $AUOMS_BIN
+      rc_status -v
+      ;;
+    *)
+      RETVAL=1
+      ;;
+  esac
+}
+
+case "$1" in
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  restart)
+    stop
+    start
+    ;;
+  reload)
+    ;;
+  report)
+    ;;
+  status)
+    status
+    ;;
+  *)
+    echo $"Usage: $0 {start|stop|restart|status}"
+    RETVAL=1
+esac
+exit $RETVAL

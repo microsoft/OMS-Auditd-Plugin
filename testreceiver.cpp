@@ -27,13 +27,11 @@
 #include "rapidjson/error/en.h"
 #include "rapidjson/filewritestream.h"
 #include "rapidjson/writer.h"
+#include "UnixDomainListener.h"
 
 extern "C" {
 #include <unistd.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <sys/stat.h>
-#include <netinet/in.h>
 #include <fcntl.h>
 }
 
@@ -176,10 +174,10 @@ void handle_raw_connection(int fd, int out_fd, bool ack, bool raw_out) {
             nleft -= nr;
             nread += nr;
         }
-        auto size = *reinterpret_cast<uint32_t *>(data.data());
+        auto size = *reinterpret_cast<uint32_t *>(data.data()) & 0x00FFFFFF;
         if (size <= 4 || size > 1024 * 256) {
             fclose(out);
-            throw std::runtime_error("Invalid frame size");
+            throw std::runtime_error("Invalid frame size: " + std::to_string(size));
         }
         nread = 4;
         nleft = size - 4;
@@ -209,22 +207,8 @@ void handle_raw_connection(int fd, int out_fd, bool ack, bool raw_out) {
             write(out_fd, data.data(), size);
         } else {
             fprintf(out, "\n======================================================================\n");
-            fprintf(out, "%lld.%ld:%lld\n",
-                    static_cast<unsigned long long>(event.Seconds()),
-                    static_cast<unsigned long>(event.Milliseconds()),
-                    static_cast<unsigned long long>(event.Serial()));
-
-            for (auto rec : event) {
-                fprintf(out, "    %d: %s\n", rec.RecordType(), rec.RecordTypeNamePtr());
-                for (auto f : rec) {
-                    if (f.InterpValueSize() > 0) {
-                        fprintf(out, "\t%s\n\t    RAW: %s\n\t    INTERP: %s\n", f.FieldNamePtr(), f.RawValuePtr(),
-                                f.InterpValuePtr());
-                    } else {
-                        fprintf(out, "\t%s\n\t    RAW: %s\n", f.FieldNamePtr(), f.RawValuePtr());
-                    }
-                }
-            }
+            auto str = EventToRawText(event, true);
+            fprintf(out, "%s", str.c_str());
         }
 
         if (ack) {
@@ -325,36 +309,16 @@ int main(int argc, char**argv) {
             }
         }
 
-        int lfd = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (-1 == lfd)
-        {
-            throw std::system_error(errno, std::system_category(), "socket(AF_UNIX, SOCK_STREAM)");
-        }
-
-        unlink(sock_path.c_str());
-
-        struct sockaddr_un addr;
-        memset(&addr, 0, sizeof(struct sockaddr_un));
-        addr.sun_family = AF_UNIX;
-        sock_path.copy(addr.sun_path, sizeof(addr.sun_path));
-        if (bind(lfd, (struct sockaddr *)&addr, sizeof(addr)))
-        {
-            close(lfd);
-            throw std::system_error(errno, std::system_category(), std::string("bind(AF_UNIX, ") + sock_path + ")");
-        }
-
-        chmod(sock_path.c_str(), 0666);
-
-        if (listen(lfd, 1) != 0) {
-            throw std::system_error(errno, std::system_category(), "listen()");
+        UnixDomainListener listener(sock_path, 0666);
+        if (!listener.Open()) {
+            exit(1);
         }
 
         do {
             fprintf(stderr, "Waiting for connection\n");
-            socklen_t x = 0;
-            int fd = accept(lfd, NULL, &x);
+            int fd = listener.Accept();
             if (-1 == fd) {
-                throw std::system_error(errno, std::system_category(), "accept()");
+                exit(1);
             }
 
             fprintf(stderr, "Connected\n");

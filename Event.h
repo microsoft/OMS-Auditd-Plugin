@@ -16,7 +16,7 @@
 #ifndef AUOMS_EVENT_H
 #define AUOMS_EVENT_H
 
-#include "LookupTables.h"
+#include "FieldType.h"
 
 #include <cstdint>
 #include <iterator>
@@ -98,11 +98,11 @@ public:
     std::string_view FieldName() const;
 
     const char* RawValuePtr() const;
-    uint16_t RawValueSize() const;
+    uint32_t RawValueSize() const;
     std::string_view RawValue() const;
 
     const char* InterpValuePtr() const;
-    uint16_t InterpValueSize() const;
+    uint32_t InterpValueSize() const;
     std::string_view InterpValue() const;
 
     field_type_t FieldType() const;
@@ -266,11 +266,14 @@ public:
     EventRecord begin() const;
     EventRecord end() const;
 
+    int Validate() const;
 private:
     friend class EventRecord;
 
     const uint8_t* _data;
     size_t _size;
 };
+
+std::string EventToRawText(const Event& event, bool include_interp);
 
 #endif //AUOMS_EVENT_H

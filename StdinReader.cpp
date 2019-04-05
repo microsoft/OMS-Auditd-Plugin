@@ -34,18 +34,22 @@ ssize_t StdinReader::ReadLine(char* buf, size_t buf_len, long timeout, std::func
     }
 
     strncpy(buf, &_data[_start_idx], str_len);
-    _cur_idx++; // Skip past the newline
+
+    // Skip past any newlines
+    while(_cur_idx < _size && _data[_cur_idx] == '\n') {
+        _cur_idx++;
+    }
     _start_idx = _cur_idx;
 
     return str_len;
 }
 
 bool StdinReader::have_line() {
-    if (_data[_cur_idx] == '\n') {
-        return true;
-    }
-
     if (_cur_idx < _size) {
+        if (_data[_cur_idx] == '\n') {
+            return true;
+        }
+
         std::string_view _str(_data.data(), _size);
         auto idx = _str.find_first_of('\n', _cur_idx);
         if (idx != std::string_view::npos) {
@@ -66,11 +70,11 @@ ssize_t StdinReader::get_data(long timeout, std::function<bool()> fn) {
             _size -= _start_idx;
             _start_idx = 0;
         } else {
-            Logger::Error("Buffer limit reached before newline found in STDIN input");
+            Logger::Error("Buffer limit reached before newline found in input");
             return IO::FAILED;
         }
     }
-    auto ret = Read(&_data[_size], _data.size()-_size, timeout, fn);
+    auto ret = Read(&_data[_size], _data.size() - _size, timeout, fn);
     if (ret <= 0) {
         return ret;
     }

@@ -17,6 +17,8 @@
 #include <iostream>
 
 #include "RawEventRecord.h"
+#include "Translate.h"
+#include "StringUtils.h"
 
 using namespace std::literals;
 
@@ -25,20 +27,23 @@ public:
     explicit RecordFieldIterator(std::string_view str): _str(str), _idx(0) {}
 
     bool next() {
+        static auto SV_MSG = "msg='"sv;
+        static auto SV_WSP = " \n"sv;
+
         if (_idx == std::string_view::npos || _idx >= _str.size()) {
             return false;
         }
-        auto idx = _str.find_first_of(" \n"sv, _idx);
+        auto idx = _str.find_first_of(SV_WSP, _idx);
         if (idx == std::string_view::npos) {
             idx = _str.size();
         }
         _val = _str.substr(_idx, idx-_idx);
         // For certain record types, the data is inside a "msg='...'" field.
-        if (_val.substr(0, 5) == "msg='"sv) {
+        if (_val.substr(0, 5) == SV_MSG) {
             _idx+=5;
             return next();
         } else {
-            _idx = _str.find_first_not_of(" \n"sv, idx);
+            _idx = _str.find_first_not_of(SV_WSP, idx);
         }
         // The field might have been inside a "msg='...'" so ignore the "'"
         if (_val.back() == '\'') {
@@ -61,21 +66,13 @@ private:
     size_t _idx;
 };
 
-bool starts_with(const std::string_view& str, const std::string_view& prefix) {
-    if (prefix.size() > str.size()) {
-        return false;
-    }
-    return str.substr(0, prefix.size()) == prefix;
-}
-
-bool ends_with(const std::string_view& str, const std::string_view& suffix) {
-    if (suffix.size() > str.size()) {
-        return false;
-    }
-    return str.substr(str.size()-suffix.size(), suffix.size()) == suffix;
-}
-
 bool RawEventRecord::Parse(RecordType record_type, size_t size) {
+    static auto SV_NODE = "node="sv;
+    static auto SV_TYPE = "type="sv;
+    static auto SV_MSG = "msg="sv;
+    static auto SV_AUDIT_BEGIN = "audit("sv;
+    static auto SV_AUDIT_END = "):"sv;
+
     _size = size;
     _record_type = record_type;
     _record_fields.resize(0);
@@ -93,7 +90,7 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
     //      audit(<sec>.<msec>:<serial>): <...>
     //
 
-    if (starts_with(itr.value(), "node="sv)) {
+    if (starts_with(itr.value(), SV_NODE)) {
         _node = itr.value().substr(5);
         if (!itr.next()) {
             return false;
@@ -102,7 +99,7 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
         _node = std::string_view();
     }
 
-    if (starts_with(itr.value(), "type="sv)) {
+    if (starts_with(itr.value(), SV_TYPE)) {
         _type_name = itr.value().substr(5);
         if (!itr.next()) {
             return false;
@@ -112,18 +109,18 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
     }
 
     if (_type_name.empty() && _record_type != RecordType::UNKNOWN) {
-        _type_name = LookupTables::RecordTypeCodeToString(_record_type);
+        _type_name = RecordTypeToName(_record_type, _type_name_str);
     } else if (!_type_name.empty() && _record_type == RecordType::UNKNOWN) {
-        _record_type = LookupTables::RecordTypeNameToCode(std::string(_type_name));
+        _record_type = RecordNameToType(std::string(_type_name));
     }
 
     auto val = itr.value();
-    if (starts_with(val, "msg="sv)) {
+    if (starts_with(val, SV_MSG)) {
         val = val.substr(4);
     }
 
-    if (starts_with(val, "audit("sv) && ends_with(val, "):"sv)) {
-        auto event_id_str = val.substr(10, val.size()-12);
+    if (starts_with(val, SV_AUDIT_BEGIN) && ends_with(val, SV_AUDIT_END)) {
+        auto event_id_str = val.substr(SV_AUDIT_BEGIN.size(), val.size()-(SV_AUDIT_BEGIN.size()+SV_AUDIT_END.size()));
         auto pidx = event_id_str.find_first_of('.');
         if (pidx == std::string_view::npos) {
             return false;
@@ -158,6 +155,8 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
 }
 
 int RawEventRecord::AddRecord(EventBuilder& builder) {
+    static auto SV_NODE = "node"sv;
+
     uint16_t num_fields = static_cast<uint16_t>(_record_fields.size());
     if (!_node.empty()) {
         num_fields++;
@@ -169,7 +168,7 @@ int RawEventRecord::AddRecord(EventBuilder& builder) {
     }
 
     if (!_node.empty()) {
-        ret = builder.AddField("node", _node, nullptr, field_type_t::UNCLASSIFIED);
+        ret = builder.AddField(SV_NODE, _node, nullptr, field_type_t::UNCLASSIFIED);
         if (ret != 1) {
             return ret;
         }
@@ -178,10 +177,10 @@ int RawEventRecord::AddRecord(EventBuilder& builder) {
     for (auto f: _record_fields) {
         auto idx = f.find_first_of('=');
         if (idx == std::string_view::npos) {
-            // TODO:: Log this??
-            continue;
+            ret = builder.AddField(f, std::string_view(), nullptr, field_type_t::UNCLASSIFIED);
+        } else {
+            ret = builder.AddField(f.substr(0, idx), f.substr(idx + 1), nullptr, field_type_t::UNCLASSIFIED);
         }
-        ret = builder.AddField(f.substr(0, idx), f.substr(idx+1), nullptr, field_type_t::UNCLASSIFIED);
         if (ret != 1) {
             return ret;
         }

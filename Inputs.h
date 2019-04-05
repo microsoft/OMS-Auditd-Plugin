@@ -14,10 +14,11 @@
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef AUOMS_UNIXDOMAINLISTENER_H
-#define AUOMS_UNIXDOMAINLISTENER_H
+#ifndef AUOMS_INPUTS_H
+#define AUOMS_INPUTS_H
 
 #include "IO.h"
+#include "UnixDomainListener.h"
 #include "RunBase.h"
 #include "InputBuffer.h"
 #include "Input.h"
@@ -27,7 +28,7 @@
 
 class Inputs: public RunBase {
 public:
-    explicit Inputs(std::string addr): _addr(std::move(addr)), _listener_fd(-1), _buffer(std::make_shared<InputBuffer>()) {}
+    explicit Inputs(const std::string& addr): _listener(addr), _buffer(std::make_shared<InputBuffer>()) {}
 
     bool Initialize();
 
@@ -41,14 +42,12 @@ protected:
     void run() override;
 
 private:
-    std::string _addr;
+    UnixDomainListener _listener;
     std::function<void(IOBase&)> _handler_fn;
-    int _listener_fd;
     std::unordered_map<int, std::shared_ptr<Input>> _inputs;
     std::shared_ptr<InputBuffer> _buffer;
 
     void add_connection(int fd);
 };
 
-
-#endif //AUOMS_UNIXDOMAINLISTENER_H
+#endif //AUOMS_INPUTS_H

@@ -14,12 +14,8 @@
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef AUOMS_LOOKUPTABLES_H
-#define AUOMS_LOOKUPTABLES_H
-
-#include <string>
-#include <vector>
-#include <unordered_map>
+#ifndef AUOMS_RECORDTYPE_H
+#define AUOMS_RECORDTYPE_H
 
 // Names and values obtained from /usr/include/libaudit.h and /usr/include/linux/audit.h
 enum class RecordType: int {
@@ -251,116 +247,11 @@ enum class RecordType: int {
     FIRST_AUOMS_MSG           = 10000,
     LAST_AUOMS_MSG            = 19999,
     AUOMS_PROCESS_INVENTORY   = 10000,
-    AUOMS_DROPPED_RECORDS     = 10001,
-    AUOMS_SYSCALL_METRICS     = 10002,
-    AUOMS_FRAGMENT            = 11309,
-    AUOMS_SYSCALL             = 14688,
-    AUOMS_CONNECT             = 10042,
+    AUOMS_SYSCALL             = 10001,
+    AUOMS_SYSCALL_FRAGMENT    = 10002,
+    AUOMS_COLLECTOR_REPORT    = 10003,
+    AUOMS_DROPPED_RECORDS     = 10004,
+    AUOMS_SYSCALL_METRICS     = 10005,
 };
 
-// This enum mirrors the auparse_type_t found in auparse-defs.h
-// The values here must appear in the same order as their counterpart in the definition of auparse_type_t
-enum class field_type_t: int {
-    UNKNOWN = -1,
-    UNCLASSIFIED = 0,
-    UID,
-    GID,
-    SYSCALL,
-    ARCH,
-    EXIT,
-    ESCAPED,
-    PERM,
-    MODE,
-    SOCKADDR,
-    FLAGS,
-    PROMISC,
-    CAPABILITY,
-    SUCCESS,
-    A0,
-    A1,
-    A2,
-    A3,
-    SIGNAL,
-    LIST,
-    TTY_DATA,
-    SESSION,
-    CAP_BITMAP,
-    NFPROTO,
-    ICMPTYPE,
-    PROTOCOL,
-    ADDR,
-    PERSONALITY,
-    SECCOMP,
-    OFLAG,
-    MMAP,
-    MODE_SHORT,
-    MAC_LABEL,
-    PROCTITLE,
-    HOOK,
-    NETACTION,
-    MACPROTO,
-    IOCTL_REQ,
-    ESCAPED_KEY
-};
-
-enum class MachineType: int {
-    UNKNOWN = -1,
-    X86 = 0,
-    X86_64 = 1
-};
-
-/*
- * These numbers are obtained from /usr/include/linux/elf-em.h and /usr/include/linux/audit.h
- */
-enum class ArchType: uint32_t {
-    UNKNOWN = 0,
-    I386 = 3 | 0x40000000,
-    X86_64 = 62 | 0x40000000| 0x80000000,
-};
-
-class LookupTables {
-public:
-    static void Initialize();
-
-    static inline std::string RecordTypeCodeToString(RecordType code) {
-        try {
-            return s_record_type_code_to_name.at(static_cast<size_t>(code));
-        } catch (std::out_of_range&) {
-            return "UNKNOWN[" + std::to_string(static_cast<int>(code)) + "]";
-        }
-    }
-
-    static inline RecordType RecordTypeNameToCode(const std::string& name) {
-        auto i = s_record_type_name_to_code.find(name);
-        if (i != s_record_type_name_to_code.end()) {
-            return i->second;
-        }
-        return RecordType::UNKNOWN;
-    }
-
-    static inline field_type_t FieldNameToType(const std::string& name) {
-        auto i = s_field_name_to_type.find(name);
-        if (i != s_field_name_to_type.end()) {
-            return i->second;
-        }
-        return field_type_t::UNCLASSIFIED;
-    }
-
-    static field_type_t FieldNameToType(RecordType rtype, const std::string_view& name, const std::string_view& val);
-
-    static MachineType ArchToMachine(const std::string_view& arch);
-    static std::string SyscallToName(MachineType mtype, int syscall, int a0);
-
-    static std::string MachineToName(MachineType mt);
-
-private:
-    static std::unordered_map<std::string, RecordType> s_record_type_name_to_code;
-    static std::vector<std::string> s_record_type_code_to_name;
-    static std::unordered_map<std::string, field_type_t> s_field_name_to_type;
-    static std::unordered_map<ArchType, MachineType> s_arch_to_machine;
-    static std::unordered_map<std::string, ArchType> s_arch_name_to_type;
-    static std::vector<std::string> s_machine_to_name;
-    static std::vector<std::vector<std::string>> s_syscall_lookup;
-};
-
-#endif //AUOMS_LOOKUPTABLES_H
+#endif //AUOMS_RECORDTYPE_H

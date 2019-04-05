@@ -1,63 +1,261 @@
-//
-// Created by tad on 2/6/19.
-//
+/*
+    microsoft-oms-auditd-plugin
+
+    Copyright (c) Microsoft Corporation
+
+    All rights reserved.
+
+    MIT License
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the ""Software""), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
 
 #include "Interpret.h"
+#include "Translate.h"
+#include "StringUtils.h"
+#include "StringTable.h"
+#include "Logger.h"
 
 #include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/un.h>
+#include <sys/socket.h>
+#include <linux/ax25.h>
+#include <linux/atm.h>
+#include <linux/x25.h>
+#include <linux/if.h>
+#include <linux/ipx.h>
+#include <linux/netlink.h>
+#include <arpa/inet.h>
 
 template <typename T>
 inline bool field_to_int(const EventRecordField& field, T& val, int base) {
+    errno = 0;
+    val = static_cast<T>(strtol(field.RawValuePtr(), nullptr, base));
+    return errno == 0;
+}
+
+template <typename T>
+inline bool field_to_uint(const EventRecordField& field, T& val, int base) {
     errno = 0;
     val = static_cast<T>(strtoul(field.RawValuePtr(), nullptr, base));
     return errno == 0;
 }
 
-bool InterpretField(std::string& out, const EventRecord& record, const EventRecordField& field) {
-    switch (field.FieldType()) {
+static StringTable<int> s_fam_table(-1, {
+        {"local",      AF_LOCAL},
+        {"inet",       AF_INET},
+        {"ax25",       AF_AX25},
+        {"ipx",        AF_IPX},
+        {"appletalk",  AF_APPLETALK},
+        {"netrom",     AF_NETROM},
+        {"bridge",     AF_BRIDGE},
+        {"atmpvc",     AF_ATMPVC},
+        {"x25",        AF_X25},
+        {"inet6",      AF_INET6},
+        {"rose",       AF_ROSE},
+        {"decnet",     AF_DECnet},
+        {"netbeui",    AF_NETBEUI},
+        {"security",   AF_SECURITY},
+        {"key",        AF_KEY},
+        {"netlink",    AF_NETLINK},
+        {"packet",     AF_PACKET},
+        {"ash",        AF_ASH},
+        {"econet",     AF_ECONET},
+        {"atmsvc",     AF_ATMSVC},
+        {"rds",        AF_RDS},
+        {"sna",        AF_SNA},
+        {"irda",       AF_IRDA},
+        {"pppox",      AF_PPPOX},
+        {"wanpipe",    AF_WANPIPE},
+        {"llc",        AF_LLC},
+        {"can",        AF_CAN},
+        {"tipc",       AF_TIPC},
+        {"bluetooth",  AF_BLUETOOTH},
+        {"iucv",       AF_IUCV},
+        {"rxrpc",      AF_RXRPC},
+        {"isdn",       AF_ISDN},
+        {"phonet",     AF_PHONET},
+        {"ieee802154", AF_IEEE802154},
+        {"caif",       37},
+        {"alg",        38},
+        {"nfc",        39},
+        {"vsock",      40},
+});
+
+bool InterpretSockaddrField(std::string& out, const EventRecord& record, const EventRecordField& field) {
+    // It is assumed that a sockaddr will never exceed 1024 bytes
+    std::array<uint8_t, 1024> _buf;
+    if (!decode_hex(_buf.data(), _buf.size(), field.RawValuePtr(), field.RawValueSize())) {
+        out = "malformed-host(";
+        out.append(field.RawValue());
+        out.append(")");
+        return false;
+    }
+    size_t bsize = field.RawValueSize()/2;
+
+    const struct sockaddr *saddr = reinterpret_cast<struct sockaddr *>(_buf.data());
+    out.append("{ fam=");
+    auto fam = s_fam_table.ToString(saddr->sa_family);
+    if (!fam.empty()) {
+        out.append(fam);
+    } else {
+        out.append("unknown-family(");
+        out.append(std::to_string(saddr->sa_family));
+        out.append(")");
+    }
+    out.append(" ");
+
+    switch (saddr->sa_family) {
+        case AF_LOCAL: {
+            auto addr = reinterpret_cast<struct sockaddr_un *>(_buf.data());
+            addr->sun_path[sizeof(addr->sun_path)] = 0;
+            out.append("path=");
+            if (addr->sun_path[0] != 0) {
+                out.append(addr->sun_path);
+            } else {
+                out.append(&addr->sun_path[1]);
+            }
+            out.append(" }");
+            break;
+        }
+        case AF_INET: {
+            std::array<char, INET_ADDRSTRLEN+1> _abuf;
+            auto addr = reinterpret_cast<struct sockaddr_in *>(_buf.data());
+            if (bsize < sizeof(struct sockaddr_in)) {
+                out.append("sockaddr len too short }");
+                break;
+            }
+            if (inet_ntop(AF_INET, &addr->sin_addr, _abuf.data(), _abuf.size()) != nullptr) {
+                out.append("laddr=");
+                out.append(_abuf.data());
+            } else {
+                out.append("(error resolving addr) }");
+                break;
+            }
+            out.append(" lport=");
+            append_int(out, addr->sin_port);
+            out.append(" }");
+            break;
+        }
+        case AF_AX25: {
+            auto addr = reinterpret_cast<struct sockaddr_ax25 *>(_buf.data());
+            out.append("call=");
+            out.append(addr->sax25_call.ax25_call, sizeof(addr->sax25_call.ax25_call));
+            out.append(" }");
+            break;
+        }
+        case AF_IPX: {
+            auto addr = reinterpret_cast<struct sockaddr_ipx *>(_buf.data());
+            out.append("lport=");
+            append_int(out, addr->sipx_port);
+            out.append("ipx-net=");
+            append_uint(out, addr->sipx_network);
+            out.append(" }");
+            break;
+        }
+        case AF_ATMPVC: {
+            auto addr = reinterpret_cast<struct sockaddr_atmpvc *>(_buf.data());
+            out.append("int=");
+            append_uint(out, addr->sap_addr.itf);
+            out.append(" }");
+            break;
+        }
+        case AF_X25: {
+            auto addr = reinterpret_cast<struct sockaddr_x25 *>(_buf.data());
+            out.append("laddr=");
+            addr->sx25_addr.x25_addr[15] = 0;
+            out.append(addr->sx25_addr.x25_addr);
+            break;
+        }
+        case AF_INET6: {
+            std::array<char, INET6_ADDRSTRLEN+1> _abuf;
+            auto addr = reinterpret_cast<struct sockaddr_in6 *>(_buf.data());
+            if (bsize < sizeof(struct sockaddr_in6)) {
+                out.append("sockaddr6 len too short }");
+                break;
+            }
+            if (inet_ntop(AF_INET6, &addr->sin6_addr, _abuf.data(), _abuf.size()) != nullptr) {
+                out.append("laddr=");
+                out.append(_abuf.data());
+            } else {
+                out.append("(error resolving addr) }");
+                break;
+            }
+            out.append(" lport=");
+            append_int(out, addr->sin6_port);
+            out.append(" }");
+            break;
+        }
+        case AF_NETLINK: {
+            auto addr = reinterpret_cast<struct sockaddr_nl *>(_buf.data());
+            out.append("nlnk-fam=");
+            append_uint(out, addr->nl_family);
+            out.append("nlnk-pid=");
+            append_uint(out, addr->nl_pid);
+            out.append(" }");
+            break;
+        }
+        default:
+            out.append("(unsupported) }");
+            break;
+    }
+    return true;
+}
+
+bool InterpretField(std::string& out, const EventRecord& record, const EventRecordField& field, field_type_t field_type) {
+    switch (field_type) {
         case field_type_t::ARCH: {
-            auto m = LookupTables::ArchToMachine(field.RawValue());
+            uint32_t arch;
+            if (!field_to_uint(field, arch, 16)) {
+                arch = 0;
+            }
+            auto m = ArchToMachine(arch);
             if (m == MachineType::UNKNOWN) {
+                Logger::Warn("InterpretField: Invalid arch=%s", field.RawValuePtr());
                 out = "unknown-arch(" + std::string(field.RawValue()) + ")";
             } else {
-                out = LookupTables::MachineToName(m);
+                MachineToName(m, out);
             }
             return true;
         }
         case field_type_t::SYSCALL: {
             auto arch_field = record.FieldByName("arch");
-            if (arch_field == record.end_sorted()) {
-                out = "unknown-syscall(" + std::string(field.RawValue()) + ")";
+            if (!arch_field) {
+                out = "unknown-syscall(" + std::string() + ")";
+                return true;
             }
-            auto mt = LookupTables::ArchToMachine(arch_field.RawValue());
+            uint32_t arch;
+            if (!field_to_uint(arch_field, arch, 16)) {
+                arch = 0;
+            }
+            auto mt = ArchToMachine(arch);
             if (mt == MachineType::UNKNOWN) {
+                Logger::Warn("InterpretField: Invalid arch=%s", arch_field.RawValuePtr());
                 out = "unknown-syscall(" + std::string(field.RawValue()) + ")";
-            }
-            auto a0_field = record.FieldByName("a0");
-            int a0 = -1;
-            if (a0_field != record.end_sorted()) {
-                if (field_to_int(a0_field, a0, 0)) {
-                    a0 = 01;
-                }
+                return true;
             }
 
             int syscall;
-            if (field_to_int(field, syscall, 0)) {
-                out = LookupTables::SyscallToName(mt, syscall, a0);
+            if (field_to_int(field, syscall, 10)) {
+                SyscallToName(mt, syscall, out);
             } else {
                 out = "unknown-syscall(" + std::string(field.RawValue()) + ")";
             }
             return true;
         }
         case field_type_t::SOCKADDR:
-            return true;
+            return InterpretSockaddrField(out, record, field);
         case field_type_t::SESSION:
             if (field.RawValue() == "4294967295") {
                 out = "unset";
-            } else {
-                out.assign(field.RawValuePtr(), field.RawValueSize());
+                return true;
             }
-            return true;
+            return false;
         case field_type_t::MODE: {
             if (out.capacity() < 128) {
                 out.reserve(128);

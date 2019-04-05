@@ -124,7 +124,7 @@ Queue::Queue(size_t size):
 }
 
 Queue::Queue(const std::string& path, size_t size):
-        _path(path), _file_size(size), _fd(-1), _next_id(1), _closed(true), _save_active(false)
+        _path(path), _file_size(size), _fd(-1), _next_id(1), _closed(true), _save_active(false), _int_id(0)
 {
     if (_file_size < MIN_QUEUE_SIZE) {
         _file_size = MIN_QUEUE_SIZE;

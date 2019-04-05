@@ -171,7 +171,7 @@ int main(int argc, char**argv) {
     signal(SIGPIPE, SIG_IGN);
     signal(SIGCHLD, handle_sigchld);
 
-    int lfd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int lfd = socket(AF_UNIX, SOCK_STREAM|SOCK_CLOEXEC, 0);
     if (-1 == lfd)
     {
         throw std::system_error(errno, std::system_category(), "socket(AF_UNIX, SOCK_STREAM)");

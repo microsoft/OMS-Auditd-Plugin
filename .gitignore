@@ -4,3 +4,4 @@
 /build/Makefile.version
 /intermediate/
 /target/
+auoms_version.h

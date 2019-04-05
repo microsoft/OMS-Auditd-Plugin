@@ -13,7 +13,6 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#include "AuditEventProcessor.h"
 #define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE "EventProcessorTests"
 #include <boost/test/unit_test.hpp>
@@ -22,8 +21,13 @@
 #include "Logger.h"
 #include "TempDir.h"
 #include "TestEventData.h"
+#include "RawEventProcessor.h"
+#include "RawEventAccumulator.h"
+#include "StringUtils.h"
+
 #include <fstream>
 #include <stdexcept>
+#include <iostream>
 
 extern "C" {
 #include <sys/types.h>
@@ -51,6 +55,39 @@ void write_file(const std::string& path, const std::string& text) {
     out << text;
     out.close();
 }
+
+class RawEventQueue: public IEventBuilderAllocator {
+public:
+    explicit RawEventQueue(std::shared_ptr<RawEventProcessor> proc): _buffer(), _size(0), _proc(std::move(proc)) {}
+
+    int Allocate(void** data, size_t size) override {
+        if (_size != size) {
+            _size = size;
+        }
+        if (_buffer.size() < _size) {
+            _buffer.resize(_size);
+        }
+        *data = _buffer.data();
+        return 1;
+    }
+
+    int Commit() override {
+        _proc->ProcessData(_buffer.data(), _size);
+        _size = 0;
+        return 1;
+    }
+
+    int Rollback() override {
+        _size = 0;
+        return 1;
+    }
+
+private:
+    std::vector<uint8_t> _buffer;
+    size_t _size;
+    std::shared_ptr<RawEventProcessor> _proc;
+};
+
 
 void diff_event(int idx, const Event& e, const Event& a) {
     std::stringstream msg;
@@ -89,32 +126,32 @@ void diff_event(int idx, const Event& e, const Event& a) {
             throw std::runtime_error(msg.str());
         }
 
-        if (er.RecordTypeName() == nullptr || ar.RecordTypeName() == nullptr) {
-            if (er.RecordTypeName() != ar.RecordTypeName()) {
+        if (er.RecordTypeNamePtr() == nullptr || ar.RecordTypeNamePtr() == nullptr) {
+            if (er.RecordTypeNamePtr() != ar.RecordTypeNamePtr()) {
                 msg << "Event["<<idx<<"].Record[" << r << "] RecordTypeName Mismatch: expected "
-                    << (er.RecordTypeName() == nullptr ? "null" : er.RecordTypeName())
+                    << (er.RecordTypeNamePtr() == nullptr ? "null" : er.RecordTypeName())
                     << ", got "
-                    << (ar.RecordTypeName() == nullptr ? "null" : ar.RecordTypeName());
+                    << (ar.RecordTypeNamePtr() == nullptr ? "null" : ar.RecordTypeName());
                 throw std::runtime_error(msg.str());
             }
         } else {
-            if (strcmp(er.RecordTypeName(), ar.RecordTypeName()) != 0) {
-                msg << "Event["<<idx<<"].Record[" << r << "] RecordTypeName Mismatch: expected " << er.RecordTypeName() << ", got " << ar.RecordTypeName();
+            if (strcmp(er.RecordTypeNamePtr(), ar.RecordTypeNamePtr()) != 0) {
+                msg << "Event["<<idx<<"].Record[" << r << "] RecordTypeName Mismatch: expected " << er.RecordTypeNamePtr() << ", got " << ar.RecordTypeNamePtr();
                 throw std::runtime_error(msg.str());
             }
         }
 
-        if (er.RecordText() == nullptr || ar.RecordText() == nullptr) {
-            if (er.RecordText() != ar.RecordText()) {
+        if (er.RecordTextPtr() == nullptr || ar.RecordTextPtr() == nullptr) {
+            if (er.RecordTextPtr() != ar.RecordTextPtr()) {
                 msg << "Event["<<idx<<"].Record[" << r << "] RecordText Mismatch: expected "
-                    << (er.RecordText() == nullptr ? "null" : er.RecordText())
+                    << (er.RecordTextPtr() == nullptr ? "null" : er.RecordTextPtr())
                     << ", got "
-                    << (ar.RecordText() == nullptr ? "null" : ar.RecordText());
+                    << (ar.RecordTextPtr() == nullptr ? "null" : ar.RecordTextPtr());
                 throw std::runtime_error(msg.str());
             }
         } else {
-            if (strcmp(er.RecordText(), ar.RecordText()) != 0) {
-                msg << "Event["<<idx<<"].Record[" << r << "] RecordText Mismatch: expected " << er.RecordText() << ", got " << ar.RecordText();
+            if (strcmp(er.RecordTextPtr(), ar.RecordTextPtr()) != 0) {
+                msg << "Event["<<idx<<"].Record[" << r << "] RecordText Mismatch: expected " << er.RecordTextPtr() << ", got " << ar.RecordTextPtr();
                 throw std::runtime_error(msg.str());
             }
         }
@@ -126,11 +163,11 @@ void diff_event(int idx, const Event& e, const Event& a) {
             std::unordered_set<std::string> _an;
 
             for (auto f : er) {
-                _en.emplace(f.FieldName(), f.FieldNameSize());
+                _en.emplace(f.FieldNamePtr(), f.FieldNameSize());
             }
 
             for (auto f : ar) {
-                _an.emplace(f.FieldName(), f.FieldNameSize());
+                _an.emplace(f.FieldNamePtr(), f.FieldNameSize());
             }
 
             for (auto name : _en) {
@@ -152,53 +189,53 @@ void diff_event(int idx, const Event& e, const Event& a) {
             auto ef = er.FieldAt(f);
             auto af = ar.FieldAt(f);
 
-            if (ef.FieldName() == nullptr || af.FieldName() == nullptr) {
-                if (ef.FieldName() != af.FieldName()) {
+            if (ef.FieldNamePtr() == nullptr || af.FieldNamePtr() == nullptr) {
+                if (ef.FieldNamePtr() != af.FieldNamePtr()) {
                     msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] FieldName Mismatch: expected "
-                        << (ef.FieldName() == nullptr ? "null" : ef.FieldName())
+                        << (ef.FieldNamePtr() == nullptr ? "null" : ef.FieldNamePtr())
                         << ", got "
-                        << (af.FieldName() == nullptr ? "null" : af.FieldName());
+                        << (af.FieldNamePtr() == nullptr ? "null" : af.FieldNamePtr());
                     throw std::runtime_error(msg.str());
                 }
             } else {
-                if (strcmp(ef.FieldName(), af.FieldName()) != 0) {
-                    msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] FieldName Mismatch: expected " << ef.FieldName() << ", got " << af.FieldName();
+                if (strcmp(ef.FieldNamePtr(), af.FieldNamePtr()) != 0) {
+                    msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] FieldName Mismatch: expected " << ef.FieldNamePtr() << ", got " << af.FieldNamePtr();
                     throw std::runtime_error(msg.str());
                 }
             }
 
-            if (ef.RawValue() == nullptr || af.RawValue() == nullptr) {
-                if (ef.RawValue() != af.RawValue()) {
+            if (ef.RawValuePtr() == nullptr || af.RawValuePtr() == nullptr) {
+                if (ef.RawValuePtr() != af.RawValuePtr()) {
                     msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] RawValue Mismatch: expected "
-                        << (ef.RawValue() == nullptr ? "null" : ef.RawValue())
+                        << (ef.RawValuePtr() == nullptr ? "null" : ef.RawValuePtr())
                         << ", got "
-                        << (af.RawValue() == nullptr ? "null" : af.RawValue());
+                        << (af.RawValuePtr() == nullptr ? "null" : af.RawValuePtr());
                     throw std::runtime_error(msg.str());
                 }
             } else {
-                if (strcmp(ef.RawValue(), af.RawValue()) != 0) {
-                    msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] RawValue Mismatch: expected " << ef.RawValue() << ", got " << af.RawValue();
+                if (strcmp(ef.RawValuePtr(), af.RawValuePtr()) != 0) {
+                    msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] RawValue Mismatch: expected " << ef.RawValuePtr() << ", got " << af.RawValuePtr();
                     throw std::runtime_error(msg.str());
                 }
             }
 
-            if (ef.InterpValue() == nullptr || af.InterpValue() == nullptr) {
-                if (ef.InterpValue() != af.InterpValue()) {
-                    msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] InterpValue Mismatch: expected "
-                        << (ef.InterpValue() == nullptr ? "null" : ef.InterpValue())
+            if (ef.InterpValuePtr() == nullptr || af.InterpValuePtr() == nullptr) {
+                if (ef.InterpValuePtr() != af.InterpValuePtr()) {
+                    msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] (Name="<<ef.FieldName()<<") InterpValue Mismatch: expected "
+                        << (ef.InterpValuePtr() == nullptr ? "null" : ef.InterpValuePtr())
                         << ", got "
-                        << (af.InterpValue() == nullptr ? "null" : af.InterpValue());
+                        << (af.InterpValuePtr() == nullptr ? "null" : af.InterpValuePtr());
                     throw std::runtime_error(msg.str());
                 }
             } else {
-                if (strcmp(ef.InterpValue(), af.InterpValue()) != 0) {
-                    msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] InterpValue Mismatch: expected " << ef.InterpValue() << ", got " << af.InterpValue();
+                if (strcmp(ef.InterpValuePtr(), af.InterpValuePtr()) != 0) {
+                    msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] (Name="<<ef.FieldName()<<") InterpValue Mismatch: expected " << ef.InterpValuePtr() << ", got " << af.InterpValuePtr();
                     throw std::runtime_error(msg.str());
                 }
             }
 
             if (ef.FieldType() != af.FieldType()) {
-                msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] FieldType Mismatch: expected " << ef.FieldType() << ", got " << af.FieldType();
+                msg << "Event["<<idx<<"].Record[" << r << "].Field[" << f << "] (Name="<<ef.FieldName()<<") FieldType Mismatch: expected " << static_cast<uint>(ef.FieldType()) << ", got " << static_cast<uint>(af.FieldType());
                 throw std::runtime_error(msg.str());
             }
         }
@@ -221,21 +258,34 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     auto actual_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_queue);
     auto expected_builder = std::make_shared<EventBuilder>(expected_allocator);
     auto actual_builder = std::make_shared<EventBuilder>(actual_allocator);
+
     auto proc_filter = std::make_shared<ProcFilter>(user_db);
+
+    auto raw_proc = std::make_shared<RawEventProcessor>(actual_builder, user_db, proc_filter);
+
+    auto actual_raw_queue = new RawEventQueue(raw_proc);
+    auto actual_raw_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_raw_queue);
+    auto actual_raw_builder = std::make_shared<EventBuilder>(actual_raw_allocator);
 
     for (auto e : test_events) {
         e.Write(expected_builder);
     }
 
-    load_libaudit_symbols();
-
-    AuditEventProcessor aep(actual_builder, user_db, proc_filter);
-
-    aep.Initialize();
+    RawEventAccumulator accumulator(actual_raw_builder);
 
     for (auto raw_event : raw_test_events) {
-        aep.ProcessData(raw_event, strlen(raw_event));
-        aep.Flush();
+        std::string event_txt = raw_event;
+        auto lines = split(event_txt, '\n');
+        for (auto& line: lines) {
+            std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();
+            std::memcpy(record->Data(), line.c_str(), line.size());
+            if (record->Parse(RecordType::UNKNOWN, line.size())) {
+                accumulator.AddRecord(std::move(record));
+            } else {
+                Logger::Warn("Received unparsable event data: %s", line.c_str());
+            }
+        }
+        accumulator.Flush();
     }
 
     BOOST_REQUIRE_EQUAL(expected_queue->GetEventCount(), actual_queue->GetEventCount());

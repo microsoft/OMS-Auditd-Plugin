@@ -163,7 +163,13 @@ ssize_t IOBase::Read(void *buf, size_t size, std::function<bool()> fn)
 
 ssize_t IOBase::Read(void *buf, size_t size, long timeout, std::function<bool()> fn)
 {
-    auto ret = WaitReadable(timeout);
+    int ret = 0;
+    do {
+        ret = WaitReadable(timeout);
+        if (ret == INTERRUPTED && fn && fn()) {
+            return ret;
+        }
+    } while (ret == INTERRUPTED);
     if (ret != OK) {
         return ret;
     }
@@ -198,7 +204,7 @@ ssize_t IOBase::ReadAll(void *buf, size_t size, std::function<bool()> fn)
     return OK;
 }
 
-ssize_t IOBase::WriteAll(const void * buf, size_t size, std::function<bool()> fn)
+ssize_t IOBase::WriteAll(const void * buf, size_t size, long timeout, std::function<bool()> fn)
 {
     size_t nleft = size;
     do {
@@ -206,7 +212,7 @@ ssize_t IOBase::WriteAll(const void * buf, size_t size, std::function<bool()> fn
         if (_fd < 0 || _wclosed.load()) {
             return CLOSED;
         }
-        auto ret = WaitWritable(-1);
+        auto ret = WaitWritable(timeout);
         if (ret != OK) {
             return ret;
         }

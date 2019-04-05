@@ -23,18 +23,7 @@
 
 #include "Event.h"
 #include "EventId.h"
-#include "LookupTables.h"
-
-/*
- * EventRecord:
- *  Allocate from pool
- *  Have pre-capacity string to hold contents (use max event size)
- *  Include:
- *      ReadFromStdin
- *      ReceiveFromNetlink
- *      ParseHeader
- *      ParseIntoEventBuilder
- */
+#include "RecordType.h"
 
 class RawEventRecord {
 public:
@@ -49,7 +38,6 @@ public:
 
     inline EventId GetEventId() { return _event_id; }
     inline RecordType GetRecordType() { return _record_type; }
-    inline std::string GetRecordTypeName() { return std::string(_type_name); }
     inline size_t GetSize() { return _size; }
 
 private:
@@ -57,7 +45,9 @@ private:
     size_t _size;
     RecordType _record_type;
     std::string_view _node;
+    std::string _node_str;
     std::string_view _type_name;
+    std::string _type_name_str;
     EventId _event_id;
     std::vector<std::string_view> _record_fields;
 };

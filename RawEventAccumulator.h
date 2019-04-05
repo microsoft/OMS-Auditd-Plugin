@@ -20,6 +20,7 @@
 #include "RawEventRecord.h"
 
 #include <map>
+#include <unordered_map>
 
 class RawEvent {
 public:

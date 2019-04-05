@@ -1,9 +1,25 @@
-//
-// Created by tad on 2/13/19.
-//
+/*
+    microsoft-oms-auditd-plugin
+
+    Copyright (c) Microsoft Corporation
+
+    All rights reserved.
+
+    MIT License
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the ""Software""), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
 
 #include "CollectionMonitor.h"
+#include "ProcessInfo.h"
 #include "Logger.h"
+#include "RecordType.h"
+#include "Translate.h"
+#include "FileUtils.h"
 
 #include <cstring>
 #include <chrono>
@@ -14,38 +30,48 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/time.h>
+#include <fcntl.h>
+
 
 void CollectionMonitor::run() {
     Logger::Info("CollectionMonitor started");
-
-    _netlink.Open(nullptr);
 
     while(!_sleep(1000)) {
         auto now = std::chrono::steady_clock::now();
 
         uint32_t audit_pid = -1;
         auto ret = _netlink.AuditGetPid(audit_pid);
-        if (ret != Netlink::SUCCESS) {
+        if (ret != 0) {
             // Treat NETLINK errors as unrecoverable.
             if (!IsStopping()) {
-                Logger::Warn("CollectionMonitor: Failed to get audit pid from audit NETLINK");
+                Logger::Warn("CollectionMonitor: Failed to get audit pid from audit NETLINK: %s", std::strerror(-ret));
             }
             Logger::Info("CollectionMonitor stopping");
             return;
         }
+        if (!PathExists("/proc/"+std::to_string(audit_pid))) {
+            audit_pid = 0;
+        }
 
-        if (!_disable_collector_check && !is_auditd_present() && !is_collector_alive() && audit_pid == 0) {
+        // Always get collector aliveness. This will ensure the child is reaped if it exits and won't be restarted.
+        bool is_alive = is_collector_alive();
+
+        if (!_disable_collector_check && !is_auditd_present() && !is_alive && audit_pid == 0) {
             start_collector();
 
             while (audit_pid <= 0 && !_sleep(100) && std::chrono::steady_clock::now() - now < std::chrono::seconds(10)) {
                 auto ret = _netlink.AuditGetPid(audit_pid);
-                if (ret != Netlink::SUCCESS) {
+                if (ret != 0) {
                     // Treat NETLINK errors as unrecoverable.
                     if (!IsStopping()) {
-                        Logger::Warn("CollectionMonitor: Failed to get audit pid from audit NETLINK");
+                        Logger::Warn("CollectionMonitor: Failed to get audit pid from audit NETLINK: %s", std::strerror(-ret));
                     }
                     Logger::Info("CollectionMonitor stopping");
                     return;
+                }
+                if (!PathExists("/proc/"+std::to_string(audit_pid))) {
+                    audit_pid = 0;
                 }
             }
             if (IsStopping()) {
@@ -63,23 +89,13 @@ void CollectionMonitor::run() {
             _audit_pid = audit_pid;
             send_audit_pid_report(audit_pid);
         }
-
-        if (now - _last_rules_check > std::chrono::seconds(60)) {
-            _last_rules_check = now;
-            check_rules();
-        }
     }
     Logger::Info("CollectionMonitor stopping");
 }
 
-void CollectionMonitor::on_stopping() {
-    _netlink.Close();
-}
-
 void CollectionMonitor::on_stop() {
-    remove_rules();
-
-    if (_collector_pid > 0) {
+    _collector.Wait(false);
+    if (_collector.Pid() > 0) {
         Logger::Info("Signaling collector process to exit");
         signal_collector(SIGTERM);
         // Give the collector 2 second to exit normally
@@ -95,114 +111,68 @@ void CollectionMonitor::on_stop() {
     Logger::Info("CollectionMonitor stopped");
 }
 
-void report_proc_exit_status(int wstatus) {
-    if (WIFEXITED(wstatus)) {
-        Logger::Info("Collector process exited with exit code %d", WEXITSTATUS(wstatus));
-    } else if (WIFSIGNALED(wstatus)) {
-        Logger::Info("Collector process terminated with SIGNAL %d", WTERMSIG(wstatus));
+void report_proc_exit_status(Cmd& cmd) {
+    if (cmd.ExitCode() > -1) {
+        Logger::Info("Collector process exited with exit code %d", cmd.ExitCode());
+    } else if (cmd.Signal() > -1) {
+        Logger::Info("Collector process terminated with SIGNAL %d", cmd.Signal());
     } else {
-        Logger::Info("Collector process terminated with unknown status 0x%X", wstatus);
+        Logger::Info("Collector process terminated with unknown status");
     }
 }
 
 bool CollectionMonitor::check_child(bool wait) {
-    if (_collector_pid <= 0) {
+    if (_collector.Pid() <= 0) {
         return false;
     }
 
-    int wstatus = 0;
-    errno = 0;
-    auto ret = waitpid(_collector_pid, &wstatus, WNOHANG);
+    auto ret = _collector.Wait(wait);
     if (ret < 0) {
-        Logger::Warn("CollectionMonitor::check_child: waitpid(%d) failed: %s", _collector_pid, std::strerror(errno));
-        _collector_pid = 0;
+        Logger::Warn("CollectionMonitor::check_child: waitpid() failed: %s", std::strerror(errno));
         _disable_collector_check = true;
         return false;
-    }
-
-    if (ret != 0) {
-        if (ret != _collector_pid) {
-            Logger::Warn("CollectionMonitor::check_child: waitpid(%d) returned ann unexpected pid(%d)", _collector_pid, ret);
-            _disable_collector_check = true;
-            _collector_pid = 0;
-            return false;
-        }
-        _collector_pid = 0;
-        report_proc_exit_status(wstatus);
+    } else if (ret == 1) {
+        report_proc_exit_status(_collector);
         return false;
     } else {
-        if (wait) {
-            ret = waitpid(_collector_pid, &wstatus, 0);
-            if (ret < 0) {
-                Logger::Warn("CollectionMonitor::check_child: waitpid(%d) failed: %s", _collector_pid, std::strerror(errno));
-                _collector_pid = 0;
-                _disable_collector_check = true;
-                return false;
-            }
-            if (ret != _collector_pid) {
-                Logger::Warn("CollectionMonitor::check_child: waitpid(%d) returned ann unexpected pid(%d)", _collector_pid, ret);
-                _collector_pid = 0;
-                _disable_collector_check = true;
-                return false;
-            }
-            _collector_pid = 0;
-            report_proc_exit_status(wstatus);
-            return false;
-        }
         return true;
     }
 }
 
 void CollectionMonitor::start_collector() {
-    Logger::Info("Starting audit NETLINK collector \"%s\"", _collector_path.c_str());
-    auto pid = fork();
-    if (pid < 0) {
+    // Remove start times that are outside the window
+    while (!_collector_restarts.empty() && std::chrono::steady_clock::now() - *_collector_restarts.begin() > std::chrono::seconds(COLLECTOR_RESTART_WINDOW)) {
+        _collector_restarts.erase(_collector_restarts.begin());
+    }
+    // Disable collector start if num starts exceeds max allowed.
+    if (_collector_restarts.size() > MAX_COLLECTOR_RESTARTS) {
         _disable_collector_check = true;
-        Logger::Error("CollectionMonitor::start_collector(): fork() failed: %s", std::strerror(errno));
+        Logger::Warn("NETLINK collector started more than %d times in the last %d seconds. Collector will not be started again.");
         return;
     }
+    _collector_restarts.emplace(std::chrono::steady_clock::now());
 
-    if (pid == 0) {
-        char arg1[_collector_path.size()+1];
-        _collector_path.copy(arg1, std::string::npos);
-        arg1[_collector_path.size()] = 0;
-        char arg2[] = "-n";
-        char arg3[] = "-c";
-        char arg4[_collector_config_path.size()+1];
-        _collector_config_path.copy(arg4, std::string::npos);
-        arg4[_collector_config_path.size()] = 0;
-        char* args[] = {
-            arg1,
-            arg2,
-            arg3,
-            arg4,
-            nullptr
-        };
-
-        ::execve(_collector_path.c_str(), args, environ);
-        Logger::Error("CollectionMonitor::start_collector(): execve() failed: %s", std::strerror(errno));
-        exit(errno);
-    } else {
-        _collector_pid = pid;
+    Logger::Info("Starting audit NETLINK collector \"%s\"", _collector_path.c_str());
+    auto ret = _collector.Start();
+    if (ret != 0) {
+        Logger::Error("CollectionMonitor::start_collector(): %s", _collector.FailMsg().c_str());
     }
 }
 
 void CollectionMonitor::signal_collector(int sig) {
-    if (_collector_pid > 0) {
-        if(kill(_collector_pid, sig) != 0) {
-            Logger::Warn("CollectionMonitor: kill(%d, %d) failed: %s", _collector_pid, sig, std::strerror(errno));
+    _collector.Wait(false); // Maybe reap child first in case it has already exited.
+    if (_collector.Pid() > 0) {
+        auto ret = _collector.Kill(sig);
+        // The child might have already died, so only report an error, if kill didn't return errno == ESRCH (process not found)
+        if(ret != 0 && ret != -ESRCH) {
+            Logger::Warn("CollectionMonitor: kill(%d, %d) failed: %s", _collector.Pid(), sig, std::strerror(errno));
             _disable_collector_check = true;
         }
     }
 }
 
 bool CollectionMonitor::is_auditd_present() {
-    struct stat buf;
-    auto ret = stat(_auditd_path.c_str(), &buf);
-    if (ret == 0) {
-        return true;
-    }
-    return false;
+    return PathExists(_auditd_path);
 }
 
 bool CollectionMonitor::is_collector_alive() {
@@ -210,13 +180,44 @@ bool CollectionMonitor::is_collector_alive() {
 }
 
 void CollectionMonitor::send_audit_pid_report(int pid) {
-Logger::Info("CollectionMonitor: Audit Pid: %d", pid);
-}
+    Logger::Info("CollectionMonitor: Audit Pid: %d", pid);
 
-void CollectionMonitor::check_rules() {
-    Logger::Info("CollectionMonitor: Checking Audit Rules");
-}
+    auto pinfo = ProcessInfo::Open(pid);
+    std::string exe;
+    int ppid = -1;
+    if (pinfo) {
+        exe = pinfo->exe();
+        ppid = pinfo->ppid();
+    }
 
-void CollectionMonitor::remove_rules() {
-    Logger::Info("CollectionMonitor: Removing auoms audit rules");
+    struct timeval tv;
+    gettimeofday(&tv, nullptr);
+
+    uint64_t sec = static_cast<uint64_t>(tv.tv_sec);
+    uint32_t nsec = static_cast<uint32_t>(tv.tv_usec)*1000;
+
+    if (_builder.BeginEvent(sec, nsec, 0, 1) != 1) {
+        return;
+    }
+    if (_builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_COLLECTOR_REPORT), RecordTypeToName(RecordType::AUOMS_COLLECTOR_REPORT), "", 3) != 0) {
+        _builder.CancelEvent();
+        return;
+    }
+    if (_builder.AddField("pid", std::to_string(pid), nullptr, field_type_t::UNCLASSIFIED) != 0) {
+        _builder.CancelEvent();
+        return;
+    }
+    if(_builder.AddField("ppid", std::to_string(ppid), nullptr, field_type_t::UNCLASSIFIED) != 0) {
+        _builder.CancelEvent();
+        return;
+    }
+    if(_builder.AddField("exe", exe, nullptr, field_type_t::UNCLASSIFIED) != 0) {
+        _builder.CancelEvent();
+        return;
+    }
+    if(_builder.EndRecord() != 0) {
+        _builder.CancelEvent();
+        return;
+    }
+    _builder.EndEvent();
 }

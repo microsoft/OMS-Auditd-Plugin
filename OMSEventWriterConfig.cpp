@@ -29,18 +29,6 @@ static std::string _tolower(const std::string& in)
 typedef bool (*config_set_func_t)(const std::string& name, OMSEventWriterConfig& et_config, const Config& config);
 
 static std::unordered_map<std::string, config_set_func_t> _configSetters = {
-        {"include_full_raw_text", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
-            if (config.HasKey(name)) {
-                et_config.IncludeFullRawText = config.GetBool(name);
-            }
-            return true;
-        }},
-        {"raw_text_field_name", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
-            if (config.HasKey(name)) {
-                et_config.RawTextFieldName = config.GetString(name);
-            }
-            return true;
-        }},
         {"timestamp_field_name", [](const std::string& name, OMSEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.TimestampFieldName = config.GetString(name);

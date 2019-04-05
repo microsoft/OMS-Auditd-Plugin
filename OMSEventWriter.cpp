@@ -168,16 +168,12 @@ void OMSEventWriter::process_record(const EventRecord& rec, int record_type, con
         process_field(field);
     }
 
-    if (_config.IncludeFullRawText) {
-        add_string_field(_config.RawTextFieldName, std::string(rec.RecordTextPtr(), rec.RecordTextSize()));
-    }
-
     end_object();
 }
 
 void OMSEventWriter::process_field(const EventRecordField& field)
 {
-    _field_name.assign(field.FieldName(), field.FieldNameSize());
+    _field_name.assign(field.FieldNamePtr(), field.FieldNameSize());
 
     if (!_config.FieldNameOverrideMap.empty()) {
         auto it = _config.FieldNameOverrideMap.find(_field_name);

@@ -85,9 +85,12 @@ public:
      * Return FAILED if read failed
      * Return INTERRUPTED if signal received
      */
-    virtual ssize_t WriteAll(const void *buf, size_t size, std::function<bool()> fn) = 0;
-    ssize_t WriteAll(const void *buf, size_t size) {
-        return WriteAll(buf, size, nullptr);
+    virtual ssize_t WriteAll(const void *buf, size_t size, long timeout, std::function<bool()> fn) = 0;
+    inline ssize_t WriteAll(const void *buf, size_t size, std::function<bool()> fn) {
+        return WriteAll(buf, size, -1, std::move(fn));
+    }
+    inline ssize_t WriteAll(const void *buf, size_t size) {
+        return WriteAll(buf, size, -1, nullptr);
     }
 };
 
@@ -114,7 +117,7 @@ public:
     ssize_t Read(void *buf, size_t buf_size, std::function<bool()> fn) override;
     ssize_t Read(void *buf, size_t buf_size, long timeout, std::function<bool()> fn) override;
     ssize_t ReadAll(void *buf, size_t buf_size, std::function<bool()> fn) override;
-    ssize_t WriteAll(const void *buf, size_t size, std::function<bool()> fn) override;
+    ssize_t WriteAll(const void *buf, size_t size, long timeout, std::function<bool()> fn) override;
 
 protected:
     std::atomic<int> _fd;
