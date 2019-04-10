@@ -12,7 +12,7 @@ include $(BASE_DIR)/build/config.mak
 include $(BASE_DIR)/build/Makefile.version
 include $(PAL_DIR)/build/Makefile.pal
 
-ifeq ($(CENTOS5_BUILD_ENV),1)
+ifeq ($(OLD_CENTOS_BUILD_ENV),1)
 ROOT_DIR := $(shell cd ../../..; pwd -P)
 DEV_TOOLS_PATH=/opt/rh/devtoolset-2/root/usr/bin:
 else

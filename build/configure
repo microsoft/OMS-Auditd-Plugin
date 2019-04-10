@@ -16,18 +16,18 @@
 # THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ####
 
-# Detect old CentOS 5 build environment
-CENTOS5_BUILD_ENV=1
-grep "CentOS release 5" /etc/redhat-release > /dev/null 2>&1
+# Detect old CentOS (5 and 6) build environment, which have gcc 4.1, 4.4
+OLD_CENTOS_BUILD_ENV=1
+grep -e "CentOS release 5" -e "CentOS release 6" /etc/redhat-release > /dev/null 2>&1
 if [ $? -ne 0 ]; then
-    CENTOS5_BUILD_ENV=0
+    OLD_CENTOS_BUILD_ENV=0
 fi
 
 home_dir=`(cd ~/; pwd -P)`
 base_dir=`(cd ..; pwd -P)`
 scxpal_dir=`(cd ../../pal; pwd -P)`
 
-if [ "$CENTOS5_BUILD_ENV" -eq 1 ]; then
+if [ "$OLD_CENTOS_BUILD_ENV" -eq 1 ]; then
     root_dir=`(cd ../../..; pwd -P)`
     ver_file=../../auoms.version
 else
@@ -188,7 +188,7 @@ if [ "$opensource_distro" -eq 1 ]; then
 fi
 
 if [ "$ULINUX" -eq 1 ]; then
-    if [ "$CENTOS5_BUILD_ENV" -eq 1 ]; then
+    if [ "$OLD_CENTOS_BUILD_ENV" -eq 1 ]; then
         if [ ! -e /opt/rh/devtoolset-2/root/usr/bin/g++ ]; then
             echo "devtools-2 packages are not installed!" >& 2
             exit 1
@@ -347,7 +347,7 @@ ULINUX=$ULINUX
 BUILD_CONFIGURATION=$BUILD_CONFIGURATION
 PACKAGE_SUFFIX=$PKG_SUFFIX
 USR_LIB_DIR=$USR_LIB_DIR
-CENTOS5_BUILD_ENV=$CENTOS5_BUILD_ENV
+OLD_CENTOS_BUILD_ENV=$OLD_CENTOS_BUILD_ENV
 
 EOF
 
