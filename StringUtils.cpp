@@ -152,6 +152,25 @@ void tty_escape_string(std::string& out, const char* in, size_t in_len) {
     }
 }
 
+void json_escape_string(std::string& out, const char* in, size_t in_len) {
+    out.clear();
+    auto ptr = in;
+    auto end = ptr+in_len;
+    for (; ptr < end; ++ptr) {
+        if (*ptr < 0x20 || *ptr > 0x7E) {
+            out.push_back('\\');
+            out.push_back('x');
+            out.push_back(int2hex[static_cast<uint8_t>(*ptr) >> 4]);
+            out.push_back(int2hex[*ptr & 0xF]);
+        } else if (*ptr == '"') {
+            out.push_back('\\');
+            out.push_back('"');
+        } else {
+            out.push_back(*ptr);
+        }
+    }
+}
+
 // Codes:
 /*
  * Z -> null terminator
@@ -278,7 +297,9 @@ size_t bash_escape_string(std::string& out, const char* in, size_t in_len) {
     for(; ptr < end; ++ptr, ++size) {
         switch (char_category_codes[static_cast<uint8_t>(*ptr)]) {
             case 'Z':
-                goto endloop;
+                end = ptr;
+                size -= 1;
+                break;
             case '-':
                 flags |= __BASH_QUOTE_NEEDED;
                 break;
@@ -296,8 +317,6 @@ size_t bash_escape_string(std::string& out, const char* in, size_t in_len) {
                 break;
         }
     }
-
-endloop:
 
     // String is empty, use '' to represent empty string on bash commandline
     if (size == 0) {
@@ -364,15 +383,19 @@ endloop:
 }
 
 std::string trim_whitespace(const std::string& str) {
-    auto idx = str.find_first_not_of(" \t", 0);
-    if (idx == std::string::npos) {
+    size_t idx = 0;
+    while(idx < str.size() && std::isspace(str[idx])) {
+        idx += 1;
+    }
+    if (idx >= str.size()) {
         return std::string();
     }
 
     auto eidx = str.size()-1;
-    while(eidx > 0 && (str[eidx] == ' ' || str[eidx] == '\t')) {
+    while(eidx > 0 && std::isspace(str[eidx])) {
         eidx -= 1;
     }
+    eidx += 1;
     return str.substr(idx, eidx-idx);
 }
 

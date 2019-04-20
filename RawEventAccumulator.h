@@ -21,13 +21,17 @@
 
 #include <map>
 #include <unordered_map>
+#include <mutex>
 
 class RawEvent {
 public:
-    static constexpr size_t MAX_EVENT_SIZE = 1024*1024; // Prevent runaway accumulation of records for an event
-    static constexpr size_t MAX_NUM_EXECVE_RECORDS = 100; // Make sure there will be room in event for PATH/CWD records that follow EXECVE records.
+    static constexpr size_t MAX_EVENT_SIZE = 112*1024; // Prevent runaway accumulation of records for an event
+    static constexpr size_t MAX_EXECVE_ACCUM_SIZE = 96*1024; // Prevent runaway accumulation of records for an event
+    static constexpr size_t MAX_NUM_EXECVE_RECORDS = 12; // Make sure there will be room in event for PATH/CWD records that follow EXECVE records.
+    static constexpr size_t NUM_EXECVE_RH_PRESERVE = 3;
 
-    explicit RawEvent(EventId event_id): _event_id(event_id), _num_execve_records(0), _num_dropped_records(0), _size(0) {}
+    RawEvent() = delete;
+    explicit RawEvent(EventId event_id): _event_id(event_id), _num_execve_records(0), _num_dropped_records(0), _size(0), _execve_size(0) {}
 
     // Returns true if the event is now complete;
     bool AddRecord(std::unique_ptr<RawEventRecord> record);
@@ -37,10 +41,12 @@ public:
 private:
     EventId _event_id;
     std::vector<std::unique_ptr<RawEventRecord>> _records;
+    std::vector<std::unique_ptr<RawEventRecord>> _execve_records;
     std::unordered_map<RecordType, int> _drop_count;
     int _num_execve_records;
     int _num_dropped_records;
     size_t _size;
+    size_t _execve_size;
 };
 
 class RawEventAccumulator {
@@ -48,9 +54,10 @@ public:
     explicit RawEventAccumulator(const std::shared_ptr<EventBuilder>& builder): _builder(builder) {}
 
     int AddRecord(std::unique_ptr<RawEventRecord> record);
-    int Flush();
+    void Flush(long milliseconds);
 
 private:
+    std::mutex _mutex;
     std::shared_ptr<EventBuilder> _builder;
     std::map<EventId, std::unique_ptr<RawEvent>> _events;
 };

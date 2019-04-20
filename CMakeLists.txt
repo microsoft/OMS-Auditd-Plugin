@@ -19,13 +19,15 @@ project(auoms)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ggdb")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ggdb")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -ggdb")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -ggdb")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -ggdb")
 
 include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include)
 
 add_custom_command(
         OUTPUT ${CMAKE_SOURCE_DIR}/auoms_version.h
-        COMMAND bash -c \"grep AUOMS_BUILDVERSION auoms.version | head -n 4 | cut -d'=' -f2 | tr '\\n' '.' | sed 's/^\\\([0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\\)\\.*/\#define AUOMS_VERSION \\"\\1\\"/' > auoms_version.h\"
+        COMMAND bash -c \"grep AUOMS_BUILDVERSION auoms.version | head -n 4 | cut -d'=' -f2 | tr '\\n' '.' | sed 's/^\\\([0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\\)\\.*/\#define AUOMS_VERSION \\"\\1\\"/' > auoms_version.h\"
         MAIN_DEPENDENCY auoms.version
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
@@ -57,6 +59,7 @@ add_executable(auomscollect
         Defer.h
         TranslateRecordType.cpp
         FileUtils.cpp
+        Retry.h
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -77,6 +80,7 @@ install(TARGETS
 
 add_executable(auoms
         auoms.cpp
+        auoms_version.h
         IO.cpp
         Event.cpp
         OMSEventWriterConfig.cpp
@@ -103,6 +107,7 @@ add_executable(auoms
         Interpret.cpp
         CollectionMonitor.cpp
         Netlink.cpp
+        NetlinkAudit.cpp
         TranslateArch.cpp
         TranslateSyscall.cpp
         TranslateRecordType.cpp
@@ -117,6 +122,7 @@ add_executable(auoms
         FileUtils.cpp
         ExecUtil.cpp
         StringTable.h
+        ExecveConverter.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -140,6 +146,7 @@ add_executable(auomsctl
         auomsctl.cpp
         auoms_version.h
         Netlink.cpp
+        NetlinkAudit.cpp
         RunBase.cpp
         Signals.cpp
         Logger.cpp
@@ -259,6 +266,7 @@ add_test(Queue ${CMAKE_BINARY_DIR}/QueueTests --log_sink=QueueTests.log --report
 add_executable(UserDBTests
         TempDir.cpp
         Logger.cpp
+        Signals.cpp
         UserDB.cpp
         UserDBTests.cpp
 )
@@ -299,6 +307,7 @@ add_executable(EventProcessorTests
         TranslateField.cpp
         TranslateArch.cpp
         Interpret.cpp
+        ExecveConverter.cpp
 )
 
 target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
@@ -311,7 +320,27 @@ target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
 
 add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=EventProcessorTests.log --report_sink=EventProcessorTests.report)
 
-#
+add_executable(ExecveConverterTests
+        ExecveConverterTests.cpp
+        ExecveConverter.cpp
+        Event.cpp
+        RawEventAccumulator.cpp
+        RawEventRecord.cpp
+        Logger.cpp
+        StringUtils.cpp
+        TranslateRecordType.cpp
+)
+
+target_link_libraries(ExecveConverterTests ${Boost_LIBRARIES}
+        audit
+        auparse
+        dl
+        pthread
+        rt
+)
+
+add_test(ExecveConverter ${CMAKE_BINARY_DIR}/ExecveConverterTests --log_sink=ExecveConverterTests.log --report_sink=ExecveConverterTests.report)
+
 add_executable(OMSEventWriterTests
         OMSEventWriterTests.cpp
         OMSEventWriter.cpp

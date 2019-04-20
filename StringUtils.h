@@ -28,7 +28,11 @@ size_t decode_hex(void* buf, size_t buf_len, const char* hex, size_t len);
 
 int unescape_raw_field(std::string& out, const char* in, size_t in_len);
 
+// Escape non ASCII non-printable chars (< 0x20 && > 0x7E)
 void tty_escape_string(std::string& out, const char* in, size_t in_len);
+
+// Same as tty_escape_string, but also escape double quote
+void json_escape_string(std::string& out, const char* in, size_t in_len);
 
 size_t bash_escape_string(std::string& out, const char* in, size_t in_len);
 

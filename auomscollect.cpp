@@ -41,6 +41,7 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <sys/prctl.h>
+#include <sys/resource.h>
 
 void usage()
 {
@@ -82,20 +83,10 @@ void DoStdinCollection(RawEventAccumulator& accumulator) {
     StdinReader reader;
 
     try {
-        int timeout = -1;
         std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();
 
         for (;;) {
-            if (!Signals::IsExit()) {
-                // Only use infinite timeout if Signals::IsExit() is false
-                timeout = -1;
-            } else {
-                // We want to keep this number small to reduce shutdown delay.
-                // However, audispd waits 50 msec after sending SIGTERM before closing pipe
-                // So this needs to be larger than 50.
-                timeout = 100;
-            }
-            ssize_t nr = reader.ReadLine(record->Data(), RawEventRecord::MAX_RECORD_SIZE, timeout, [] {
+            ssize_t nr = reader.ReadLine(record->Data(), RawEventRecord::MAX_RECORD_SIZE, 100, [] {
                 return Signals::IsExit();
             });
             if (nr > 0) {
@@ -105,9 +96,12 @@ void DoStdinCollection(RawEventAccumulator& accumulator) {
                 } else {
                     Logger::Warn("Received unparsable event data: '%s'", std::string(record->Data(), nr).c_str());
                 }
-            } else if (nr == StdinReader::TIMEOUT && Signals::IsExit()) {
-                Logger::Info("");
-                break;
+            } else if (nr == StdinReader::TIMEOUT) {
+                if (Signals::IsExit()) {
+                    Logger::Info("Exiting input loop");
+                    break;
+                }
+                accumulator.Flush(200);
             } else { // nr == StdinReader::CLOSED, StdinReader::FAILED or StdinReader::INTERRUPTED
                 if (nr == StdinReader::CLOSED) {
                     Logger::Info("STDIN closed, exiting input loop");
@@ -153,7 +147,7 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
             if (record->Parse(static_cast<RecordType>(type), len)) {
                 accumulator.AddRecord(std::move(record));
             } else {
-                Logger::Warn("Received unparsable event data (type = %d, flags = 0x%X, size=%d)", type, flags, len);
+                Logger::Warn("Received unparsable event data (type = %d, flags = 0x%X, size=%ld)", type, flags, len);
             }
         }
         return false;
@@ -174,7 +168,7 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
 
     Logger::Info("Checking assigned audit pid");
     audit_status status;
-    ret = netlink.AuditGet(status);
+    ret = NetlinkRetry([&netlink,&status]() { return netlink.AuditGet(status); } );
     if (ret != 0) {
         Logger::Error("Failed to get audit status: %s", std::strerror(-ret));
         return;
@@ -188,60 +182,94 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
     }
 
     Logger::Info("Enabling AUDIT event collection");
-    ret = netlink.AuditSetPid(our_pid);
-    if (ret != 0) {
-        Logger::Error("Failed to set audit pid: %s", std::strerror(-ret));
-        return;
-    }
+    int retry_count = 0;
+    do {
+        if (retry_count > 5) {
+            Logger::Error("Failed to set audit pid: Max retried exceeded");
+        }
+        ret = netlink.AuditSetPid(our_pid);
+        if (ret == -ETIMEDOUT) {
+            // If setpid timedout, it may have still succeeded, so re-fetch pid
+            ret = NetlinkRetry([&netlink,&status,&pid]() { return netlink.AuditGetPid(pid); });
+            if (ret != 0) {
+                Logger::Error("Failed to get audit pid: %s", std::strerror(-ret));
+                return;
+            }
+        } else if (ret != 0) {
+            Logger::Error("Failed to set audit pid: %s", std::strerror(-ret));
+            return;
+        } else {
+            break;
+        }
+        retry_count += 1;
+    } while (pid != our_pid);
     if (enabled == 0) {
-        Logger::Info("Enabling auditing");
-        ret = netlink.AuditSetEnabled(1);
+        ret = NetlinkRetry([&netlink,&status]() { return netlink.AuditSetEnabled(1); });
         if (ret != 0) {
             Logger::Error("Failed to enable auditing: %s", std::strerror(-ret));
             return;
         }
     }
+
     Defer _revert_enabled([&netlink,enabled]() {
         if (enabled == 0) {
-            Logger::Info("Disabling auditing");
-            auto ret = netlink.AuditSetEnabled(0);
+            int ret;
+            ret = NetlinkRetry([&netlink]() { return netlink.AuditSetEnabled(1); });
             if (ret != 0) {
-                Logger::Error("Failed to disable auditing: %s", std::strerror(-ret));
+                Logger::Error("Failed to enable auditing: %s", std::strerror(-ret));
                 return;
             }
-        }
-        Logger::Info("Disabling AUDIT event collection");
-        auto ret = netlink.AuditSetPid(0);
-        if (ret != 0) {
-            Logger::Error("Failed to set audit pid to 0: %s", std::strerror(-ret));
-            return;
         }
     });
 
     Signals::SetExitHandler([&_stop_gate]() { _stop_gate.Open(); });
 
+    std::chrono::steady_clock::time_point _last_pid_check;
     while(!Signals::IsExit()) {
-        if (_stop_gate.Wait(Gate::OPEN, 1000)) {
+        if (_stop_gate.Wait(Gate::OPEN, 100)) {
             return;
         }
 
-        pid = 0;
-        auto ret = netlink.AuditGetPid(pid);
-        if (ret != 1) {
-            if (ret < 0) {
-                Logger::Error("Failed to get audit pid");
+        try {
+            accumulator.Flush(200);
+        } catch (const std::exception &ex) {
+            Logger::Error("Unexpected exception while flushing input: %s", ex.what());
+        } catch (...) {
+            Logger::Error("Unexpected exception while flushing input");
+        }
+
+        auto now = std::chrono::steady_clock::now();
+        if (_last_pid_check < now - std::chrono::seconds(1)) {
+            _last_pid_check = now;
+            pid = 0;
+            int ret;
+            ret = NetlinkRetry([&netlink,&pid]() { return netlink.AuditGetPid(pid); });
+            if (ret != 0) {
+                if (ret == -ECANCELED || ret == -ENOTCONN) {
+                    if (!Signals::IsExit()) {
+                        Logger::Error("AUDIT NETLINK connection has closed unexpectedly");
+                    }
+                } else {
+                    Logger::Error("Failed to get audit pid: %s", std::strerror(-ret));
+                }
                 return;
-            }
-        } else {
-            if (pid != our_pid) {
-                Logger::Warn("Another process (pid = %d) has taken over AUDIT NETLINK event collection.", pid);
-                return;
+            } else {
+                if (pid != our_pid) {
+                    Logger::Warn("Another process (pid = %d) has taken over AUDIT NETLINK event collection.", pid);
+                    return;
+                }
             }
         }
     }
 }
 
 int main(int argc, char**argv) {
+    // Enable core dumps
+    struct rlimit limits;
+    limits.rlim_cur = RLIM_INFINITY;
+    limits.rlim_max = RLIM_INFINITY;
+    setrlimit(RLIMIT_CORE, &limits);
+
     std::string config_file = "/etc/opt/microsoft/auoms/auomscollect.conf";
     int stop_delay = 0; // seconds
     bool netlink_mode = false;
@@ -319,7 +347,7 @@ int main(int argc, char**argv) {
     }
 
     if (queue_size < Queue::MIN_QUEUE_SIZE) {
-        Logger::Warn("Value for 'queue_size' (%d) is smaller than minimum allowed. Using minimum (%d).", queue_size, Queue::MIN_QUEUE_SIZE);
+        Logger::Warn("Value for 'queue_size' (%ld) is smaller than minimum allowed. Using minimum (%ld).", queue_size, Queue::MIN_QUEUE_SIZE);
         exit(1);
     }
 
@@ -360,11 +388,15 @@ int main(int argc, char**argv) {
     output.Load(output_config);
 
     std::thread autosave_thread([&]() {
+        Signals::InitThread();
         try {
             queue->Autosave(128*1024, 250);
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
-            throw;
+            if (!Signals::IsExit()) {
+                Logger::Warn("Terminating");
+                Signals::Terminate();
+            }
         }
     });
 
@@ -382,7 +414,7 @@ int main(int argc, char**argv) {
     Logger::Info("Exiting");
 
     try {
-        accumulator.Flush();
+        accumulator.Flush(0);
         if (stop_delay > 0) {
             Logger::Info("Waiting %d seconds for output to flush", stop_delay);
             sleep(stop_delay);
@@ -392,10 +424,10 @@ int main(int argc, char**argv) {
         autosave_thread.join(); // Wait for autosave thread to exit
     } catch (const std::exception& ex) {
         Logger::Error("Unexpected exception during exit: %s", ex.what());
-        throw;
+        exit(1);
     } catch (...) {
         Logger::Error("Unexpected exception during exit");
-        throw;
+        exit(1);
     }
 
     exit(0);

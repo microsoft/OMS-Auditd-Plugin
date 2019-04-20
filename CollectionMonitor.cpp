@@ -41,7 +41,7 @@ void CollectionMonitor::run() {
         auto now = std::chrono::steady_clock::now();
 
         uint32_t audit_pid = -1;
-        auto ret = _netlink.AuditGetPid(audit_pid);
+        auto ret = NetlinkRetry([this,&audit_pid]() { return _netlink.AuditGetPid(audit_pid); });
         if (ret != 0) {
             // Treat NETLINK errors as unrecoverable.
             if (!IsStopping()) {
@@ -61,7 +61,7 @@ void CollectionMonitor::run() {
             start_collector();
 
             while (audit_pid <= 0 && !_sleep(100) && std::chrono::steady_clock::now() - now < std::chrono::seconds(10)) {
-                auto ret = _netlink.AuditGetPid(audit_pid);
+                auto ret = NetlinkRetry([this,&audit_pid]() { return _netlink.AuditGetPid(audit_pid); });
                 if (ret != 0) {
                     // Treat NETLINK errors as unrecoverable.
                     if (!IsStopping()) {
@@ -147,7 +147,7 @@ void CollectionMonitor::start_collector() {
     // Disable collector start if num starts exceeds max allowed.
     if (_collector_restarts.size() > MAX_COLLECTOR_RESTARTS) {
         _disable_collector_check = true;
-        Logger::Warn("NETLINK collector started more than %d times in the last %d seconds. Collector will not be started again.");
+        Logger::Warn("NETLINK collector started more than %d times in the last %d seconds. Collector will not be started again.", MAX_COLLECTOR_RESTARTS, COLLECTOR_RESTART_WINDOW);
         return;
     }
     _collector_restarts.emplace(std::chrono::steady_clock::now());
@@ -194,28 +194,28 @@ void CollectionMonitor::send_audit_pid_report(int pid) {
     gettimeofday(&tv, nullptr);
 
     uint64_t sec = static_cast<uint64_t>(tv.tv_sec);
-    uint32_t nsec = static_cast<uint32_t>(tv.tv_usec)*1000;
+    uint32_t msec = static_cast<uint32_t>(tv.tv_usec)/1000;
 
-    if (_builder.BeginEvent(sec, nsec, 0, 1) != 1) {
+    if (_builder.BeginEvent(sec, msec, 0, 1) != 1) {
         return;
     }
-    if (_builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_COLLECTOR_REPORT), RecordTypeToName(RecordType::AUOMS_COLLECTOR_REPORT), "", 3) != 0) {
+    if (_builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_COLLECTOR_REPORT), RecordTypeToName(RecordType::AUOMS_COLLECTOR_REPORT), "", 3) != 1) {
         _builder.CancelEvent();
         return;
     }
-    if (_builder.AddField("pid", std::to_string(pid), nullptr, field_type_t::UNCLASSIFIED) != 0) {
+    if (_builder.AddField("pid", std::to_string(pid), nullptr, field_type_t::UNCLASSIFIED) != 1) {
         _builder.CancelEvent();
         return;
     }
-    if(_builder.AddField("ppid", std::to_string(ppid), nullptr, field_type_t::UNCLASSIFIED) != 0) {
+    if(_builder.AddField("ppid", std::to_string(ppid), nullptr, field_type_t::UNCLASSIFIED) != 1) {
         _builder.CancelEvent();
         return;
     }
-    if(_builder.AddField("exe", exe, nullptr, field_type_t::UNCLASSIFIED) != 0) {
+    if(_builder.AddField("exe", exe, nullptr, field_type_t::UNCLASSIFIED) != 1) {
         _builder.CancelEvent();
         return;
     }
-    if(_builder.EndRecord() != 0) {
+    if(_builder.EndRecord() != 1) {
         _builder.CancelEvent();
         return;
     }

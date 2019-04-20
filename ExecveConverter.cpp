@@ -1,0 +1,211 @@
+//
+// Created by tad on 4/15/19.
+//
+
+#include "ExecveConverter.h"
+
+#include "StringUtils.h"
+
+#include <algorithm>
+#include <climits>
+
+int sv_to_int(const std::string_view& str, size_t* pos, int base) {
+    char* end = nullptr;
+    auto i = std::strtol(str.begin(), &end, base);
+    if (pos != nullptr) {
+        *pos = end - str.begin();
+    }
+    if (end == str.data() || end > str.end()) {
+        return static_cast<int>(LONG_MAX);
+    }
+    return i;
+}
+
+int parse_execve_argnum(const std::string_view& fname) {
+    if (fname[0] == 'a' && fname[1] >= '0' && fname[1] <= '9') {
+        return sv_to_int(fname.substr(1), nullptr, 10);
+    }
+    return 0;
+}
+
+// Return 0 if "a%d"
+// Return 1 if "a%d_len=%d"
+// Return 2 if "a%d[%d]"
+// Return -1 if error
+int parse_execve_fieldname(const std::string_view& fname, const std::string_view& val, int& arg_num, int& arg_len, int& arg_idx) {
+    using namespace std::string_view_literals;
+
+    try {
+        if (fname[0] == 'a' && fname[1] >= '0' && fname[1] <= '9') {
+            auto name = fname.substr(1);
+            size_t pos = 0;
+            arg_num = sv_to_int(name, &pos, 10);
+            if (pos == name.length()) {
+                arg_len = 0;
+                arg_idx = 0;
+                return 0;
+            } else if (name[pos] == '_') {
+                static auto len_str = "_len"sv;
+                if (name.substr(pos) == len_str && val[0] >= '0' && val[0] <= '9') {
+                    arg_idx = 0;
+                    arg_len = sv_to_int(val, &pos, 10);
+                    if (pos == val.size()) {
+                        return 1;
+                    }
+                }
+            } else if (name[pos] == '[' && pos < name.size()) {
+                name = name.substr(pos + 1);
+                arg_len = 0;
+                if (name[0] >= '0' && name[0] <= '9') {
+                    arg_idx = sv_to_int(name, &pos, 10);
+                    if (name[pos] == ']') {
+                        return 2;
+                    }
+                }
+            }
+        }
+    } catch (std::logic_error&) {
+        return -1;
+    }
+    return -1;
+}
+
+void ExecveConverter::Convert(std::vector<EventRecord> execve_recs) {
+    static auto S_ELIPSIS = std::string("...");
+    static auto S_MISSING_ARG_PIECE = std::string("<...>");
+
+    _cmdline.resize(0);
+
+    // Sort EXECVE records so that args (e.g. a0, a1, a2 ...) will be in order.
+    std::sort(execve_recs.begin(), execve_recs.end(), [](const EventRecord& a, const EventRecord& b) -> int {
+        auto fa = a.FieldAt(0);
+        auto fb = b.FieldAt(0);
+        int a_num = parse_execve_argnum(fa.FieldName());
+        int b_num = parse_execve_argnum(fb.FieldName());
+
+        return a_num < b_num;
+    });
+
+
+    int expected_arg_num = 0;
+    int expected_arg_len = 0;
+    int accum_arg_len = 0;
+    int expected_arg_idx = 0;
+    for (auto& rec : execve_recs) {
+        for (auto &f : rec) {
+            auto fname = f.FieldName();
+            auto val = f.RawValue();
+            int arg_num = 0;
+            int arg_len = 0;
+            int arg_idx = 0;
+
+            auto atype = parse_execve_fieldname(fname, val, arg_num, arg_len, arg_idx);
+            if (atype < 0) {
+                continue;
+            }
+
+            // Fill in arg gaps with place holder
+            if (expected_arg_num < arg_num && expected_arg_len > 0) {
+                if (accum_arg_len) {
+                    if (!_tmp_val.empty()) {
+                        unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
+                        bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+                    }
+                    if (expected_arg_len > accum_arg_len) {
+                        _cmdline.append(S_MISSING_ARG_PIECE);
+                    }
+                    expected_arg_num += 1;
+                }
+                expected_arg_len = 0;
+                accum_arg_len = 0;
+                expected_arg_idx = 0;
+            }
+
+            if (expected_arg_num < arg_num) {
+                if (!_cmdline.empty()) {
+                    _cmdline.push_back(' ');
+                }
+                _cmdline.push_back('<');
+                _cmdline.append(std::to_string(expected_arg_num));
+                _cmdline.append(S_ELIPSIS);
+                _cmdline.append(std::to_string(arg_num-1));
+                _cmdline.push_back('>');
+                expected_arg_num = arg_num;
+            }
+
+            switch (atype) {
+                case 0: // a%d
+                    // Previous arg might have been multi-part
+                    if (expected_arg_len > 0) {
+                        if (!_tmp_val.empty()) {
+                            unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
+                            bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+                        }
+                        _cmdline.append(S_MISSING_ARG_PIECE);
+                        expected_arg_len = 0;
+                        expected_arg_idx = 0;
+                    }
+
+                    _unescaped_val.resize(0);
+                    if (!_cmdline.empty()) {
+                        _cmdline.push_back(' ');
+                    }
+                    unescape_raw_field(_unescaped_val, val.data(), val.size());
+                    bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+                    expected_arg_num += 1;
+                    break;
+                case 1: // a%d_len=%d
+                    expected_arg_len = arg_len;
+                    accum_arg_len = 0;
+                    expected_arg_idx = 0;
+                    _tmp_val.resize(0);
+                    _unescaped_val.resize(0);
+                    break;
+                case 2: { // a%d[%d]
+                    if (expected_arg_len == 0) {
+                        // never saw the corresponding a%d_len=%d field, so just ignore the other parts
+                        break;
+                    }
+                    if (expected_arg_idx == 0 && !_cmdline.empty()) {
+                        _cmdline.push_back(' ');
+                    }
+                    if (expected_arg_idx < arg_idx) {
+                        // There's a gap in the parts, so unescape and bash escape the part we have
+                        // then fill in the missing parts with the place holder
+                        if (!_tmp_val.empty()) {
+                            unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
+                            bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+                        }
+                        _cmdline.append(S_MISSING_ARG_PIECE);
+                        _tmp_val.resize(0);
+                        _unescaped_val.resize(0);
+                        expected_arg_idx = arg_idx;
+                    }
+                    _tmp_val.append(val);
+                    accum_arg_len += val.size();
+                    expected_arg_idx += 1;
+                    if (expected_arg_len <= accum_arg_len) {
+                        unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
+                        bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+                        expected_arg_len = 0;
+                        accum_arg_len = 0;
+                        expected_arg_idx = 0;
+                        expected_arg_num += 1;
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // Last arg might have been a multi-part (a%d_len=%d a%d[%d])
+    if (expected_arg_len > 0) {
+        if (!_tmp_val.empty()) {
+            unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
+            bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+        }
+        if (expected_arg_len > accum_arg_len) {
+            _cmdline.append(S_MISSING_ARG_PIECE);
+        }
+    }
+}

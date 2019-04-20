@@ -16,6 +16,7 @@
 #include "UserDB.h"
 
 #include "Logger.h"
+#include "Signals.h"
 
 #include <cstring>
 #include <fstream>
@@ -109,6 +110,8 @@ int _read(int fd, void *buf, size_t buf_size)
 
 void UserDB::inotify_task()
 {
+    Signals::InitThread();
+
     /* Create the file descriptor for accessing the inotify API */
     int fd = inotify_init();
     if (fd == -1) {
@@ -165,6 +168,8 @@ constexpr int REPEAT_UPDATE_DELAY = 500;
 
 void UserDB::update_task()
 {
+    Signals::InitThread();
+
     std::unique_lock<std::mutex> lock(_lock);
 
     while (!_stop) {

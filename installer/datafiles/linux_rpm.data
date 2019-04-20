@@ -46,37 +46,33 @@ if [ -e /usr/sbin/semodule ]; then
         fi
     fi
     echo "Labeling auoms files"
+    /sbin/restorecon -R -v /opt/microsoft/auoms/bin/auoms
     /sbin/restorecon -R -v /opt/microsoft/auoms/bin/auomscollect
+fi
+/opt/microsoft/auoms/bin/auomsctl is-enabled >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+    /opt/microsoft/auoms/bin/auomsctl restart all
 fi
 
 %Preuninstall_100
 if [ $1 -eq 0 ]; then
-    if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
-        rm ${{AUOMS_AUDISP_CONF}}
-    fi
-    if [ -e /sbin/auditd ]; then
-        service auditd reload
-    fi
     /opt/microsoft/auoms/bin/auomsctl disable
-    pgrep -f ${{AUOMS_BIN}} 2>&1 >/dev/null
-    if [ $? -eq 0 ]; then
-        pkill -KILL -f ${{AUOMS_BIN}}
-    fi
-    pgrep -f ${{AUOMSCOLLECT_BIN}} 2>&1 >/dev/null
-    if [ $? -eq 0 ]; then
-        pkill -KILL -f ${{AUOMSCOLLECT_BIN}}
-    fi
 fi
 
 %Postuninstall_100
 if [ $1 -eq 0 ]; then
+    if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
+        rm ${{AUOMS_AUDISP_CONF}}
+    fi
+
     if [ -e /usr/sbin/semodule ]; then
         if [ ! -z "$(semodule -l | grep '^auoms\s*[0-9]')" ]; then
             echo "Removing selinux policy module for auoms"
             /usr/sbin/semodule -r auoms
             if [ -e /sbin/auditd ]; then
                 echo "Restarting auditd"
-                sleep 3
+                service auditd restart
+                sleep 1
                 # On CentOS/RHEL 7 the restart may fail to start auditd
                 # So, double check and start the service if restart failed
                 pgrep -x auditd >/dev/null 2>&1

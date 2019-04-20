@@ -41,7 +41,7 @@ if [ $BUILD_UID -ne 0 -a $? -ne 0 ]; then
 fi
 
 cd $SRC_ROOT/build
-sudo -u build bash -c '. /opt/rh/devtoolset-7/enable && ./configure --enable-ulinux'
+sudo -u build bash -c './configure --enable-ulinux'
 if [ $? -ne 0 ]; then
     exit $?
 fi

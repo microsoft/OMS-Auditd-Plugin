@@ -285,7 +285,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
                 Logger::Warn("Received unparsable event data: %s", line.c_str());
             }
         }
-        accumulator.Flush();
+        accumulator.Flush(0);
     }
 
     BOOST_REQUIRE_EQUAL(expected_queue->GetEventCount(), actual_queue->GetEventCount());

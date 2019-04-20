@@ -36,7 +36,8 @@ SEPOLICY_DIR=$(INTERMEDIATE_DIR)/selinux
 
 # Compiler flags
 
-CMAKE_BUILD_TYPE=Release
+#CMAKE_BUILD_TYPE=Release
+CMAKE_BUILD_TYPE=RelWithDebInfo
 ifeq ($(ENABLE_DEBUG),1)
 CMAKE_BUILD_TYPE=Debug
 endif
@@ -179,8 +180,7 @@ endif
 
 ifeq ($(ULINUX),1)
 
-kit : $(TARGET_DIR)/auoms-bundle-test.sh \
-      $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_RPM).sh $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEB).sh
+kit : $(TARGET_DIR)/auoms-bundle-test.sh $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).sh
 
 $(TARGET_DIR)/auoms-bundle-test.sh : $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).sh
 	$(COPY) ../installer/bundle/auoms-bundle-test.sh $(TARGET_DIR)/auoms-bundle-test.sh
@@ -190,19 +190,6 @@ $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).sh : $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE
 	$(MKPATH) $(TARGET_DIR)
 	../installer/bundle/create_bundle.sh $(TARGET_DIR) $(INTERMEDIATE_DIR) $(OUTPUT_PACKAGE_PREFIX).tar
 
-
-$(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_RPM).sh : $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX_RPM).tar
-	@echo "========================= Performing Building RPM shell bundle"
-	$(MKPATH) $(TARGET_DIR)
-	../installer/bundle/create_bundle.sh $(TARGET_DIR) $(INTERMEDIATE_DIR) $(OUTPUT_PACKAGE_PREFIX_RPM).tar "RPM"
-
-
-$(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEB).sh : $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEB).tar
-	@echo "========================= Performing Building DEB shell bundle"
-	../installer/bundle/create_bundle.sh $(TARGET_DIR) $(INTERMEDIATE_DIR) $(OUTPUT_PACKAGE_PREFIX_DEB).tar "DPKG"
-	$(MKPATH) $(TARGET_DIR)
-
-
 $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).tar : \
 	$(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).rpm $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).deb
 
@@ -210,23 +197,6 @@ $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).tar : \
 
 	# Build the tar file containing both .rpm and .deb packages
 	cd $(INTERMEDIATE_DIR); tar cvf $(OUTPUT_PACKAGE_PREFIX).tar *.{deb,rpm}
-
-$(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX_RPM).tar : \
-	$(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).rpm
-
-	@echo "========================= Performing Building RPM .tar file"
-
-	# Build the tar file containing .rpm packages
-	cd $(INTERMEDIATE_DIR); tar cvf $(OUTPUT_PACKAGE_PREFIX_RPM).tar *.rpm
-
-$(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEB).tar : \
-	$(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).deb
-
-	@echo "========================= Performing Building DEB .tar file"
-
-	# Build the tar file containing .deb packages
-	cd $(INTERMEDIATE_DIR); tar cvf $(OUTPUT_PACKAGE_PREFIX_DEB).tar *.deb
-
 
 $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).rpm: $(AUOMS_BIN) sepolicy
 	@echo "========================= Performing Building RPM package"

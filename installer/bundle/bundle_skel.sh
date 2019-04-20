@@ -241,11 +241,7 @@ pkg_add() {
 pkg_rm() {
     echo "----- Removing package: $1 -----"
     if [ "$INSTALLER" = "DPKG" ]; then
-        if [ "$installMode" = "P" ]; then
-            dpkg --purge ${1}
-        else
-            dpkg --remove ${1}
-        fi
+        dpkg --purge ${1}
     else
         rpm --erase ${1}
     fi
@@ -270,7 +266,7 @@ pkg_upd() {
 
     if [ "$INSTALLER" = "DPKG" ]; then
         [ -z "${forceFlag}" ] && FORCE="--refuse-downgrade"
-        dpkg --install $FORCE ${pkg_filename}.deb
+        dpkg --install --force-confnew $FORCE ${pkg_filename}.deb
 
         export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH
     else

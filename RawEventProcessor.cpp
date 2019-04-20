@@ -73,6 +73,10 @@ void RawEventProcessor::process_event(const Event& event) {
     }
 
     for (auto& rec: event) {
+        if (rec.NumFields() == 0) {
+            Logger::Warn("Encountered event record with NumFields == 0: type=%s msg=audit(%ld.%03d:%ld)", rec.RecordTypeNamePtr(), event.Seconds(), event.Milliseconds(), event.Serial());
+            return;
+        }
         ret = _builder->BeginRecord(rec.RecordType(), rec.RecordTypeName(), rec.RecordText(), rec.NumFields());
         if (ret != 1) {
             if (ret == Queue::CLOSED) {
@@ -112,70 +116,10 @@ void RawEventProcessor::process_event(const Event& event) {
     end_event();
 }
 
-int sv_to_int(const std::string_view& str, size_t* pos, int base) {
-    char* end = nullptr;
-    auto i = std::strtol(str.begin(), &end, base);
-    if (pos != nullptr) {
-        *pos = end - str.begin();
-    }
-    if (end == str.data() || end > str.end()) {
-        return static_cast<int>(LONG_MAX);
-    }
-    return i;
-}
-
-int parse_execve_argnum(const std::string_view& fname) {
-    if (fname[0] == 'a' && fname[1] >= '0' && fname[1] <= '9') {
-        return sv_to_int(fname.substr(1), nullptr, 10);
-    }
-    return 0;
-}
-
-// Return 0 if "a%d"
-// Return 1 if "a%d_len=%d"
-// Return 2 if "a%d[%d]"
-// Return -1 if error
-int parse_execve_fieldname(const std::string_view& fname, const std::string_view& val, int& arg_num, int& arg_len, int& arg_idx) {
-    using namespace std::string_view_literals;
-
-    try {
-        if (fname[0] == 'a' && fname[1] >= '0' && fname[1] <= '9') {
-            auto name = fname.substr(1);
-            size_t pos = 0;
-            arg_num = sv_to_int(name, &pos, 10);
-            if (pos == name.length()) {
-                arg_len = 0;
-                arg_idx = 0;
-                return 0;
-            } else if (name[pos] == '_') {
-                static auto len_str = "_len"sv;
-                if (name.substr(pos) == len_str && val[0] >= '0' && val[0] <= '9') {
-                    arg_idx = 0;
-                    arg_len = sv_to_int(val, &pos, 10);
-                    if (pos == val.size()) {
-                        return 1;
-                    }
-                }
-            } else if (name[pos] == '[' && pos < name.size()) {
-                name = name.substr(pos + 1);
-                arg_len = 0;
-                if (name[0] >= '0' && name[0] <= '9') {
-                    arg_idx = sv_to_int(name, &pos, 10);
-                    if (name[pos] == ']') {
-                        return 2;
-                    }
-                }
-            }
-        }
-    } catch (std::logic_error&) {
-        return -1;
-    }
-    return -1;
-}
-
 bool RawEventProcessor::process_syscall_event(const Event& event) {
     using namespace std::string_view_literals;
 
+    static auto SV_ZERO = "0"sv;
     static auto SV_TYPE = "type"sv;
     static auto SV_ITEMS = "items"sv;
     static auto SV_ITEM = "item"sv;
@@ -195,14 +139,16 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     static auto SV_EMPTY = ""sv;
     static auto SV_CMDLINE = "cmdline"sv;
     static auto SV_DROPPED = "dropped_"sv;
-    static auto SV_MISSING_ARG = "<MISSING_ARG>"sv;
     static auto SV_PID = "pid"sv;
     static auto SV_PPID = "ppid"sv;
+    static auto SV_SYSCALL = "syscall"sv;
+    static auto S_EXECVE = std::string("execve");
     static auto SV_JSON_ARRAY_START = "[\""sv;
     static auto SV_JSON_ARRAY_SEP = "\",\""sv;
     static auto SV_JSON_ARRAY_END = "\"]"sv;
     static auto auoms_syscall_name = RecordTypeToName(RecordType::AUOMS_SYSCALL);
     static auto auoms_syscall_fragment_name = RecordTypeToName(RecordType::AUOMS_SYSCALL_FRAGMENT);
+    static auto auoms_execve_name = RecordTypeToName(RecordType::AUOMS_EXECVE);
 
     int num_fields = 0;
     int num_path = 0;
@@ -211,13 +157,17 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     auto rec_type = RecordType::AUOMS_SYSCALL_FRAGMENT;
     auto rec_type_name = auoms_syscall_fragment_name;
 
-
     EventRecord syscall_rec;
+    EventRecordField syscall_field;
     EventRecord cwd_rec;
+    EventRecordField cwd_field;
+    EventRecord path_rec;
     std::vector<EventRecord> path_recs;
     std::vector<EventRecord> execve_recs;
     EventRecord argc_rec;
+    EventRecordField argc_field;
     EventRecord sockaddr_rec;
+    EventRecordField sockaddr_field;
     EventRecord dropped_rec;
     std::vector<EventRecord> other_recs;
 
@@ -247,6 +197,11 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                             }
                             break;
                         }
+                        case 's': {
+                            if (fname == SV_SYSCALL) {
+                                syscall_field = f;
+                            }
+                        }
                         default:
                             num_fields += 1;
                             break;
@@ -259,11 +214,13 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                     if (num_execve == 0) {
                         num_fields += 1;
                         if (!argc_rec) {
-                            // the argc field should be the first field in the record but check the first three just in case
-                            for(uint16_t i = 0; i < rec.NumFields() && i < 3 ; i++) {
-                                if (rec.FieldAt(i).FieldName() == SV_ARGC) {
+                            // the argc field should be the first (or second if node field is present) field in the record but check the first four just in case
+                            for(uint16_t i = 0; i < rec.NumFields() && i < 4 ; i++) {
+                                auto field = rec.FieldAt(i);
+                                if (field.FieldName() == SV_ARGC) {
                                     num_fields += 1;
                                     argc_rec = rec;
+                                    argc_field = field;
                                     break;
                                 }
                             }
@@ -275,24 +232,49 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                 break;
             }
             case RecordType::CWD:
-                if (!cwd_rec && rec.NumFields() > 0 && rec.FieldAt(0).FieldName() == SV_CWD) {
-                    num_fields += 1;
-                    cwd_rec = rec;
+                if (!cwd_rec) {
+                    for (int i = 0; i < rec.NumFields(); ++i) {
+                        auto field = rec.FieldAt(i);
+                        if (field.FieldName() == SV_CWD) {
+                            num_fields += 1;
+                            cwd_rec = rec;
+                            cwd_field = field;
+                            break;
+                        }
+                    }
                 }
                 break;
             case RecordType::PATH:
                 if (rec.NumFields() > 0) {
+                    /*
                     if (num_path == 0) {
                         num_fields += 5; // name, mode, ouid, ogid, nametype
                     }
+                     */
                     num_path += 1;
                     path_recs.emplace_back(rec);
+                    if (!path_rec) {
+                        for (auto& f: rec) {
+                            if (f.FieldName() == SV_ITEM && f.RawValue() == SV_ZERO) {
+                                num_fields += rec.NumFields()-1; // exclude item
+                                path_rec = rec;
+                                break;
+                            }
+                        }
+                    }
                 }
                 break;
             case RecordType::SOCKADDR:
-                if (!sockaddr_rec && rec.NumFields() > 0 && rec.FieldAt(0).FieldName() == SV_SADDR) {
-                    num_fields += 1;
-                    sockaddr_rec = rec;
+                if (!sockaddr_rec) {
+                    for (int i = 0; i < rec.NumFields(); ++i) {
+                        auto field = rec.FieldAt(i);
+                        if (field.FieldName() == SV_SADDR) {
+                            sockaddr_rec = rec;
+                            sockaddr_field = field;
+                            num_fields += 1;
+                            break;
+                        }
+                    }
                 }
                 break;
             case RecordType::AUOMS_DROPPED_RECORDS:
@@ -307,18 +289,8 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         }
     }
 
-    // Sort EXECVE records so that args (e.g. a0, a1, a2 ...) will be in order.
-    std::sort(execve_recs.begin(), execve_recs.end(), [](const EventRecord& a, const EventRecord& b) -> int {
-        auto fa = a.FieldAt(0);
-        auto fb = b.FieldAt(0);
-        int a_num = parse_execve_argnum(fa.FieldName());
-        int b_num = parse_execve_argnum(fb.FieldName());
-
-        return a_num > b_num;
-    });
-
     // Sort PATH records by item field
-    std::sort(execve_recs.begin(), execve_recs.end(), [](const EventRecord& a, const EventRecord& b) -> int {
+    std::sort(path_recs.begin(), path_recs.end(), [](const EventRecord& a, const EventRecord& b) -> int {
         auto fa = a.FieldByName(SV_ITEM);
         auto fb = b.FieldByName(SV_ITEM);
         int a_num = INT32_MAX; // PATH records with a missing or invalid item value should be sorted to the end;
@@ -343,6 +315,19 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         return a_num > b_num;
     });
 
+    if (syscall_rec && syscall_field) {
+        if (InterpretField(_tmp_val, syscall_rec, syscall_field, field_type_t::SYSCALL)) {
+            if (starts_with(_tmp_val, S_EXECVE)) {
+                rec_type = RecordType::AUOMS_EXECVE;
+                rec_type_name = auoms_execve_name;
+            }
+        }
+    }
+
+    if (num_fields == 0) {
+        return false;
+    }
+
     auto ret = _builder->BeginEvent(event.Seconds(), event.Milliseconds(), event.Serial(), 1);
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
@@ -357,6 +342,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         if (ret == Queue::CLOSED) {
             throw std::runtime_error("Queue closed");
         }
+        cancel_event();
         return false;
     }
 
@@ -401,18 +387,26 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         }
     }
 
-    if (cwd_rec) {
-        for (auto &f : cwd_rec) {
+    if (cwd_rec && cwd_field) {
+        if (!process_field(cwd_rec, cwd_field, false)) {
+            cancel_event();
+            return false;
+        }
+    }
+
+    if (path_rec) {
+        for (auto &f : path_rec) {
             auto fname = f.FieldName();
-            if (fname[0] == 'c' && fname == SV_CWD) {
-                if (!process_field(cwd_rec, f, false)) {
+            if (fname != SV_ITEM) {
+                if (!process_field(path_rec, f, false)) {
                     cancel_event();
-                    return true;
+                    return false;
                 }
-                break;
             }
         }
     }
+/*
+    ** Remember to deal with objtype
 
     _path_name.resize(0);
     _path_nametype.resize(0);
@@ -421,7 +415,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     _path_ogid.resize(0);
 
     if (path_recs.size() > 0) {
-        _path_name.push_back('[');
+        _path_name = SV_JSON_ARRAY_START;
         _path_nametype = SV_JSON_ARRAY_START;
         _path_mode = SV_JSON_ARRAY_START;
         _path_ouid = SV_JSON_ARRAY_START;
@@ -436,9 +430,13 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                     case 'n': {
                         if (fname == SV_NAME) {
                             if (path_num != 0) {
-                                _path_name.push_back(',');
+                                _path_name.append(SV_JSON_ARRAY_SEP);
                             }
-                            _path_name.append(f.RawValuePtr(), f.RawValueSize());
+                            // name might be escaped
+                            unescape_raw_field(_unescaped_val, f.RawValuePtr(), f.RawValueSize());
+                            // Path names might have non-ASCII/non-printable chars, escape the name before adding it.
+                            json_escape_string(_tmp_val, _unescaped_val.data(), _unescaped_val.size());
+                            _path_name.append(_tmp_val);
                         } else if (fname == SV_NAMETYPE) {
                             if (path_num != 0) {
                                 _path_nametype.append(SV_JSON_ARRAY_SEP);
@@ -475,7 +473,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             path_num += 1;
         }
 
-        _path_name.push_back(']');
+        _path_name.append(SV_JSON_ARRAY_END);
         _path_nametype.append(SV_JSON_ARRAY_END);
         _path_mode.append(SV_JSON_ARRAY_END);
         _path_ouid.append(SV_JSON_ARRAY_END);
@@ -486,6 +484,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             if (ret == Queue::CLOSED) {
                 throw std::runtime_error("Queue closed");
             }
+            cancel_event();
             return false;
         }
 
@@ -494,6 +493,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             if (ret == Queue::CLOSED) {
                 throw std::runtime_error("Queue closed");
             }
+            cancel_event();
             return false;
         }
 
@@ -502,6 +502,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             if (ret == Queue::CLOSED) {
                 throw std::runtime_error("Queue closed");
             }
+            cancel_event();
             return false;
         }
 
@@ -510,6 +511,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             if (ret == Queue::CLOSED) {
                 throw std::runtime_error("Queue closed");
             }
+            cancel_event();
             return false;
         }
 
@@ -518,126 +520,35 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             if (ret == Queue::CLOSED) {
                 throw std::runtime_error("Queue closed");
             }
+            cancel_event();
             return false;
         }
     }
-
-    if (argc_rec) {
-        auto f = argc_rec.FieldByName(SV_ARGC);
-        if (f) {
-            if (!process_field(argc_rec, f, false)) {
-                cancel_event();
-                return true;
-            }
+*/
+    if (argc_rec && argc_field) {
+        if (!process_field(argc_rec, argc_field, false)) {
+            cancel_event();
+            return true;
         }
     }
 
     if (execve_recs.size() > 0) {
-        _cmdline.resize(0);
-        for (auto& rec : execve_recs) {
-            int curr_arg_num = 0;
-            int curr_arg_len = 0;
-            int curr_arg_idx = 0;
-            for (auto &f : rec) {
-                auto fname = f.FieldName();
-                auto val = f.RawValue();
-                int arg_num = 0;
-                int arg_len = 0;
-                int arg_idx = 0;
+        _execve_converter.Convert(execve_recs);
 
-                auto atype = parse_execve_fieldname(fname, val, arg_num, arg_len, arg_idx);
-                if (atype < 0) {
-                    continue;
-                }
-
-                // Fill in arg gaps with place holder
-                if (curr_arg_num < arg_num) {
-                    while (curr_arg_num < arg_num) {
-                        if (!_cmdline.empty()) {
-                            _cmdline.push_back(' ');
-                        }
-                        _cmdline.append(SV_MISSING_ARG);
-                        curr_arg_num += 1;
-                    }
-                    continue;
-                }
-
-                switch (atype) {
-                    case 0:
-                        if (curr_arg_len > 0) {
-                            unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
-                            bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
-                            // Fill in the missing parts with the place holder
-                            while(curr_arg_idx < curr_arg_len) {
-                                _cmdline.append(SV_MISSING_ARG);
-                                curr_arg_idx += 1;
-                            }
-                            curr_arg_len = 0;
-                            curr_arg_idx = 0;
-                        }
-
-                        curr_arg_num += 1;
-                        _unescaped_val.resize(0);
-                        if (!_cmdline.empty()) {
-                            _cmdline.push_back(' ');
-                        }
-                        unescape_raw_field(_unescaped_val, val.data(), val.size());
-                        bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
-                        break;
-                    case 1:
-                        curr_arg_len = arg_len;
-                        curr_arg_idx = 0;
-                        _tmp_val.resize(0);
-                        _unescaped_val.resize(0);
-                        break;
-                    case 2: {
-                        if (curr_arg_idx == 0 && !_cmdline.empty()) {
-                            _cmdline.push_back(' ');
-                        }
-                        if (curr_arg_idx != arg_idx) {
-                            // There's a gap in the parts, so unescape and bash escape the part we have
-                            // then fill in the missing parts with the place holder
-                            unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
-                            bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
-                            while(curr_arg_idx < arg_idx) {
-                                _cmdline.append(SV_MISSING_ARG);
-                                curr_arg_idx += 1;
-                            }
-                            _tmp_val.resize(0);
-                            _unescaped_val.resize(0);
-                        }
-                        _tmp_val.append(val);
-                        curr_arg_idx += 1;
-                        if (curr_arg_idx >= curr_arg_len) {
-                            unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
-                            bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
-                            curr_arg_len = 0;
-                            curr_arg_idx = 0;
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-        ret = _builder->AddField(SV_CMDLINE, _cmdline, nullptr, field_type_t::UNCLASSIFIED);
+        ret = _builder->AddField(SV_CMDLINE, _execve_converter.Cmdline(), nullptr, field_type_t::UNCLASSIFIED);
         if (ret != 1) {
             if (ret == Queue::CLOSED) {
                 throw std::runtime_error("Queue closed");
             }
+            cancel_event();
             return false;
         }
     }
 
-    if (sockaddr_rec) {
-        for (auto &f : sockaddr_rec) {
-            auto fname = f.FieldName();
-            if (fname[0] == 'c' && fname == SV_SADDR) {
-                if (!process_field(sockaddr_rec, f, false)) {
-                    cancel_event();
-                    return true;
-                }
-                break;
-            }
+    if (sockaddr_rec && sockaddr_field) {
+        if (!process_field(sockaddr_rec, sockaddr_field, false)) {
+            cancel_event();
+            return true;
         }
     }
 
@@ -661,6 +572,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                 if (ret == Queue::CLOSED) {
                     throw std::runtime_error("Queue closed");
                 }
+                cancel_event();
                 return false;
             }
         }
@@ -671,7 +583,8 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         if (ret == Queue::CLOSED) {
             throw std::runtime_error("Queue closed");
         }
-        return true;
+        cancel_event();
+        return false;
     }
 
     end_event();
@@ -745,8 +658,9 @@ bool RawEventProcessor::process_field(const EventRecord& record, const EventReco
             }
             break;
         }
+        case field_type_t::ESCAPED:
+            break;
         case field_type_t::PROCTITLE:
-            // interp_ptr remains NULL
             break;
         default:
             if (!InterpretField(_tmp_val, record, field, field_type)) {
@@ -891,15 +805,15 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
         return false;
     }
 
-    pinfo->format_cmdline(_cmdline);
+    pinfo->format_cmdline(_tmp_val);
 
     bool cmdline_truncated = false;
-    if (_cmdline.size() > UINT16_MAX-1) {
-        _cmdline.resize(UINT16_MAX-1);
+    if (_tmp_val.size() > UINT16_MAX-1) {
+        _tmp_val.resize(UINT16_MAX-1);
         cmdline_truncated = true;
     }
 
-    if (!add_str_field("cmdline"sv, _cmdline, field_type_t::UNCLASSIFIED)) {
+    if (!add_str_field("cmdline"sv, _tmp_val, field_type_t::UNCLASSIFIED)) {
         return false;
     }
 
@@ -930,7 +844,7 @@ void RawEventProcessor::DoProcessInventory() {
     gettimeofday(&tv, nullptr);
 
     uint64_t sec = static_cast<uint64_t>(tv.tv_sec);
-    uint32_t nsec = static_cast<uint32_t>(tv.tv_usec)*1000;
+    uint32_t msec = static_cast<uint32_t>(tv.tv_usec)/1000;
 
     if (_last_proc_fetch+PROCESS_INVENTORY_FETCH_INTERVAL > sec) {
         return;
@@ -961,7 +875,7 @@ void RawEventProcessor::DoProcessInventory() {
             procs.emplace(procs.end(), pinfo.get());
         }
         if (gen_events) {
-            generate_proc_event(pinfo.get(), sec, nsec);
+            generate_proc_event(pinfo.get(), sec, msec);
         }
     }
 

@@ -29,9 +29,9 @@ class Netlink: private RunBase {
 public:
     typedef std::function<bool(uint16_t type, uint16_t flags, const void* data, size_t len)> reply_fn_t;
 
-    Netlink(): _fd(-1), _sequence(1),_default_msg_handler_fn(nullptr), quite(false), _replies(), _data() {}
+    Netlink(): _fd(-1), _sequence(1),_default_msg_handler_fn(nullptr), _quite(false), _known_seq(), _replies(), _data() {}
 
-    void SetQuite() { quite = true; }
+    void SetQuite() { _quite = true; }
 
     /*
      * Methods return 0 on success and < 0 on failure.
@@ -39,7 +39,7 @@ public:
      * If Netlink is closed after call, but before reply, will return -ECANCELED
      * If reply does not arrive before timeout, will retuen -ETIMEDOUT
      * If reply is NLMSG_ERROR, will return nlmsgerr->error (which is already negative)
-     * If request failes for another reason will return -errno
+     * If request fails for another reason will return -errno
      */
 
     int Open(reply_fn_t default_msg_handler_fn);
@@ -56,14 +56,7 @@ public:
     int AuditGetEnabled(uint32_t& enabled);
     int AuditSetEnabled(uint32_t enabled);
 
-    int AuditListRules(std::vector<AuditRule>& rules) {
-        return Send(AUDIT_LIST_RULES, nullptr, 0, [&rules](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
-            if (type == AUDIT_LIST_RULES) {
-                rules.emplace_back(data, len);
-            }
-            return true;
-        });
-    }
+    int AuditListRules(std::vector<AuditRule>& rules);
 
     int AuditAddRule(const AuditRule& rule) {
         if (!rule.IsValid()) {
@@ -96,12 +89,13 @@ private:
 
     int _fd;
     uint32_t _sequence;
-    std::thread _thread;
     reply_fn_t _default_msg_handler_fn;
-    bool quite;
+    bool _quite;
+    std::unordered_map<uint32_t, std::chrono::steady_clock::time_point> _known_seq;
     std::unordered_map<uint32_t, ReplyRec> _replies;
     std::array<uint8_t, 9*1024> _data;
 };
 
+int NetlinkRetry(std::function<int()> fn);
 
 #endif //AUOMS_NETLINK_H

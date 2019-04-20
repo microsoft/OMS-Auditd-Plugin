@@ -14,43 +14,21 @@
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef AUOMS_INPUTS_H
-#define AUOMS_INPUTS_H
+#include "Netlink.h"
+#include "Logger.h"
 
-#include "IO.h"
-#include "UnixDomainListener.h"
-#include "RunBase.h"
-#include "InputBuffer.h"
-#include "Input.h"
-#include "OperationalStatus.h"
+#include <linux/netlink.h>
 
-#include <string>
-#include <unordered_map>
 
-class Inputs: public RunBase {
-public:
-    explicit Inputs(const std::string& addr, std::shared_ptr<OperationalStatus> op_status): _listener(addr), _buffer(std::make_shared<InputBuffer>()), _op_status(op_status) {}
-
-    bool Initialize();
-
-    bool HandleData(std::function<void(void*,size_t)> fn) {
-        return _buffer->HandleData(std::move(fn));
-    }
-
-protected:
-    void on_stopping() override;
-    void on_stop() override;
-    void run() override;
-
-private:
-    UnixDomainListener _listener;
-    std::function<void(IOBase&)> _handler_fn;
-    std::unordered_map<int, std::shared_ptr<Input>> _inputs;
-    std::shared_ptr<InputBuffer> _buffer;
-    std::shared_ptr<OperationalStatus> _op_status;
-
-    void add_connection(int fd);
-    void remove_connection(int fd);
-};
-
-#endif //AUOMS_INPUTS_H
+int Netlink::AuditListRules(std::vector<AuditRule>& rules) {
+    return Send(AUDIT_LIST_RULES, nullptr, 0, [&rules](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
+        if (type == AUDIT_LIST_RULES) {
+            if (AuditRule::IsDataValid(data, len)) {
+                rules.emplace_back(data, len);
+            } else {
+                Logger::Warn("Received invalid audit rule");
+            }
+        }
+        return true;
+    });
+}

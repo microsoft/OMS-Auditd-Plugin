@@ -83,17 +83,49 @@ static bool check_path(const std::string& path, std::string error)
     return true;
 }
 
-bool is_string_field(uint32_t field) {
-    switch(field) {
-        case AUDIT_EXIT:
-        case AUDIT_WATCH:
-        case AUDIT_DIR:
-        case AUDIT_EXE:
-        case AUDIT_FILTERKEY:
-            return true;
-        default:
-            return false;
+bool AuditRule::IsDataValid(const void* data, size_t len) {
+    auto rule = reinterpret_cast<const audit_rule_data*>(data);
+    if (len < sizeof(audit_rule_data) || len < sizeof(audit_rule_data)+rule->buflen || rule->field_count >= AUDIT_MAX_FIELDS) {
+        return false;
     }
+    uint32_t offset = 0;
+    for (int i = 0; i < rule->field_count; ++i) {
+        switch (rule->fields[i] & ~AUDIT_OPERATORS) {
+            case AUDIT_SUBJ_USER:
+                /* fallthrough */
+            case AUDIT_SUBJ_ROLE:
+                /* fallthrough */
+            case AUDIT_SUBJ_TYPE:
+                /* fallthrough */
+            case AUDIT_SUBJ_SEN:
+                /* fallthrough */
+            case AUDIT_SUBJ_CLR:
+                /* fallthrough */
+            case AUDIT_OBJ_USER:
+                /* fallthrough */
+            case AUDIT_OBJ_ROLE:
+                /* fallthrough */
+            case AUDIT_OBJ_TYPE:
+                /* fallthrough */
+            case AUDIT_OBJ_LEV_LOW:
+                /* fallthrough */
+            case AUDIT_OBJ_LEV_HIGH:
+                /* fallthrough */
+            case AUDIT_WATCH:
+                /* fallthrough */
+            case AUDIT_DIR:
+                /* fallthrough */
+            case AUDIT_EXE:
+                /* fallthrough */
+            case AUDIT_FILTERKEY:
+                offset += rule->values[i];
+                break;
+        }
+    }
+    if (offset > len) {
+        return false;
+    }
+    return true;
 }
 
 bool AuditRule::Parse(const std::string& text, std::string& error) {
@@ -765,6 +797,9 @@ std::string AuditRule::RawText() const {
 }
 
 bool AuditRule::IsValid() const {
+    if (!IsDataValid(_data.data(), ruleptr()->buflen+sizeof(audit_rule_data))) {
+        return false;
+    }
     for (int i = 0; i < ruleptr()->field_count; ++i) {
         int field = ruleptr()->fields[i] & ~AUDIT_OPERATORS;
         if (field == AUDIT_FILTERKEY && ruleptr()->values[i] == 0) {
@@ -1605,19 +1640,27 @@ void AuditRule::append_syscalls(std::string& out) const {
 
 void ReplaceSection(std::vector<std::string>& lines, const std::vector<std::string>& replacement, const std::string& start_marker,  const std::string& end_marker) {
     auto start = std::find(lines.begin(), lines.end(), start_marker);
-    auto end = std::find(lines.begin(), lines.end(), start_marker);
+    auto end = std::find(lines.begin(), lines.end(), end_marker);
     if (start != lines.end() && end == lines.end()) {
         throw std::runtime_error("Missing end marker");
     }
     if (start == lines.end() && end != lines.end()) {
         throw std::runtime_error("Missing start marker");
     }
-    if (start == lines.end() && end == lines.end()) {
-        return;
+    if (start != lines.end() && end != lines.end() && start > end) {
+        throw std::runtime_error("Start and end markers are inverted");
     }
 
-    ++end;
-    start = lines.erase(start, end);
+    if (start == lines.end() && end == lines.end()) {
+        start = lines.end();
+    } else {
+        ++end;
+        start = lines.erase(start, end);
+    }
+
+    if (replacement.empty()) {
+        return;
+    }
 
     start = lines.insert(start, start_marker);
     ++start;
@@ -1628,7 +1671,7 @@ void ReplaceSection(std::vector<std::string>& lines, const std::vector<std::stri
 
 void RemoveSection(std::vector<std::string>& lines, const std::string& start_marker,  const std::string& end_marker) {
     auto start = std::find(lines.begin(), lines.end(), start_marker);
-    auto end = std::find(lines.begin(), lines.end(), start_marker);
+    auto end = std::find(lines.begin(), lines.end(), end_marker);
     if (start != lines.end() && end == lines.end()) {
         throw std::runtime_error("Missing end marker");
     }
@@ -1637,6 +1680,9 @@ void RemoveSection(std::vector<std::string>& lines, const std::string& start_mar
     }
     if (start == lines.end() && end == lines.end()) {
         return;
+    }
+    if (start > end) {
+        throw std::runtime_error("Start and end markers are inverted");
     }
 
     ++end;
@@ -1847,7 +1893,6 @@ void WriteAuomsRulesToAuditFile(const std::vector<AuditRule>& rules) {
 
     if (rules.empty()) {
         RemoveSection(lines, AUOMS_AUDITD_RULES_FILE_START_MARKER, AUOMS_AUDITD_RULES_FILE_END_MARKER);
-        WriteFile(AUDITD_RULES_FILE, lines);
     } else {
         std::vector<std::string> rule_lines;
         for (auto &rule: rules) {
@@ -1855,10 +1900,13 @@ void WriteAuomsRulesToAuditFile(const std::vector<AuditRule>& rules) {
         }
 
         ReplaceSection(lines, rule_lines, AUOMS_AUDITD_RULES_FILE_START_MARKER, AUOMS_AUDITD_RULES_FILE_END_MARKER);
-        WriteFile(AUDITD_RULES_FILE, rule_lines);
     }
+    WriteFile(AUDITD_RULES_FILE, lines);
 }
 
+bool HasAuditdRulesFiles() {
+    return PathExists(AUDITD_RULES_FILE);
+}
 
 std::vector<AuditRule> ReadActualAuditdRules(bool exclude_auoms) {
     if (!PathExists(AUDITD_RULES_FILE)) {
@@ -1901,6 +1949,10 @@ bool WriteAuditdRules(const std::vector<AuditRule>& rules) {
         return true;
     } else {
         WriteAuomsRulesToAuditFile(rules);
+        // If rules dir exists, also write rules to it, in case system owner switches to using augenrules
+        if (PathExists(AUDITD_RULES_DIR)) {
+            WriteAuomsRuleToAuditDir(rules);
+        }
     }
     return false;
 }

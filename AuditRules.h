@@ -132,6 +132,8 @@
 
 class AuditRule {
 public:
+    static bool IsDataValid(const void* data, size_t len);
+
     AuditRule(): _data(), _value_offsets(), is_delete_rule(false) {
         _data.fill(0);
         _value_offsets.fill(0);
@@ -247,6 +249,8 @@ std::vector<AuditRule> MergeRules(const std::vector<AuditRule>& rules1, const st
 // If rule in actual has a key matching match_key, and that rule matches the canonical(-F) of a desired byt not the perm/syscall
 // Then the returned rules will include new rule plus delete rule
 std::vector<AuditRule> DiffRules(const std::vector<AuditRule>& actual, const std::vector<AuditRule>& desired, const std::string& match_key);
+
+bool HasAuditdRulesFiles();
 
 // Read all *.rules files from dir, parse, merge then return them.
 std::vector<AuditRule> ReadAuditRulesFromDir(const std::string& dir);

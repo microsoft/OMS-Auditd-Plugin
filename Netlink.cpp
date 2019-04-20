@@ -16,6 +16,7 @@
 
 #include "Netlink.h"
 #include "Logger.h"
+#include "Retry.h"
 
 #include <sys/socket.h>
 #include <linux/netlink.h>
@@ -32,7 +33,7 @@ int Netlink::Open(reply_fn_t default_msg_handler_fn) {
         return 0;
     }
 
-    if (!quite) {
+    if (!_quite) {
         Logger::Info("Opening audit NETLINK socket");
     }
     int fd = socket(AF_NETLINK, SOCK_RAW|SOCK_CLOEXEC, NETLINK_AUDIT);
@@ -51,7 +52,7 @@ int Netlink::Open(reply_fn_t default_msg_handler_fn) {
 
     _lock.unlock();
 
-    if (!quite) {
+    if (!_quite) {
         Logger::Info("Netlink: starting");
     }
     Start();
@@ -94,16 +95,20 @@ int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t reply_
     std::future<int> future;
     auto rep = _replies.emplace(nl->nlmsg_seq, ReplyRec(std::move(reply_fn)));
     future = rep.first->second._promise.get_future();
+    _known_seq.emplace(nl->nlmsg_seq, rep.first->second._req_time);
 
+    _lock.unlock();
     int ret;
     do {
         ret = sendto(_fd, nl, nl->nlmsg_len, 0, (struct sockaddr *) &addr, sizeof(addr));
     } while (ret < 0 && errno == EINTR);
+    _lock.lock();
 
     if (ret < 0) {
         auto saved_errno = errno;
         Logger::Warn("Netlink: sendto() failed: %s", std::strerror(errno));
         _replies.erase(nl->nlmsg_seq);
+        _known_seq.erase(nl->nlmsg_seq);
         errno = saved_errno;
         return -saved_errno;
     }
@@ -191,14 +196,17 @@ int wait_readable(int fd, long timeout) {
 void Netlink::flush_replies(bool is_exit) {
     std::lock_guard<std::mutex> _lock(_run_mutex);
 
+    auto now = std::chrono::steady_clock::now();
     for (auto itr = _replies.begin(); itr != _replies.end();) {
-        if (is_exit || itr->second._req_time < std::chrono::steady_clock::now() - std::chrono::milliseconds(200)) {
+        if (is_exit || itr->second._req_time < now - std::chrono::milliseconds(200)) {
+            // Set promise value if it has not already been set
             if (!itr->second._done) {
+                itr->second._done = true;
                 try {
                     if (is_exit) {
-                        itr->second._promise.set_value(ECANCELED);
+                        itr->second._promise.set_value(-ECANCELED);
                     } else {
-                        itr->second._promise.set_value(ETIMEDOUT);
+                        itr->second._promise.set_value(-ETIMEDOUT);
                     }
                 } catch (const std::exception &ex) {
                     Logger::Error("Unexpected exception while trying to set promise value for NETLINK reply: %s",
@@ -206,6 +214,16 @@ void Netlink::flush_replies(bool is_exit) {
                 }
             }
             itr = _replies.erase(itr);
+        } else {
+            ++itr;
+        }
+    }
+
+    // Hold onto _known_seq entries for a whole second.
+    // This should avoid "Unexpected seq" log messages in the rare case where the req timed out before all reply messages could be received
+    for (auto itr = _known_seq.begin(); itr != _known_seq.end();) {
+        if (is_exit || itr->second < now - std::chrono::seconds(1)) {
+            itr = _known_seq.erase(itr);
         } else {
             ++itr;
         }
@@ -235,7 +253,7 @@ void Netlink::run() {
             long timeout = -1;
             _lock.lock();
             if (!_replies.empty()) {
-                timeout = 200;
+                timeout = 250;
             }
             _lock.unlock();
             auto ret = wait_readable(fd, timeout);
@@ -245,7 +263,7 @@ void Netlink::run() {
                 }
                 return;
             } else if (ret == 0) {
-                flush_replies(false);
+                flush_replies(IsStopping());
                 if (IsStopping()) {
                     return;
                 }
@@ -258,7 +276,7 @@ void Netlink::run() {
         socklen_t nladdrlen = sizeof(nladdr);
         int len;
         do {
-            len = recvfrom(fd, _data.data(), 9*1024/*_data.size()*/, 0, (struct sockaddr *) &nladdr, &nladdrlen);
+            len = recvfrom(fd, _data.data(), _data.size(), 0, (struct sockaddr *) &nladdr, &nladdrlen);
         } while (len < 0 && errno == EINTR && !IsStopping());
 
         if (IsStopping()) {
@@ -291,7 +309,6 @@ void Netlink::run() {
         size_t payload_len = len - static_cast<size_t>(reinterpret_cast<char*>(NLMSG_DATA(nl)) - reinterpret_cast<char*>(_data.data()));
 
         reply_fn_t fn = _default_msg_handler_fn;
-        uint16_t req_flags = 0;
         bool done = false;
 
         if (nl->nlmsg_seq != 0) {
@@ -302,8 +319,10 @@ void Netlink::run() {
                 done = itr->second._done;
             } else {
                 done = true;
-                Logger::Warn("Received unexpected NETLINK packet (Type: %d, Flags: %X, Seq: %d, Size: %d",
-                             nl->nlmsg_type, nl->nlmsg_flags, nl->nlmsg_seq, nl->nlmsg_len);
+                if (_known_seq.count(nl->nlmsg_seq) == 0) {
+                    Logger::Warn("Received unexpected NETLINK packet (Type: %d, Flags: %X, Seq: %d, Size: %d",
+                                 nl->nlmsg_type, nl->nlmsg_flags, nl->nlmsg_seq, nl->nlmsg_len);
+                }
             }
             _lock.unlock();
         } else {
@@ -323,8 +342,8 @@ void Netlink::run() {
                     _lock.lock();
                     auto itr = _replies.find(nl->nlmsg_seq);
                     if (itr != _replies.end()) {
-                        itr->second._promise.set_value(0);
                         itr->second._done = true;
+                        itr->second._promise.set_value(0);
                     }
                     _lock.unlock();
                     continue;
@@ -353,36 +372,42 @@ void Netlink::run() {
         if (nl->nlmsg_seq != 0) {
             if (nl->nlmsg_type == NLMSG_ERROR) {
                 auto err = reinterpret_cast<nlmsgerr *>(NLMSG_DATA(nl));
+                _lock.lock();
+                // If the request failed, or the request succedded but no response is expected then set the value to err->error
+                // If !fn then no response is expected and the return value is err->error (typically == 0)
                 if (err->error != 0 || !fn) {
-                    if (nl->nlmsg_seq != 0) {
-                        _lock.lock();
-                        auto itr = _replies.find(nl->nlmsg_seq);
-                        if (itr != _replies.end()) {
-                            if (!itr->second._done) {
-                                itr->second._promise.set_value(err->error);
-                                itr->second._done = true;
-                            }
-                            _replies.erase(itr);
-                        }
-                        _lock.unlock();
-                    }
-                }
-            } else if ((nl->nlmsg_flags & NLM_F_MULTI) == 0 || nl->nlmsg_type == NLMSG_DONE) {
-                if (nl->nlmsg_seq != 0) {
-                    _lock.lock();
                     auto itr = _replies.find(nl->nlmsg_seq);
                     if (itr != _replies.end()) {
                         if (!itr->second._done) {
-                            itr->second._promise.set_value(0);
                             itr->second._done = true;
+                            itr->second._promise.set_value(err->error);
                         }
                         _replies.erase(itr);
                     }
-                    _lock.unlock();
                 }
+                _known_seq.erase(nl->nlmsg_seq);
+                _lock.unlock();
+            } else if ((nl->nlmsg_flags & NLM_F_MULTI) == 0 || nl->nlmsg_type == NLMSG_DONE) {
+                _lock.lock();
+                auto itr = _replies.find(nl->nlmsg_seq);
+                if (itr != _replies.end()) {
+                    if (!itr->second._done) {
+                        itr->second._promise.set_value(0);
+                        itr->second._done = true;
+                    }
+                    _replies.erase(itr);
+                }
+                _known_seq.erase(nl->nlmsg_seq);
+                _lock.unlock();
             }
         }
     }
 
     flush_replies(true);
+}
+
+int NetlinkRetry(std::function<int()> fn) {
+    std::function<bool(int)> p = [](int ret) { return ret == -ETIMEDOUT; };
+    auto ret = Retry(5, std::chrono::milliseconds(1), true, fn, p);
+    return ret.first;
 }

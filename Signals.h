@@ -24,8 +24,11 @@
 class Signals {
 public:
     static void Init();
+    static void InitThread();
     static void Start();
     static bool IsExit();
+    static void Terminate();
+
     static void SetHupHandler(std::function<void()> fn) { _hup_fn = fn; }
     static void SetExitHandler(std::function<void()> fn) { _exit_fn = fn; }
 

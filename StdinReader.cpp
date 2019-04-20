@@ -29,7 +29,7 @@ ssize_t StdinReader::ReadLine(char* buf, size_t buf_len, long timeout, std::func
     auto str_len = _cur_idx-_start_idx;
 
     if (str_len > buf_len) {
-        Logger::Error("StdinReader::ReadLine: buffer too small for line: Need %d, buffer only has %d", str_len, buf_len);
+        Logger::Error("StdinReader::ReadLine: buffer too small for line: Need %ld, buffer only has %ld", str_len, buf_len);
         return IO::FAILED;
     }
 

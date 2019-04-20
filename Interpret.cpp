@@ -275,6 +275,7 @@ bool InterpretField(std::string& out, const EventRecord& record, const EventReco
                     break;
                 case S_IFREG:
                     out = "file";
+                    break;
                 case S_IFBLK:
                     out = "block";
                     break;
@@ -283,6 +284,7 @@ bool InterpretField(std::string& out, const EventRecord& record, const EventReco
                     break;
                 case S_IFCHR:
                     out = "character";
+                    break;
                 case S_IFIFO:
                     out = "fifo";
                     break;
@@ -303,6 +305,7 @@ bool InterpretField(std::string& out, const EventRecord& record, const EventReco
             if (mode & S_ISVTX) {
                 out.append(",sticky");
             }
+            out.push_back(',');
             auto ptr = out.data() + out.size();
             out.resize(out.size() + 4);
             snprintf(ptr, 4, "%03o", mode & (S_IRWXU | S_IRWXG | S_IRWXO));

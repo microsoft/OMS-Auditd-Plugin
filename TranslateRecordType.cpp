@@ -217,9 +217,11 @@ static StringTable<RecordType> s_record_type_table(RecordType ::UNKNOWN, {
         {"AUOMS_PROCESS_INVENTORY", RecordType::AUOMS_PROCESS_INVENTORY},
         {"AUOMS_SYSCALL", RecordType::AUOMS_SYSCALL},
         {"AUOMS_SYSCALL_FRAGMENT", RecordType::AUOMS_SYSCALL_FRAGMENT},
-        {"AUOMS_DROPPED_RECORDS", RecordType::AUOMS_DROPPED_RECORDS},
-        {"AUOMS_SYSCALL_METRICS", RecordType::AUOMS_SYSCALL_METRICS},
         {"AUOMS_COLLECTOR_REPORT", RecordType::AUOMS_COLLECTOR_REPORT},
+        {"AUOMS_DROPPED_RECORDS", RecordType::AUOMS_DROPPED_RECORDS},
+        {"AUOMS_STATUS", RecordType::AUOMS_STATUS},
+        {"AUOMS_SYSCALL_METRICS", RecordType::AUOMS_SYSCALL_METRICS},
+        {"AUOMS_EXECVE", RecordType::AUOMS_EXECVE},
 });
 
 std::string_view RecordTypeToName(RecordType code, std::string& unknown_str) {

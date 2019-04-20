@@ -3,6 +3,7 @@
 //
 
 #include "ExecUtil.h"
+#include "Gate.h"
 
 #include <unistd.h>
 #include <sys/wait.h>
@@ -10,11 +11,14 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/prctl.h>
+#include <poll.h>
 
 #include <stdexcept>
 #include <sstream>
 #include <unordered_map>
 #include <cstring>
+#include <pthread.h>
+#include <functional>
 
 void write_error(int reason, int err, int fd) {
     uint32_t code = (static_cast<uint32_t>(reason) << 16) | static_cast<uint32_t>(err);
@@ -276,6 +280,40 @@ std::string Cmd::FailMsg() {
     return str;
 }
 
+int is_readable(int fd, int timeout) {
+    if (fd <= 0) {
+        return false;
+    }
+    struct pollfd fds;
+    fds.fd = fd;
+    fds.events = POLLIN;
+    fds.revents = 0;
+
+    auto ret = poll(&fds, 1, timeout);
+    if (ret < 0) {
+        if (errno != EINTR) {
+            return -1;
+        } else {
+            return 0;
+        }
+    } else if (ret == 0) {
+        return 0;
+    }
+
+    if ((fds.revents & POLLIN) != 0) {
+        return 1;
+    } if ((fds.revents & (POLLHUP&POLLRDHUP)) != 0) {
+        return -1;
+    } else {
+        return -1;
+    }
+}
+
+void* io_thread_entry(void* ptr) {
+    (*static_cast<std::function<void()>*>(ptr))();
+    return nullptr;
+}
+
 int Cmd::Run(std::string& output) {
     auto ret = Start();
     if (ret != 0) {
@@ -283,20 +321,52 @@ int Cmd::Run(std::string& output) {
         return -1;
     }
 
-    std::array<char, 1024> buf;
 
     int fd = StdOutFd();
-    ssize_t nr = 0;
-    do {
-        nr = read(fd, buf.data(), buf.size());
-        if (nr > 0) {
-            output.append(buf.data(), nr);
-        }
-    } while (nr > 0 || errno == EINTR);
-    if (nr < 0) {
-        close(fd);
+
+    Gate io_gate1;
+    Gate io_gate2;
+
+    std::function<void()> fn = [&io_gate1, &io_gate2, &output, fd]() {
+        sigset_t set;
+
+        // Make sure this thread doesn't receive unwanted signals
+        sigfillset(&set);
+        pthread_sigmask(SIG_BLOCK, &set, NULL);
+
+        // Make sure the thread will get interrupted by SIGQUIT
+        sigemptyset(&set);
+        sigaddset(&set, SIGQUIT);
+        pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+
+        std::array<char, 1024> buf;
+        ssize_t nr = 0;
+        do {
+            nr = read(fd, buf.data(), buf.size());
+            if (nr > 0) {
+                output.append(buf.data(), nr);
+            }
+        } while (nr > 0 || (nr < 0 && errno == EINTR && io_gate1.GetState() == Gate::CLOSED));
+        io_gate2.Open();
+        return nullptr;
+    };
+
+    pthread_t thread_id;
+    auto err = pthread_create(&thread_id, nullptr, io_thread_entry, &fn);
+    if (err != 0) {
+        throw std::system_error(err, std::system_category());
     }
+
     ret = Wait(true);
+
+    // Wait up to 100 milliseconds for io thread to finish
+    if (!io_gate2.Wait(Gate::OPEN, 100)) {
+        // io thread has not exited, kill it
+        io_gate1.Open();
+        pthread_kill(thread_id, SIGQUIT);
+    }
+    pthread_join(thread_id, nullptr);
+
     if (ret < 0) {
         auto err = errno;
         output = "Failed to get process exit status: " + std::string(std::strerror(err));

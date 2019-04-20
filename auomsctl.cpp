@@ -34,12 +34,21 @@
 
 #include <unistd.h>
 #include <cstring>
+#include <sys/stat.h>
 
-
-#define SERVICE_NAME "auoms"
-#define SERVICE_BIN "/opt/microsoft/auoms/bin/auoms"
+#define AUOMS_SERVICE_NAME "auoms"
+#define AUDITD_SERVICE_NAME "auditd"
+#define AUOMS_COMM "auoms"
+#define AUOMSCOLLECT_COMM "auomscollect"
+#define AUDITD_COMM "auditd"
+#define AUDITD_BIN "/sbin/auditd"
+#define AUOMS_PLUGIN_FILE "/etc/audisp/plugins.d/auoms.conf"
 #define SYSTEMD_SERVICE_FILE "/opt/microsoft/auoms/auoms.service"
 #define SYSTEMCTL_PATH "/bin/systemctl"
+#define CHKCONFIG_PATH "/sbin/chkconfig"
+#define UPDATE_RC_PATH "/usr/sbin/update-rc.d"
+
+#define PROC_WAIT_TIME 10
 
 void usage()
 {
@@ -81,7 +90,7 @@ int show_audit_status() {
     }
 
     audit_status status;
-    ret = netlink.AuditGet(status);
+    ret = NetlinkRetry([&netlink,&status]() { return netlink.AuditGet(status); });
 
     netlink.Close();
 
@@ -120,7 +129,10 @@ int list_rules(bool raw_fmt, const std::string& key) {
     }
 
     std::vector<AuditRule> rules;
-    ret = netlink.AuditListRules(rules);
+    ret = NetlinkRetry([&netlink,&rules]() {
+        rules.clear();
+        return netlink.AuditListRules(rules);
+    });
     netlink.Close();
 
     if (ret != 0) {
@@ -164,7 +176,7 @@ int delete_rules(const std::string& key) {
     }
 
     uint32_t enabled = 0;
-    ret = netlink.AuditGetEnabled(enabled);
+    ret = NetlinkRetry([&netlink,&enabled]() { return netlink.AuditGetEnabled(enabled); });
     if (ret != 0) {
         Logger::Error("Failed to get audit status");
         return 1;
@@ -176,8 +188,10 @@ int delete_rules(const std::string& key) {
     }
 
     std::vector<AuditRule> rules;
-    ret = netlink.AuditListRules(rules);
-
+    ret = NetlinkRetry([&netlink,&rules]() {
+        rules.clear();
+        return netlink.AuditListRules(rules);
+    });
     if (ret != 0) {
         Logger::Error("Failed to retrieve audit rules: %s\n", strerror(errno));
         return 1;
@@ -223,7 +237,7 @@ int load_rules(const std::string& path) {
         }
 
         uint32_t enabled = 0;
-        ret = netlink.AuditGetEnabled(enabled);
+        ret = NetlinkRetry([&netlink,&enabled]() { return netlink.AuditGetEnabled(enabled); });
         if (ret != 0) {
             Logger::Error("Failed to get audit status");
             return 1;
@@ -335,8 +349,42 @@ std::string get_service_util_path() {
     return path;
 }
 
+bool is_auditd_plugin_enabled() {
+    if (!PathExists(AUOMS_PLUGIN_FILE)) {
+        return false;
+    }
+    auto lines = ReadFile(AUOMS_PLUGIN_FILE);
+    for (auto& line: lines) {
+        auto parts = split(line, '=');
+        if (parts.size() == 2) {
+            if (trim_whitespace(parts[0]) == "active" && trim_whitespace(parts[1]) == "yes") {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+void set_auditd_plugin_status(bool enabled) {
+    std::vector<std::string> lines;
+    lines.emplace_back("# This file controls the auoms plugin.");
+    lines.emplace_back("");
+    if (enabled) {
+        lines.emplace_back("active = yes");
+    } else {
+        lines.emplace_back("active = no");
+    }
+    lines.emplace_back("direction = out");
+    lines.emplace_back("path = /opt/microsoft/auoms/bin/auomscollect");
+    lines.emplace_back("type = always");
+    lines.emplace_back("#args =");
+    lines.emplace_back("format = string");
+
+    WriteFile(AUOMS_PLUGIN_FILE, lines);
+    chmod(AUOMS_PLUGIN_FILE, 0640);
+}
+
 bool is_service_sysv_enabled() {
-    std::string service_name(SERVICE_NAME);
+    std::string service_name(AUOMS_SERVICE_NAME);
     int count = 0;
     for (auto& dir: GetDirList("/etc")) {
         if (dir.size() == 5 && starts_with(dir, "rc") && ends_with(dir, ".d")) {
@@ -351,7 +399,7 @@ bool is_service_sysv_enabled() {
 }
 
 bool is_service_enabled() {
-    std::string service_name(SERVICE_NAME);
+    std::string service_name(AUOMS_SERVICE_NAME);
     std::string path = SYSTEMCTL_PATH;
     if (!PathExists(path)) {
         return is_service_sysv_enabled();
@@ -373,17 +421,20 @@ bool is_service_enabled() {
 }
 
 void enable_service() {
-    std::string path = SYSTEMCTL_PATH;
+    std::string path;
     std::vector<std::string> args;
 
-    if (PathExists(path)) {
+    if (PathExists(SYSTEMCTL_PATH)) {
+        path = SYSTEMCTL_PATH;
         args.emplace_back("enable");
         args.emplace_back(SYSTEMD_SERVICE_FILE);
-    } else if (PathExists("/sbin/chkconfig")) {
+    } else if (PathExists(CHKCONFIG_PATH)) {
+        path = CHKCONFIG_PATH;
         args.emplace_back("--add");
-        args.emplace_back(SERVICE_NAME);
-    } else if (PathExists("/usr/sbin/update-rc.d")) {
-        args.emplace_back(SERVICE_NAME);
+        args.emplace_back(AUOMS_SERVICE_NAME);
+    } else if (PathExists(UPDATE_RC_PATH)) {
+        path = UPDATE_RC_PATH;
+        args.emplace_back(AUOMS_SERVICE_NAME);
         args.emplace_back("defaults");
     } else {
         throw std::runtime_error("Failed to locate service control utility");
@@ -406,18 +457,21 @@ void enable_service() {
 }
 
 void disable_service() {
-    std::string path = SYSTEMCTL_PATH;
+    std::string path;
     std::vector<std::string> args;
 
-    if (PathExists(path)) {
+    if (PathExists(SYSTEMCTL_PATH)) {
+        path = SYSTEMCTL_PATH;
         args.emplace_back("disable");
-        args.emplace_back(SERVICE_NAME);
-    } else if (PathExists("/sbin/chkconfig")) {
+        args.emplace_back(AUOMS_SERVICE_NAME);
+    } else if (PathExists(CHKCONFIG_PATH)) {
+        path = CHKCONFIG_PATH;
         args.emplace_back("--del");
-        args.emplace_back(SERVICE_NAME);
-    } else if (PathExists("/usr/sbin/update-rc.d")) {
+        args.emplace_back(AUOMS_SERVICE_NAME);
+    } else if (PathExists(UPDATE_RC_PATH)) {
+        path = UPDATE_RC_PATH;
         args.emplace_back("-f");
-        args.emplace_back(SERVICE_NAME);
+        args.emplace_back(AUOMS_SERVICE_NAME);
         args.emplace_back("remove");
     } else {
         throw std::runtime_error("Failed to locate service control utility");
@@ -439,14 +493,13 @@ void disable_service() {
     }
 }
 
-bool is_auoms_running() {
+bool is_service_proc_running(const std::string& comm) {
     std::string path = "/usr/bin/pgrep";
     std::vector<std::string> args;
     args.emplace_back("-x");
-    args.emplace_back("-f");
     args.emplace_back("-U");
     args.emplace_back("0");
-    args.emplace_back(SERVICE_BIN);
+    args.emplace_back(comm);
 
     std::string cmd_str = path;
     for (auto& arg: args) {
@@ -465,15 +518,34 @@ bool is_auoms_running() {
     return true;
 }
 
-bool kill_auoms() {
+void kill_service_proc(const std::string& comm) {
     std::string path = "/usr/bin/pkill";
     std::vector<std::string> args;
     args.emplace_back("-KILL");
     args.emplace_back("-x");
-    args.emplace_back("-f");
     args.emplace_back("-U");
     args.emplace_back("0");
-    args.emplace_back(SERVICE_BIN);
+    args.emplace_back(comm);
+
+    std::string cmd_str = path;
+    for (auto& arg: args) {
+        cmd_str.push_back(' ');
+        cmd_str.append(arg);
+    }
+
+    Cmd cmd(path, args, Cmd::NULL_STDIN|Cmd::PIPE_STDOUT|Cmd::COMBINE_OUTPUT);
+    std::string out;
+    auto ret = cmd.Run(out);
+    if (ret < 0 || ret > 1) {
+        throw std::runtime_error("Failed to execute '" + cmd_str + "': " + out);
+    }
+}
+
+void service_cmd(const std::string& svc_cmd, const std::string& name) {
+    std::string path = get_service_util_path();
+    std::vector<std::string> args;
+    args.emplace_back(name);
+    args.emplace_back(svc_cmd);
 
     std::string cmd_str = path;
     for (auto& arg: args) {
@@ -487,65 +559,111 @@ bool kill_auoms() {
     if (ret < 0) {
         throw std::runtime_error("Failed to execute '" + cmd_str + "': " + out);
     } else if (ret != 0) {
-        return false;
+        throw std::runtime_error("Failed to " + svc_cmd + " service with command '" + cmd_str + "': " + out);
     }
-    return true;
 }
 
 bool start_service() {
-    if (is_auoms_running()) {
+    if (is_service_proc_running(AUOMS_COMM)) {
         return true;
     }
 
-    std::string path = get_service_util_path();
-    std::vector<std::string> args;
-    args.emplace_back(SERVICE_NAME);
-    args.emplace_back("start");
+    service_cmd("start", AUOMS_SERVICE_NAME);
 
-    std::string cmd_str = path;
-    for (auto& arg: args) {
-        cmd_str.push_back(' ');
-        cmd_str.append(arg);
+    for (int i = 0; i < PROC_WAIT_TIME; ++i) {
+        if (is_service_proc_running(AUOMS_COMM)) {
+            return true;
+        }
+        sleep(1);
     }
-
-    Cmd cmd(path, args, Cmd::NULL_STDIN|Cmd::PIPE_STDOUT|Cmd::COMBINE_OUTPUT);
-    std::string out;
-    auto ret = cmd.Run(out);
-    if (ret < 0) {
-        throw std::runtime_error("Failed to execute '" + cmd_str + "': " + out);
-    } else if (ret != 0) {
-        throw std::runtime_error("Failed to start service with command '" + cmd_str + "': " + out);
-    }
-
-    return is_auoms_running();
+    return false;
 }
 
-bool stop_service() {
-    if (!is_auoms_running()) {
+void stop_service() {
+    if (is_service_proc_running(AUOMS_COMM)) {
+        service_cmd("stop", AUOMS_SERVICE_NAME);
+
+        // Wait for auoms to stop
+        bool kill_it = true;
+        for (int i = 0; i < PROC_WAIT_TIME; ++i) {
+            if (!is_service_proc_running(AUOMS_COMM)) {
+                kill_it = false;
+                break;
+            }
+            sleep(1);
+        }
+
+        if (kill_it) {
+            // auoms didn't exit after PROC_WAIT_TIME seconds, kill it.
+            kill_service_proc(AUOMS_COMM);
+        }
+    }
+
+    if (!PathExists(AUDITD_BIN)) {
+        for (int i = 0; i < PROC_WAIT_TIME; ++i) {
+            if (!is_service_proc_running(AUOMSCOLLECT_COMM)) {
+                return;
+            }
+            sleep(1);
+        }
+        // auomscollect didn't exit after auoms stoppped, kill it.
+        kill_service_proc(AUOMSCOLLECT_COMM);
+    }
+}
+
+bool restart_service() {
+    stop_service();
+
+    return start_service();
+}
+
+bool start_auditd_service() {
+    if (is_service_proc_running(AUDITD_COMM)) {
         return true;
     }
+    service_cmd("start", AUDITD_SERVICE_NAME);
 
-    std::string path = get_service_util_path();
-    std::vector<std::string> args;
-    args.emplace_back(SERVICE_NAME);
-    args.emplace_back("stop");
+    for (int i = 0; i < PROC_WAIT_TIME; ++i) {
+        if (is_service_proc_running(AUDITD_COMM)) {
+            return true;
+        }
+        sleep(1);
+    }
+    return false;
+}
 
-    std::string cmd_str = path;
-    for (auto& arg: args) {
-        cmd_str.push_back(' ');
-        cmd_str.append(arg);
+void stop_auditd_service() {
+    service_cmd("stop", AUDITD_SERVICE_NAME);
+
+    // Wait for auditd to stop
+    for (int i = 0; i < PROC_WAIT_TIME; ++i) {
+        if (!is_service_proc_running(AUDITD_COMM)) {
+            break;
+        }
+        sleep(1);
     }
 
-    Cmd cmd(path, args, Cmd::NULL_STDIN|Cmd::PIPE_STDOUT|Cmd::COMBINE_OUTPUT);
-    std::string out;
-    auto ret = cmd.Run(out);
-    if (ret < 0) {
-        throw std::runtime_error("Failed to execute '" + cmd_str + "': " + out);
-    } else if (ret != 0) {
-        throw std::runtime_error("Failed to start service with command '" + cmd_str + "': " + out);
+    // Wait for auomscollect to stop
+    for (int i = 0; i < PROC_WAIT_TIME; ++i) {
+        if (!is_service_proc_running(AUOMSCOLLECT_COMM)) {
+            return;
+        }
+        sleep(1);
     }
 
-    return !is_auoms_running();
+    // auomscollect didn't exit after PROC_WAIT_TIME seconds, kill it.
+    kill_service_proc(AUOMSCOLLECT_COMM);
+}
+
+bool restart_auditd_service() {
+    stop_auditd_service();
+
+    service_cmd("start", AUDITD_SERVICE_NAME);
+
+    // Wait for auditd to start
+    sleep(1);
+
+    return is_service_proc_running(AUDITD_COMM);
 }
 
 int enable_auoms() {
@@ -554,36 +672,47 @@ int enable_auoms() {
         return 1;
     }
 
+    Signals::Init();
+    Signals::Start();
+    Signals::SetExitHandler([](){ exit(1); });
+
     // Return
     //      0 on success
     //      1 if service could not be enabled
-    //      2 if service did not start
+    //      2 if auoms service did not start
+    //      3 if auditd service did not start
+    //      4 if auomscollect didn't start
     try {
-        bool is_enabled = is_service_enabled();
-        bool is_running = is_auoms_running();
-        if (is_enabled && is_running) {
-            return 0;
-        }
-
-        if (!is_enabled) {
+        if (!is_service_enabled()) {
             enable_service();
         }
 
-        if (!is_running) {
+        if (!is_service_proc_running(AUOMS_COMM)) {
             if (!start_service()) {
                 return 2;
             }
         }
 
-        if (is_auoms_running()) {
-            return 0;
-        } else {
-            return 2;
+        if (!is_auditd_plugin_enabled()) {
+            set_auditd_plugin_status(true);
+            if (PathExists(AUDITD_BIN)) {
+                if (!restart_auditd_service()) {
+                    return 3;
+                }
+            }
         }
+        for (int i = 0; i < PROC_WAIT_TIME; ++i) {
+            if(is_service_proc_running(AUOMSCOLLECT_COMM)) {
+                return 0;
+            }
+            sleep(1);
+        }
+        return 4;
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
         return 1;
     }
+    return 0;
 }
 
 int remove_rules_from_audit_files() {
@@ -606,26 +735,26 @@ int disable_auoms() {
         return 1;
     }
 
+    Signals::Init();
+    Signals::Start();
+    Signals::SetExitHandler([](){ exit(1); });
+
     // Return
     //      0 on success
     //      1 if service could not be disabled
 
     try {
-        bool is_enabled = is_service_enabled();
-        bool is_running = is_auoms_running();
+        stop_service(); // Will also kill auomscollect if it didn't stop normally
 
-        if (is_running) {
-            if (!stop_service()) {
-                kill_auoms();
-            }
-        }
-
-        if (is_enabled) {
+        if (is_service_enabled()) {
             disable_service();
         }
 
-        if (is_auoms_running()) {
-            kill_auoms();
+        if (is_auditd_plugin_enabled()) {
+            set_auditd_plugin_status(false);
+            if (PathExists(AUDITD_BIN)) {
+                restart_auditd_service(); // Will also kill auomscollect if it didn't stop normally
+            }
         }
 
         auto dret = delete_rules(AUOMS_RULE_KEY);
@@ -636,6 +765,102 @@ int disable_auoms() {
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
         return 1;
+    }
+    return 0;
+}
+
+int start_auoms(bool all) {
+    int ret = 0;
+    try {
+        if (is_service_proc_running(AUOMS_COMM)) {
+            if (!start_service()) {
+                std::cerr << "Failed to start auoms service" << std::endl;
+                ret = 1;
+            }
+        }
+        if (all && PathExists(AUDITD_BIN) && !is_service_proc_running(AUDITD_COMM)) {
+            if (!start_auditd_service()) {
+                std::cerr << "Failed to start auditd service or auomscollect has crashed" << std::endl;
+                ret = 1;
+            }
+        }
+    } catch (std::exception& ex) {
+        std::cerr << ex.what() << std::endl;
+        return 1;
+    }
+    return ret;
+}
+
+int stop_auoms(bool all) {
+    try {
+        if (all && PathExists(AUDITD_BIN)) {
+            stop_auditd_service();
+        }
+        if (is_service_proc_running(AUOMS_COMM)) {
+            stop_service();
+        }
+    } catch (std::exception& ex) {
+        std::cerr << ex.what() << std::endl;
+        return 1;
+    }
+    return 0;
+}
+
+int restart_auoms(bool all) {
+    int ret = 0;
+    try {
+        if (!restart_service()) {
+            std::cerr << "Failed to restart auoms service" << std::endl;
+            ret = 1;
+        }
+        if (all && PathExists(AUDITD_BIN)) {
+            if (!restart_auditd_service()) {
+                std::cerr << "Failed to restart auditd service or auomscollect has crashed" << std::endl;
+                ret = 1;
+            }
+        }
+    } catch (std::exception& ex) {
+        std::cerr << ex.what() << std::endl;
+        return 1;
+    }
+    return ret;
+}
+
+/*
+ * Return:
+ *  0 = running
+ *  1 = enabled
+ *  2 = disabled
+ *  3 = partially-disabled
+ *  4 = partially-enabled
+ *  5 = error
+ */
+int show_auoms_state() {
+    try {
+        if (!is_service_enabled()) {
+            if (is_auditd_plugin_enabled() || is_service_proc_running(AUOMS_COMM)) {
+                std::cout << "partially-disabled" << std::endl;
+                return 3;
+            } else {
+                std::cout << "disabled" << std::endl;
+                return 2;
+            }
+        } else {
+            if (!is_auditd_plugin_enabled()) {
+                std::cout << "partially-enabled" << std::endl;
+                return 4;
+            } else if (!is_service_proc_running(AUOMS_COMM)) {
+                std::cout << "enabled" << std::endl;
+                return 2;
+            } else {
+                std::cout << "running" << std::endl;
+                return 0;
+            }
+        }
+    } catch (std::exception& ex) {
+        std::cout << "error" << std::endl;
+        std::cerr << ex.what() << std::endl;
+        return 5;
     }
 }
 
@@ -670,7 +895,7 @@ int tap_audit() {
 
     Logger::Info("Checking assigned audit pid");
     audit_status status;
-    ret = netlink.AuditGet(status);
+    ret = NetlinkRetry([&netlink,&status]() { return netlink.AuditGet(status); } );
     if (ret != 0) {
         Logger::Error("Failed to get audit status: %s", std::strerror(-ret));
         return 1;
@@ -684,24 +909,42 @@ int tap_audit() {
     }
 
     Logger::Info("Enabling AUDIT event collection");
-    ret = netlink.AuditSetPid(our_pid);
-    if (ret != 0) {
-        Logger::Error("Failed to set audit pid: %s", std::strerror(-ret));
-        return 1;
-    }
+    int retry_count = 0;
+    do {
+        if (retry_count > 5) {
+            Logger::Error("Failed to set audit pid: Max retried exceeded");
+        }
+        ret = netlink.AuditSetPid(our_pid);
+        if (ret == -ETIMEDOUT) {
+            // If setpid timedout, it may have still succeeded, so re-fetch pid
+            ret = NetlinkRetry([&netlink,&status,&pid]() { return netlink.AuditGetPid(pid); });
+            if (ret != 0) {
+                Logger::Error("Failed to get audit pid: %s", std::strerror(-ret));
+                return 1;
+            }
+        } else if (ret != 0) {
+            Logger::Error("Failed to set audit pid: %s", std::strerror(-ret));
+            return 1;
+        } else {
+            break;
+        }
+        retry_count += 1;
+    } while (pid != our_pid);
     if (enabled == 0) {
-        ret = netlink.AuditSetEnabled(1);
+        ret = NetlinkRetry([&netlink,&status]() { return netlink.AuditSetEnabled(1); });
         if (ret != 0) {
             Logger::Error("Failed to enable auditing: %s", std::strerror(-ret));
             return 1;
         }
     }
+
     Defer _revert_enabled([&netlink,enabled]() {
         if (enabled == 0) {
-            auto ret = netlink.AuditSetEnabled(0);
+            int ret;
+            ret = NetlinkRetry([&netlink]() { return netlink.AuditSetEnabled(1); });
             if (ret != 0) {
-                Logger::Error("Failed to disable auditing: %s", std::strerror(-ret));
-                return 1;
+                Logger::Error("Failed to enable auditing: %s", std::strerror(-ret));
+                return;
             }
         }
     });
@@ -714,12 +957,10 @@ int tap_audit() {
         }
 
         pid = 0;
-        auto ret = netlink.AuditGetPid(pid);
-        if (ret != 1) {
-            if (ret < 0) {
-                Logger::Error("Failed to get audit pid");
-                return 1;
-            }
+        auto ret = NetlinkRetry([&netlink,&pid]() { return netlink.AuditGetPid(pid); });
+        if (ret != 0) {
+            Logger::Error("Failed to get audit pid: %s", std::strerror(-ret));
+            return 1;
         } else {
             if (pid != our_pid) {
                 Logger::Warn("Another process (pid = %d) has taken over AUDIT NETLINK event collection.", pid);
@@ -793,10 +1034,9 @@ bool reload_auoms() {
     std::vector<std::string> args;
     args.emplace_back("-HUP");
     args.emplace_back("-x");
-    args.emplace_back("-f");
     args.emplace_back("-U");
     args.emplace_back("0");
-    args.emplace_back(SERVICE_BIN);
+    args.emplace_back(AUOMS_COMM);
 
     std::string cmd_str = path;
     for (auto& arg: args) {
@@ -861,6 +1101,46 @@ int monitor_auoms_events() {
     return retcode;
 }
 
+int set_rules() {
+    auto rules = ReadAuditRulesFromDir("/etc/opt/microsoft/auoms/rules.d");
+    std::vector<AuditRule> desired_rules;
+    for (auto& rule: rules) {
+        // Only include the rule in the desired rules if it is supported on the host system
+        if (rule.IsSupported()) {
+            rule.AddKey(AUOMS_RULE_KEY);
+            desired_rules.emplace_back(rule);
+        }
+    }
+
+    try {
+        auto rules = ReadActualAuditdRules(false);
+        auto diff = DiffRules(rules, desired_rules, "");
+        if (diff.empty()) {
+            return 0;
+        }
+        Logger::Info("AuditRulesMonitor: Found desired audit rules not currently present in auditd rules files(s), adding new rules");
+        // Re-read rules but exclude auoms rules
+        rules = ReadActualAuditdRules(true);
+        // Re-calculate diff
+        diff = DiffRules(rules, desired_rules, "");
+        if (WriteAuditdRules(diff)) {
+            Logger::Info("AuditRulesMonitor: augenrules appears to be in-use, running augenrules after updating auoms rules in /etc/audit/rules.d");
+            Cmd cmd(AUGENRULES_BIN, {}, Cmd::NULL_STDIN|Cmd::COMBINE_OUTPUT);
+            std::string output;
+            auto ret = cmd.Run(output);
+            if (ret != 0) {
+                Logger::Warn("AuditRulesMonitor: augenrules failed: %s", cmd.FailMsg().c_str());
+                Logger::Warn("AuditRulesMonitor: augenrules output: %s", output.c_str());
+            } else {
+                Logger::Warn("AuditRulesMonitor: augenrules succeeded");
+            }
+        }
+    } catch (std::exception& ex) {
+        Logger::Error("AuditRulesMonitor: Failed to check/update auditd rules: %s", ex.what());
+    }
+    return 0;
+}
+
 int main(int argc, char**argv) {
     if (argc < 2 || strlen(argv[1]) < 2) {
         usage();
@@ -914,6 +1194,8 @@ int main(int argc, char**argv) {
             exit(1);
         }
         return diff_rules(argv[2], argv[3]);
+    } else if (strcmp(argv[1], "state") == 0) {
+        return show_auoms_state();
     } else if (strcmp(argv[1], "status") == 0) {
         return show_auoms_status();
     } else if (strcmp(argv[1], "is-enabled") == 0) {
@@ -933,12 +1215,32 @@ int main(int argc, char**argv) {
         return enable_auoms();
     } else if (strcmp(argv[1], "disable") == 0) {
         return disable_auoms();
+    } else if (strcmp(argv[1], "start") == 0) {
+        bool all = false;
+        if (argc > 2 && strcmp(argv[1], "all") == 0) {
+            all = true;
+        }
+        return start_auoms(all);
+    } else if (strcmp(argv[1], "restart") == 0) {
+        bool all = false;
+        if (argc > 2 && strcmp(argv[1], "all") == 0) {
+            all = true;
+        }
+        return restart_auoms(all);
+    } else if (strcmp(argv[1], "stop") == 0) {
+        bool all = false;
+        if (argc > 2 && strcmp(argv[1], "all") == 0) {
+            all = true;
+        }
+        return stop_auoms(all);
     } else if (strcmp(argv[1], "tap") == 0) {
         return tap_audit();
     } else if (strcmp(argv[1], "monitor") == 0) {
         return monitor_auoms_events();
     } else if (strcmp(argv[1], "reload") == 0) {
         return reload_auoms();
+    } else if (strcmp(argv[1], "setrules") == 0) {
+        return set_rules();
     }
 
     usage();

@@ -31,7 +31,7 @@ bool UnixDomainListener::Open() {
     // maxLength: maximum permitted length of a path of a Unix domain socket
     constexpr auto maxLength = sizeof(addr.sun_path);
     if (_socket_path.size() > maxLength) {
-        Logger::Error("socketaddr '%s' exceeds max allowed length %d", _socket_path.c_str(), maxLength);
+        Logger::Error("socketaddr '%s' exceeds max allowed length %ld", _socket_path.c_str(), maxLength);
         return false;
     }
 

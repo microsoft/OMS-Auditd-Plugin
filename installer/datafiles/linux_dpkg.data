@@ -5,25 +5,20 @@ PACKAGE_TYPE: 'DPKG'
 
 %Preuninstall_100
 if [ "$1" = "remove" ]; then
-    if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
-        rm ${{AUOMS_AUDISP_CONF}}
-    fi
-    if [ -e /sbin/auditd ]; then
-        service auditd reload
-    fi
     /opt/microsoft/auoms/bin/auomsctl disable
-    pgrep -f ${{AUOMS_BIN}} 2>&1 >/dev/null
-    if [ $? -eq 0 ]; then
-        pkill -KILL -f ${{AUOMS_BIN}}
-    fi
-    pgrep -f ${{AUOMSCOLLECT_BIN}} 2>&1 >/dev/null
-    if [ $? -eq 0 ]; then
-        pkill -KILL -f ${{AUOMSCOLLECT_BIN}}
-    fi
 fi
 
 %Postuninstall_100
 if [ "$1" = "purge" ]; then
+    if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
+        rm ${{AUOMS_AUDISP_CONF}}
+    fi
     rm -rf ${{AUOMS_ETC}}
     rm -rf ${{AUOMS_VAR}}
+fi
+
+%Postinstall_100
+/opt/microsoft/auoms/bin/auomsctl is-enabled >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+    /opt/microsoft/auoms/bin/auomsctl restart all
 fi

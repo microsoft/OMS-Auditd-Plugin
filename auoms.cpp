@@ -36,10 +36,9 @@
 #include <memory>
 #include <system_error>
 
-extern "C" {
 #include <unistd.h>
 #include <syslog.h>
-}
+#include <sys/resource.h>
 
 void usage()
 {
@@ -77,6 +76,13 @@ bool parsePath(std::vector<std::string>& dirs, const std::string& path_str) {
 }
 
 int main(int argc, char**argv) {
+    // Enable core dumps
+    struct rlimit limits;
+    limits.rlim_cur = RLIM_INFINITY;
+    limits.rlim_max = RLIM_INFINITY;
+    setrlimit(RLIMIT_CORE, &limits);
+
+
     std::string config_file = "/etc/opt/microsoft/auoms/auoms.conf";
 
     int opt;
@@ -181,7 +187,7 @@ int main(int argc, char**argv) {
     }
 
     if (queue_size < Queue::MIN_QUEUE_SIZE) {
-        Logger::Warn("Value for 'queue_size' (%d) is smaller than minimum allowed. Using minimum (%d).", queue_size, Queue::MIN_QUEUE_SIZE);
+        Logger::Warn("Value for 'queue_size' (%ld) is smaller than minimum allowed. Using minimum (%ld).", queue_size, Queue::MIN_QUEUE_SIZE);
         exit(1);
     }
 
@@ -198,20 +204,6 @@ int main(int argc, char**argv) {
     // They will be handled once Signals::Start() is called.
     Signals::Init();
 
-    OperationalStatus operational_status(status_socket_path);
-    if (!operational_status.Initialize()) {
-        Logger::Error("Failed to initialize OperationalStatus");
-        exit(1);
-    }
-    operational_status.Start();
-
-    Inputs inputs(input_socket_path);
-    if (!inputs.Initialize()) {
-        Logger::Error("Failed to initialize inputs");
-        exit(1);
-    }
-    inputs.Start();
-
     auto queue = std::make_shared<Queue>(queue_file, queue_size);
     try {
         Logger::Info("Opening queue: %s", queue_file.c_str());
@@ -221,6 +213,20 @@ int main(int argc, char**argv) {
         exit(1);
     }
 
+    auto operational_status = std::make_shared<OperationalStatus>(status_socket_path, queue);
+    if (!operational_status->Initialize()) {
+        Logger::Error("Failed to initialize OperationalStatus");
+        exit(1);
+    }
+    operational_status->Start();
+
+    Inputs inputs(input_socket_path, operational_status);
+    if (!inputs.Initialize()) {
+        Logger::Error("Failed to initialize inputs");
+        exit(1);
+    }
+    inputs.Start();
+
     Netlink netlink;
     netlink.Open(nullptr);
 
@@ -228,7 +234,7 @@ int main(int argc, char**argv) {
     CollectionMonitor collection_monitor(netlink, queue, auditd_path, collector_path, collector_config_path);
     collection_monitor.Start();
 
-    AuditRulesMonitor rules_monitor(netlink, rules_dir);
+    AuditRulesMonitor rules_monitor(netlink, rules_dir, operational_status);
     rules_monitor.Start();
 
     Outputs outputs(queue, outconf_dir, cursor_dir, allowed_socket_dirs);
@@ -242,10 +248,10 @@ int main(int argc, char**argv) {
         user_db->Start();
     } catch (const std::exception& ex) {
         Logger::Error("Unexpected exception during user_db startup: %s", ex.what());
-        throw;
+        exit(1);
     } catch (...) {
         Logger::Error("Unexpected exception during user_db startup");
-        throw;
+        exit(1);
     }
 
     auto proc_filter = std::make_shared<ProcFilter>(user_db);
@@ -257,21 +263,25 @@ int main(int argc, char**argv) {
     RawEventProcessor rep(builder, user_db, proc_filter);
 
     std::thread autosave_thread([&]() {
+        Signals::InitThread();
         try {
             queue->Autosave(128*1024, 250);
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
-            throw;
+            if (!Signals::IsExit()) {
+                Logger::Warn("Terminating");
+                Signals::Terminate();
+            }
         }
     });
     try {
         outputs.Start();
     } catch (const std::exception& ex) {
         Logger::Error("Unexpected exception during outputs startup: %s", ex.what());
-        throw;
+        exit(1);
     } catch (...) {
         Logger::Error("Unexpected exception during outputs startup");
-        throw;
+        exit(1);
     }
     Signals::SetHupHandler([&outputs,&config_file](){
         Config config;
@@ -318,10 +328,8 @@ int main(int argc, char**argv) {
         Logger::Info("Input loop stopped");
     } catch (const std::exception& ex) {
         Logger::Error("Unexpected exception in input loop: %s", ex.what());
-        throw;
     } catch (...) {
         Logger::Error("Unexpected exception in input loop");
-        throw;
     }
 
     Logger::Info("Exiting");
@@ -335,13 +343,13 @@ int main(int argc, char**argv) {
         queue->Close(); // Close queue, this will trigger exit of autosave thread
         outputs.Wait(); // Wait for outputs to finish shutdown
         autosave_thread.join(); // Wait for autosave thread to exit
-        operational_status.Stop();
+        operational_status->Stop();
     } catch (const std::exception& ex) {
         Logger::Error("Unexpected exception during exit: %s", ex.what());
-        throw;
+        exit(1);
     } catch (...) {
         Logger::Error("Unexpected exception during exit");
-        throw;
+        exit(1);
     }
 
     exit(0);

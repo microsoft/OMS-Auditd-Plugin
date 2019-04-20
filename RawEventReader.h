@@ -47,7 +47,7 @@ public:
         }
 
         if (event_size > buf_size) {
-            Logger::Info("RawEventReader: Message size (%d) in header is too large (> %d)", event_size, buf_size);
+            Logger::Info("RawEventReader: Message size (%d) in header is too large (> %ld)", event_size, buf_size);
             return IO::FAILED;
         }
 

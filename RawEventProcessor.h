@@ -20,6 +20,7 @@
 #include "Event.h"
 #include "UserDB.h"
 #include "ProcFilter.h"
+#include "ExecveConverter.h"
 
 class RawEventProcessor {
 public:
@@ -48,7 +49,6 @@ private:
     uint32_t _event_flags;
     pid_t _pid;
     pid_t _ppid;
-    std::string _cmdline;
     std::string _field_name;
     std::string _unescaped_val;
     std::string _tmp_val;
@@ -59,6 +59,7 @@ private:
     std::string _path_ogid;
     uint64_t _last_proc_fetch;
     uint64_t _last_proc_event_gen;
+    ExecveConverter _execve_converter;
 
 };
 

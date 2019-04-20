@@ -7,6 +7,10 @@
 
 #include "UnixDomainListener.h"
 #include "RunBase.h"
+#include "EventQueue.h"
+#include "Queue.h"
+
+#include <functional>
 
 /*
  * Statuses
@@ -22,20 +26,16 @@
 
 enum class ErrorCategory {
     DATA_COLLECTION,
+    DESIRED_RULES,
     AUDIT_RULES_KERNEL,
     AUDIT_RULES_FILE,
 };
 
-class OperationalStatus: public RunBase {
+class OperationalStatusListener: public RunBase {
 public:
-    explicit OperationalStatus(const std::string socket_path): _listener(socket_path), _error_conditions() {}
+    explicit OperationalStatusListener(const std::string socket_path, std::function<std::string()> status_fn): _listener(socket_path), _status_fn(status_fn) {}
 
     bool Initialize();
-
-    std::vector<std::pair<ErrorCategory, std::string>> GetErrors();
-
-    void SetErrorCondition(ErrorCategory category, const std::string& error_msg);
-    void ClearErrorCondition(ErrorCategory category, const std::string& error_msg);
 
 protected:
     void on_stopping() override;
@@ -45,7 +45,34 @@ private:
     void handle_connection(int fd);
 
     UnixDomainListener _listener;
+    std::function<std::string()> _status_fn;
+};
+
+class OperationalStatus: public RunBase {
+public:
+    explicit OperationalStatus(const std::string socket_path, std::shared_ptr<Queue> queue):
+            _listener(socket_path, [this]() -> std::string { return get_status_str();}),
+            _error_conditions(), _builder(std::make_shared<EventQueue>(std::move(queue))) {}
+
+    bool Initialize();
+
+    std::vector<std::pair<ErrorCategory, std::string>> GetErrors();
+
+    void SetErrorCondition(ErrorCategory category, const std::string& error_msg);
+    void ClearErrorCondition(ErrorCategory category);
+
+protected:
+    void on_stopping() override;
+    void run() override;
+
+private:
+    std::string get_status_str();
+    std::string get_json_status();
+    bool send_status();
+
+    OperationalStatusListener _listener;
     std::unordered_map<ErrorCategory, std::string> _error_conditions;
+    EventBuilder _builder;
 };
 
 

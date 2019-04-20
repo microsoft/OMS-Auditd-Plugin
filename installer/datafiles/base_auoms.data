@@ -84,6 +84,3 @@ fi
 if [ -e ${{AUOMSCOLLECT_BIN}} ]; then
     rm ${{AUOMSCOLLECT_BIN}}
 fi
-if [ -e ${{AUOMSCTL_BIN}} ]; then
-    rm ${{AUOMSCTL_BIN}}
-fi

@@ -22,10 +22,10 @@
 class Logger {
 public:
     static void OpenSyslog(const std::string& ident, int facility);
-    static void Info(const char* fmt, ...);
-    static void Warn(const char* fmt, ...);
-    static void Error(const char* fmt, ...);
-    static void Debug(const char* fmt, ...);
+    static void Info(const char* fmt, ...) __attribute__ ((format (printf, 1, 2)));
+    static void Warn(const char* fmt, ...) __attribute__ ((format (printf, 1, 2)));
+    static void Error(const char* fmt, ...) __attribute__ ((format (printf, 1, 2)));
+    static void Debug(const char* fmt, ...) __attribute__ ((format (printf, 1, 2)));
 private:
     static void _log_write(int level, const char* fmt, va_list ap);
 

@@ -67,7 +67,17 @@ void Inputs::run() {
 void Inputs::add_connection(int fd) {
     std::lock_guard<std::mutex> lock(_run_mutex);
 
-    auto input = std::make_shared<Input>(std::make_unique<IOBase>(fd), _buffer, [this, fd]() { _inputs.erase(fd); });
+    auto input = std::make_shared<Input>(std::make_unique<IOBase>(fd), _buffer, [this, fd]() { remove_connection(fd); });
     _inputs.insert(std::make_pair(fd, input));
     input->Start();
+    _op_status->ClearErrorCondition(ErrorCategory::DATA_COLLECTION);
+}
+
+void Inputs::remove_connection(int fd) {
+    std::lock_guard<std::mutex> lock(_run_mutex);
+    _inputs.erase(fd);
+
+    if (_inputs.empty()) {
+        _op_status->SetErrorCondition(ErrorCategory::DATA_COLLECTION, "No collectors connected!");
+    }
 }

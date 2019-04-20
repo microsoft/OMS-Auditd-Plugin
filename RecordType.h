@@ -251,7 +251,9 @@ enum class RecordType: int {
     AUOMS_SYSCALL_FRAGMENT    = 10002,
     AUOMS_COLLECTOR_REPORT    = 10003,
     AUOMS_DROPPED_RECORDS     = 10004,
-    AUOMS_SYSCALL_METRICS     = 10005,
+    AUOMS_STATUS              = 10005,
+    AUOMS_SYSCALL_METRICS     = 10006,
+    AUOMS_EXECVE              = 14688,
 };
 
 #endif //AUOMS_RECORDTYPE_H
