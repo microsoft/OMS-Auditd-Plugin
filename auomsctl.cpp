@@ -772,7 +772,7 @@ int disable_auoms() {
 int start_auoms(bool all) {
     int ret = 0;
     try {
-        if (is_service_proc_running(AUOMS_COMM)) {
+        if (!is_service_proc_running(AUOMS_COMM)) {
             if (!start_service()) {
                 std::cerr << "Failed to start auoms service" << std::endl;
                 ret = 1;
@@ -1141,6 +1141,140 @@ int set_rules() {
     return 0;
 }
 
+template<typename T>
+bool is_set_intersect(T a, T b) {
+    for (auto& e: b) {
+        if (a.find(e) == a.end()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+int load_rules() {
+    auto rules = ReadAuditRulesFromDir("/etc/opt/microsoft/auoms/rules.d");
+    std::vector<AuditRule> desired_rules;
+    for (auto& rule: rules) {
+        // Only include the rule in the desired rules if it is supported on the host system
+        if (rule.IsSupported()) {
+            rule.AddKey(AUOMS_RULE_KEY);
+            desired_rules.emplace_back(rule);
+        }
+    }
+
+    Netlink netlink;
+
+    Signals::Init();
+    Signals::Start();
+
+    Logger::Info("Connecting to AUDIT NETLINK socket");
+    auto ret = netlink.Open(nullptr);
+    if (ret != 0) {
+        Logger::Error("Failed to open AUDIT NETLINK connection: %s", std::strerror(-ret));
+        return 1;
+    }
+    Defer _close_netlink([&netlink]() { netlink.Close(); });
+
+    ret = NetlinkRetry([&netlink,&rules]() {
+        rules.clear();
+        return netlink.AuditListRules(rules);
+    });
+    if (ret != 0) {
+        Logger::Error("AuditRulesMonitor: Unable to fetch audit rules from kernel: %s", std::strerror(-ret));
+        return 1;
+    }
+
+    auto merged_rules = MergeRules(rules);
+
+    auto diff = DiffRules(merged_rules, desired_rules, "");
+    if (diff.empty()) {
+        return 0;
+    }
+
+    uint32_t enabled = 0;
+    ret = NetlinkRetry([&netlink,&enabled]() { return netlink.AuditGetEnabled(enabled); });
+    if (ret != 0) {
+        Logger::Error("AuditRulesMonitor: Unable to get audit status from kernel: %s", std::strerror(-ret));
+        return false;
+    }
+
+    bool rules_immutable = false;
+    if (enabled == 2) {
+        if (!rules_immutable) {
+            Logger::Error("AuditRulesMonitor: Unable to add desired rules because audit rules are set to immutable");
+        }
+        return 0;
+    } else {
+        rules_immutable = false;
+    }
+
+    Logger::Info("AuditRulesMonitor: Found desired audit rules not currently loaded, loading new rules");
+
+    std::unordered_map<std::string, AuditRule> _dmap;
+    for (auto& rule: desired_rules) {
+        _dmap.emplace(rule.CanonicalMergeKey(), rule);
+    }
+
+    // Delete all old auoms rules
+    for (auto& rule: rules) {
+        // Delete rule if it has AUOMS_RULE_KEY or matches any of the desired rules.
+        bool delete_it = rule.GetKeys().count(AUOMS_RULE_KEY) > 0;
+        if (!delete_it) {
+            auto itr = _dmap.find(rule.CanonicalMergeKey());
+            if (itr != _dmap.end()) {
+                if (rule.IsWatch()) {
+                    // Check to see if the rule's perms is a subset of the desired rule's perms
+                    auto dset = itr->second.GetPerms();
+                    auto aset = rule.GetPerms();
+                    if (is_set_intersect(dset, aset)) {
+                        delete_it = true;
+                    }
+                } else {
+                    // Check to see if the rule's syscalls is a subset of the desired rule's syscalls
+                    auto dset = itr->second.GetSyscalls();
+                    auto aset = rule.GetSyscalls();
+                    if (is_set_intersect(dset, aset)) {
+                        delete_it = true;
+                    }
+                }
+            }
+        }
+        if (delete_it) {
+            ret = netlink.AuditDelRule(rule);
+            if (ret != 0) {
+                Logger::Warn("AuditRulesMonitor: Failed to delete audit rule (%s): %s\n", rule.CanonicalText().c_str(), strerror(-ret));
+            }
+        }
+    }
+
+    // refresh rules list
+    ret = NetlinkRetry([&netlink,&rules]() {
+        rules.clear();
+        return netlink.AuditListRules(rules);
+    });
+    if (ret != 0) {
+        Logger::Error("AuditRulesMonitor: Unable to fetch audit rules from kernel: %s", std::strerror(-ret));
+        return false;
+    }
+
+    merged_rules = MergeRules(rules);
+
+    // re-diff rules
+    diff = DiffRules(merged_rules, desired_rules, "");
+    if (diff.empty()) {
+        return true;
+    }
+
+    // Add diff rules
+    for (auto& rule: diff) {
+        ret = netlink.AuditAddRule(rule);
+        if (ret != 0) {
+            Logger::Warn("AuditRulesMonitor: Failed to load audit rule (%s): %s\n", rule.CanonicalText().c_str(), strerror(-ret));
+        }
+    }
+    return 0;
+}
+
 int main(int argc, char**argv) {
     if (argc < 2 || strlen(argv[1]) < 2) {
         usage();
@@ -1241,6 +1375,8 @@ int main(int argc, char**argv) {
         return reload_auoms();
     } else if (strcmp(argv[1], "setrules") == 0) {
         return set_rules();
+    } else if (strcmp(argv[1], "loadrules") == 0) {
+        return load_rules();
     }
 
     usage();

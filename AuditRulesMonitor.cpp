@@ -58,7 +58,8 @@ void AuditRulesMonitor::check_file_rules() {
     }
     try {
         auto rules = ReadActualAuditdRules(false);
-        auto diff = DiffRules(rules, _desired_rules, "");
+        auto merged_rules = MergeRules(rules);
+        auto diff = DiffRules(merged_rules, _desired_rules, "");
         if (diff.empty()) {
             _op_status->ClearErrorCondition(ErrorCategory::AUDIT_RULES_FILE);
             return;
@@ -66,8 +67,9 @@ void AuditRulesMonitor::check_file_rules() {
         Logger::Info("AuditRulesMonitor: Found desired audit rules not currently present in auditd rules files(s), adding new rules");
         // Re-read rules but exclude auoms rules
         rules = ReadActualAuditdRules(true);
+        merged_rules = MergeRules(rules);
         // Re-calculate diff
-        diff = DiffRules(rules, _desired_rules, "");
+        diff = DiffRules(merged_rules, _desired_rules, "");
         if (WriteAuditdRules(diff)) {
             Logger::Info("AuditRulesMonitor: augenrules appears to be in-use, running augenrules after updating auoms rules in /etc/audit/rules.d");
             Cmd cmd(AUGENRULES_BIN, {}, Cmd::NULL_STDIN|Cmd::COMBINE_OUTPUT);
@@ -88,6 +90,16 @@ void AuditRulesMonitor::check_file_rules() {
     }
 }
 
+template<typename T>
+bool is_set_intersect(T a, T b) {
+    for (auto& e: b) {
+        if (a.find(e) == a.end()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool AuditRulesMonitor::check_kernel_rules() {
     if (_desired_rules.empty()) {
         return true;
@@ -104,7 +116,9 @@ bool AuditRulesMonitor::check_kernel_rules() {
         return false;
     }
 
-    auto diff = DiffRules(rules, _desired_rules, "");
+    auto merged_rules = MergeRules(rules);
+
+    auto diff = DiffRules(merged_rules, _desired_rules, "");
     if (diff.empty()) {
         _op_status->ClearErrorCondition(ErrorCategory::AUDIT_RULES_KERNEL);
         return true;
@@ -131,9 +145,9 @@ bool AuditRulesMonitor::check_kernel_rules() {
 
     Logger::Info("AuditRulesMonitor: Found desired audit rules not currently loaded, loading new rules");
 
-    std::unordered_set<std::string> _dset;
+    std::unordered_map<std::string, AuditRule> _dmap;
     for (auto& rule: _desired_rules) {
-        _dset.emplace(rule.CanonicalDiffText());
+        _dmap.emplace(rule.CanonicalMergeKey(), rule);
     }
 
     bool failed_old = false;
@@ -141,7 +155,28 @@ bool AuditRulesMonitor::check_kernel_rules() {
     // Delete all old auoms rules
     for (auto& rule: rules) {
         // Delete rule if it has AUOMS_RULE_KEY or matches any of the desired rules.
-        if (rule.GetKeys().count(AUOMS_RULE_KEY) > 0 || _dset.count(rule.CanonicalDiffText())) {
+        bool delete_it = rule.GetKeys().count(AUOMS_RULE_KEY) > 0;
+        if (!delete_it) {
+            auto itr = _dmap.find(rule.CanonicalMergeKey());
+            if (itr != _dmap.end()) {
+                if (rule.IsWatch()) {
+                    // Check to see if the rule's perms is a subset of the desired rule's perms
+                    auto dset = itr->second.GetPerms();
+                    auto aset = rule.GetPerms();
+                    if (is_set_intersect(dset, aset)) {
+                        delete_it = true;
+                    }
+                } else {
+                    // Check to see if the rule's syscalls is a subset of the desired rule's syscalls
+                    auto dset = itr->second.GetSyscalls();
+                    auto aset = rule.GetSyscalls();
+                    if (is_set_intersect(dset, aset)) {
+                        delete_it = true;
+                    }
+                }
+            }
+        }
+        if (delete_it) {
             ret = _netlink.AuditDelRule(rule);
             if (ret != 0) {
                 Logger::Warn("AuditRulesMonitor: Failed to delete audit rule (%s): %s\n", rule.CanonicalText().c_str(), strerror(-ret));
@@ -161,8 +196,10 @@ bool AuditRulesMonitor::check_kernel_rules() {
         return false;
     }
 
+    merged_rules = MergeRules(rules);
+
     // re-diff rules
-    diff = DiffRules(rules, _desired_rules, "");
+    diff = DiffRules(merged_rules, _desired_rules, "");
     if (diff.empty()) {
         _op_status->ClearErrorCondition(ErrorCategory::AUDIT_RULES_KERNEL);
         return true;
