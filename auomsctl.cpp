@@ -581,7 +581,11 @@ bool start_service() {
 
 void stop_service() {
     if (is_service_proc_running(AUOMS_COMM)) {
-        service_cmd("stop", AUOMS_SERVICE_NAME);
+        try {
+            service_cmd("stop", AUOMS_SERVICE_NAME);
+        } catch (std::exception&) {
+            // Ignore errors, the process will get killed anyway
+        }
 
         // Wait for auoms to stop
         bool kill_it = true;
@@ -1275,6 +1279,75 @@ int load_rules() {
     return 0;
 }
 
+int upgrade() {
+    if (geteuid() != 0) {
+        std::cerr << "Must be root to enable auoms" << std::endl;
+        return 1;
+    }
+
+    Signals::Init();
+    Signals::Start();
+    Signals::SetExitHandler([](){ exit(1); });
+
+    try {
+        // Use auditd plugin file to determine if auoms should be enabled
+        if (is_auditd_plugin_enabled()) {
+            // Stop services
+            if (PathExists(AUDITD_BIN)) {
+                stop_auditd_service();
+            }
+
+            stop_service();
+
+            // Make sure all processes have exited
+            bool kill_it = true;
+            for (int i = 0; i < PROC_WAIT_TIME; ++i) {
+                if (!is_service_proc_running(AUOMS_COMM)) {
+                    kill_it = false;
+                    break;
+                }
+                sleep(1);
+            }
+
+            if (kill_it) {
+                // auoms didn't exit after PROC_WAIT_TIME seconds, kill it.
+                kill_service_proc(AUOMS_COMM);
+            }
+
+            kill_it = true;
+            for (int i = 0; i < PROC_WAIT_TIME; ++i) {
+                if (!is_service_proc_running(AUOMSCOLLECT_COMM)) {
+                    kill_it = false;
+                    break;
+                }
+                sleep(1);
+            }
+
+            if (kill_it) {
+                // auomscollect didn't exit after PROC_WAIT_TIME seconds, kill it.
+                kill_service_proc(AUOMSCOLLECT_COMM);
+            }
+
+            // Enable and start auoms service
+            enable_service();
+            start_service();
+
+            // Force reset of file to ensure all parameters are correct
+            set_auditd_plugin_status(true);
+            if (PathExists(AUDITD_BIN)) {
+                start_auditd_service();
+            }
+        } else {
+            // Force reset of file to ensure all parameters are correct
+            set_auditd_plugin_status(false);
+        }
+    } catch (std::exception& ex) {
+        std::cerr << ex.what() << std::endl;
+        return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char**argv) {
     if (argc < 2 || strlen(argv[1]) < 2) {
         usage();
@@ -1377,6 +1450,8 @@ int main(int argc, char**argv) {
         return set_rules();
     } else if (strcmp(argv[1], "loadrules") == 0) {
         return load_rules();
+    } else if (strcmp(argv[1], "upgrade") == 0) {
+        return upgrade();
     }
 
     usage();

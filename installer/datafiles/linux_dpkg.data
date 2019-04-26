@@ -17,8 +17,25 @@ if [ "$1" = "purge" ]; then
     rm -rf ${{AUOMS_VAR}}
 fi
 
-%Postinstall_100
-/opt/microsoft/auoms/bin/auomsctl is-enabled >/dev/null 2>&1
-if [ $? -eq 0 ]; then
-    /opt/microsoft/auoms/bin/auomsctl restart all
+%Preinstall_100
+if [ "$1" = "upgrade" ]; then
+    if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
+        if [ -e ${{AUOMS_AUDISP_CONF}}.auomssave ]; then
+            rm ${{AUOMS_AUDISP_CONF}}.auomssave
+        fi
+        cp -p ${{AUOMS_AUDISP_CONF}} ${{AUOMS_AUDISP_CONF}}.auomssave
+    fi
 fi
+
+%Postinstall_100
+echo "Postinstall_100 $1"
+if [ "$1" = "configure" ]; then
+    if [ -e ${{AUOMS_AUDISP_CONF}}.auomssave ]; then
+        if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
+            rm ${{AUOMS_AUDISP_CONF}}
+        fi
+        cp -p ${{AUOMS_AUDISP_CONF}}.auomssave ${{AUOMS_AUDISP_CONF}}
+    fi
+    /opt/microsoft/auoms/bin/auomsctl upgrade
+fi
+rm -rf ${{AUOMS_AUDISP_CONF}}.*

@@ -271,7 +271,7 @@ pkg_upd() {
         export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH
     else
         [ -n "${forceFlag}" ] && FORCE="--force"
-        rpm --upgrade $FORCE ${pkg_filename}.rpm
+        rpm --upgrade --replacefiles $FORCE ${pkg_filename}.rpm
     fi
 }
 

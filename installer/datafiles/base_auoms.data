@@ -77,7 +77,7 @@ ${{SHELL_HEADER}}
 %Postuninstall_0
 ${{SHELL_HEADER}}
 
-%Preinstall_100
+%Preinstall_10
 if [ -e ${{AUOMS_BIN}} ]; then
     rm ${{AUOMS_BIN}}
 fi
