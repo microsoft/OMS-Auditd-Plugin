@@ -24,6 +24,9 @@
 
 class Config {
 public:
+    Config() = default;
+    explicit Config(std::unordered_map<std::string, std::string> map): _map(map) {}
+
     void Load(const std::string& path);
 
     bool HasKey(const std::string& name) const;

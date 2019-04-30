@@ -17,31 +17,31 @@
 #include "StringUtils.h"
 #include <cstring>
 
+static const int s_hex2int[256] {
+        // 0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 0F
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 1F
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 2F
+         0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1, -1, -1, -1, -1, // 3F
+        -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 4F
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 5F
+        -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 6F
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 7F
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 8F
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 9F
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // AF
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // BF
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // CF
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // DF
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // EF
+        -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // FF
+};
+
 // Return -1 if string was not hex
 // Return 0 if string was hex and was decoded
 // Return 1 if decoded string needs escaping
 int decode_hex(std::string& out, const char* hex, size_t len)
 {
-    static const int hex2int[256] {
-            // 0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 0F
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 1F
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 2F
-             0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1, -1, -1, -1, -1, // 3F
-            -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 4F
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 5F
-            -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 6F
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 7F
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 8F
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // 9F
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // AF
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // BF
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // CF
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // DF
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // EF
-            -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, // FF
-    };
-
     if (len % 2 != 0) {
         // Not hex like we expected, just output the raw value
         out.assign(hex, len);
@@ -56,9 +56,9 @@ int decode_hex(std::string& out, const char* hex, size_t len)
     auto p = hex;
     auto endp = hex+len;
     while (p != endp) {
-        int i1 = hex2int[static_cast<uint8_t>(*p)];
+        int i1 = s_hex2int[static_cast<uint8_t>(*p)];
         ++p;
-        int i2 = hex2int[static_cast<uint8_t>(*p)];
+        int i2 = s_hex2int[static_cast<uint8_t>(*p)];
         ++p;
         if (i1 < 0 || i2 < 0) {
             // Not hex like we expected, just output the raw value
@@ -66,10 +66,38 @@ int decode_hex(std::string& out, const char* hex, size_t len)
             return -1;
         }
         char c = static_cast<char>(i1 << 4 | i2);
-        out += c;
+        out.push_back(c);
         needs_escaping |= (c < 0x20 || c > 0x7E);
     }
     return needs_escaping ? 1 : 0;
+}
+
+size_t decode_hex(void* buf, size_t buf_len, const char* hex, size_t len) {
+    size_t size = 0;
+    if (len % 2 != 0) {
+        return 0;
+    }
+    if (buf_len*2 < len) {
+        return 0;
+    }
+
+    uint8_t* out = reinterpret_cast<uint8_t*>(buf);
+    auto p = hex;
+    auto endp = hex+len;
+    while (p != endp) {
+        int i1 = s_hex2int[static_cast<uint8_t>(*p)];
+        ++p;
+        int i2 = s_hex2int[static_cast<uint8_t>(*p)];
+        ++p;
+        if (i1 < 0 || i2 < 0) {
+            return 0;
+        }
+        uint8_t c = static_cast<uint8_t>(i1 << 4 | i2);
+        *out = c;
+        ++out;
+        ++size;
+    }
+    return size;
 }
 
 // Return -1 if string was NULL, empty or copied as is
@@ -118,6 +146,25 @@ void tty_escape_string(std::string& out, const char* in, size_t in_len) {
             out.push_back('x');
             out.push_back(int2hex[static_cast<uint8_t>(*ptr) >> 4]);
             out.push_back(int2hex[*ptr & 0xF]);
+        } else {
+            out.push_back(*ptr);
+        }
+    }
+}
+
+void json_escape_string(std::string& out, const char* in, size_t in_len) {
+    out.clear();
+    auto ptr = in;
+    auto end = ptr+in_len;
+    for (; ptr < end; ++ptr) {
+        if (*ptr < 0x20 || *ptr > 0x7E) {
+            out.push_back('\\');
+            out.push_back('x');
+            out.push_back(int2hex[static_cast<uint8_t>(*ptr) >> 4]);
+            out.push_back(int2hex[*ptr & 0xF]);
+        } else if (*ptr == '"') {
+            out.push_back('\\');
+            out.push_back('"');
         } else {
             out.push_back(*ptr);
         }
@@ -250,7 +297,9 @@ size_t bash_escape_string(std::string& out, const char* in, size_t in_len) {
     for(; ptr < end; ++ptr, ++size) {
         switch (char_category_codes[static_cast<uint8_t>(*ptr)]) {
             case 'Z':
-                goto endloop;
+                end = ptr;
+                size -= 1;
+                break;
             case '-':
                 flags |= __BASH_QUOTE_NEEDED;
                 break;
@@ -268,8 +317,6 @@ size_t bash_escape_string(std::string& out, const char* in, size_t in_len) {
                 break;
         }
     }
-
-endloop:
 
     // String is empty, use '' to represent empty string on bash commandline
     if (size == 0) {
@@ -333,4 +380,39 @@ endloop:
     }
 
     return size;
+}
+
+std::string trim_whitespace(const std::string& str) {
+    size_t idx = 0;
+    while(idx < str.size() && std::isspace(str[idx])) {
+        idx += 1;
+    }
+    if (idx >= str.size()) {
+        return std::string();
+    }
+
+    auto eidx = str.size()-1;
+    while(eidx > 0 && std::isspace(str[eidx])) {
+        eidx -= 1;
+    }
+    eidx += 1;
+    return str.substr(idx, eidx-idx);
+}
+
+std::vector<std::string> split(const std::string& str, const std::string& sep) {
+    std::vector<std::string> parts;
+
+    size_t idx = 0;
+
+    do {
+        auto eidx = str.find_first_of(sep, idx);
+        if (eidx == std::string::npos) {
+            parts.emplace_back(str.substr(idx));
+            return parts;
+        }
+        parts.emplace_back(str.substr(idx, eidx-idx));
+        idx = str.find_first_not_of(sep, eidx);
+    } while (idx < str.size());
+
+    return parts;
 }

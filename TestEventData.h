@@ -52,7 +52,7 @@ private:
 };
 
 struct TestEventField {
-    TestEventField(const char* name, const char* raw, const char* interp, event_field_type_t field_type) {
+    TestEventField(const char* name, const char* raw, const char* interp, field_type_t field_type) {
         _name = name;
         _raw = raw;
         _interp = interp;
@@ -61,7 +61,7 @@ struct TestEventField {
     const char* _name;
     const char* _raw;
     const char* _interp;
-    event_field_type_t _field_type;
+    field_type_t _field_type;
 
     void Write(const std::shared_ptr<EventBuilder>& builder) {
         builder->AddField(_name, _raw, _interp, _field_type);

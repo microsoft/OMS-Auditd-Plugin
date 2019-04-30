@@ -74,15 +74,15 @@ BOOST_AUTO_TEST_CASE( test )
     if (ret != 1) {
         BOOST_FAIL("BeginRecord failed: " + std::to_string(ret));
     }
-    ret = builder.AddField("field1", "raw1", "interp1", FIELD_TYPE_UNCLASSIFIED);
+    ret = builder.AddField("field1", "raw1", "interp1", field_type_t::UNCLASSIFIED);
     if (ret != 1) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
-    ret = builder.AddField("field2", "2", "user2", FIELD_TYPE_UID);
+    ret = builder.AddField("field2", "2", "user2", field_type_t::UID);
     if (ret != 1) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
-    ret = builder.AddField("field3", "raw3", "interp3", FIELD_TYPE_UNCLASSIFIED);
+    ret = builder.AddField("field3", "raw3", "interp3", field_type_t::UNCLASSIFIED);
     if (ret != 1) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
@@ -94,11 +94,11 @@ BOOST_AUTO_TEST_CASE( test )
     if (ret != 1) {
         BOOST_FAIL("BeginRecord failed: " + std::to_string(ret));
     }
-    ret = builder.AddField("field1", "raw1", nullptr, FIELD_TYPE_UNCLASSIFIED);
+    ret = builder.AddField("field1", "raw1", nullptr, field_type_t::UNCLASSIFIED);
     if (ret != 1) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
-    ret = builder.AddField("field2", "raw2", "interp2", FIELD_TYPE_UNCLASSIFIED);
+    ret = builder.AddField("field2", "raw2", "interp2", field_type_t::UNCLASSIFIED);
     if (ret != 1) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
@@ -147,7 +147,7 @@ BOOST_AUTO_TEST_CASE( test )
     BOOST_CHECK_EQUAL(field.RawValueSize(), strlen("raw1"));
     BOOST_CHECK_EQUAL(field.InterpValue(), "interp1");
     BOOST_CHECK_EQUAL(field.InterpValueSize(), strlen("interp1"));
-    BOOST_CHECK_EQUAL(static_cast<uint16_t>(field.FieldType()), static_cast<uint16_t>(FIELD_TYPE_UNCLASSIFIED));
+    BOOST_CHECK_EQUAL(static_cast<uint16_t>(field.FieldType()), static_cast<uint16_t>(field_type_t::UNCLASSIFIED));
 
     BOOST_CHECK_EQUAL(field, rec.FieldAt(0));
 
@@ -158,7 +158,7 @@ BOOST_AUTO_TEST_CASE( test )
     BOOST_CHECK_EQUAL(field.RawValueSize(), strlen("2"));
     BOOST_CHECK_EQUAL(field.InterpValue(), "user2");
     BOOST_CHECK_EQUAL(field.InterpValueSize(), strlen("user2"));
-    BOOST_CHECK_EQUAL(static_cast<uint16_t>(field.FieldType()), static_cast<uint16_t>(FIELD_TYPE_UID));
+    BOOST_CHECK_EQUAL(static_cast<uint16_t>(field.FieldType()), static_cast<uint16_t>(field_type_t::UID));
 
     BOOST_CHECK_EQUAL(field, rec.FieldAt(1));
 
@@ -169,7 +169,7 @@ BOOST_AUTO_TEST_CASE( test )
     BOOST_CHECK_EQUAL(field.RawValueSize(), strlen("raw3"));
     BOOST_CHECK_EQUAL(field.InterpValue(), "interp3");
     BOOST_CHECK_EQUAL(field.InterpValueSize(), strlen("interp3"));
-    BOOST_CHECK_EQUAL(static_cast<uint16_t>(field.FieldType()), static_cast<uint16_t>(FIELD_TYPE_UNCLASSIFIED));
+    BOOST_CHECK_EQUAL(static_cast<uint16_t>(field.FieldType()), static_cast<uint16_t>(field_type_t::UNCLASSIFIED));
 
     BOOST_CHECK_EQUAL(field, rec.FieldAt(2));
 
@@ -191,9 +191,9 @@ BOOST_AUTO_TEST_CASE( test )
     BOOST_CHECK_EQUAL(field.FieldNameSize(), strlen("field1"));
     BOOST_CHECK_EQUAL(field.RawValue(), "raw1");
     BOOST_CHECK_EQUAL(field.RawValueSize(), strlen("raw1"));
-    BOOST_CHECK_EQUAL(reinterpret_cast<int64_t>(field.InterpValue()), 0);
+    BOOST_CHECK_EQUAL(reinterpret_cast<int64_t>(field.InterpValuePtr()), 0);
     BOOST_CHECK_EQUAL(field.InterpValueSize(), 0);
-    BOOST_CHECK_EQUAL(static_cast<uint16_t>(field.FieldType()), static_cast<uint16_t>(FIELD_TYPE_UNCLASSIFIED));
+    BOOST_CHECK_EQUAL(static_cast<uint16_t>(field.FieldType()), static_cast<uint16_t>(field_type_t::UNCLASSIFIED));
 
     BOOST_CHECK_EQUAL(field, rec.FieldAt(0));
 
@@ -221,27 +221,27 @@ BOOST_AUTO_TEST_CASE( test )
     if (ret != 1) {
         BOOST_FAIL("BeginRecord failed: " + std::to_string(ret));
     }
-    ret = builder.AddField("field3", "raw3", "interp3", FIELD_TYPE_UNCLASSIFIED);
+    ret = builder.AddField("field3", "raw3", "interp3", field_type_t::UNCLASSIFIED);
     if (ret != 1) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
-    ret = builder.AddField("field6", "raw6", "interp6", FIELD_TYPE_UNCLASSIFIED);
+    ret = builder.AddField("field6", "raw6", "interp6", field_type_t::UNCLASSIFIED);
     if (ret != 1) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
-    ret = builder.AddField("field1", "raw1", "interp1", FIELD_TYPE_UNCLASSIFIED);
+    ret = builder.AddField("field1", "raw1", "interp1", field_type_t::UNCLASSIFIED);
     if (ret != 1) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
-    ret = builder.AddField("field4", "raw4", "interp4", FIELD_TYPE_UNCLASSIFIED);
+    ret = builder.AddField("field4", "raw4", "interp4", field_type_t::UNCLASSIFIED);
     if (ret != 1) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
-    ret = builder.AddField("field5", "raw5", "interp5", FIELD_TYPE_UNCLASSIFIED);
+    ret = builder.AddField("field5", "raw5", "interp5", field_type_t::UNCLASSIFIED);
     if (ret != 1) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
-    ret = builder.AddField("field2", "raw2", "interp2", FIELD_TYPE_UNCLASSIFIED);
+    ret = builder.AddField("field2", "raw2", "interp2", field_type_t::UNCLASSIFIED);
     if (ret != 1) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }

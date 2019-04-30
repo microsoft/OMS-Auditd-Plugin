@@ -274,3 +274,9 @@ BOOST_AUTO_TEST_CASE( bash_escape_bashquote2 ) {
     BOOST_REQUIRE_EQUAL(ret, in.size());
     BOOST_REQUIRE_EQUAL(out, expected);
 }
+
+BOOST_AUTO_TEST_CASE( time_whitespace ) {
+    BOOST_REQUIRE_EQUAL("test", trim_whitespace(" test "));
+    BOOST_REQUIRE_EQUAL("test", trim_whitespace(" test \t\n "));
+    BOOST_REQUIRE_EQUAL("test", trim_whitespace("\t\n test \t\n "));
+}

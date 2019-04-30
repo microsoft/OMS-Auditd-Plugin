@@ -1,8 +1,6 @@
 %Variables
 PACKAGE_TYPE: 'RPM'
 SEPKG_DIR:               '/usr/share/selinux/packages/auoms'
-SEPOLICY_FILE_EL5:       '/usr/share/selinux/packages/auoms/auoms.el5.pp'
-SEPOLICY_FILE_EL6:       '/usr/share/selinux/packages/auoms/auoms.el6.pp'
 SEPOLICY_FILE:           '/usr/share/selinux/packages/auoms/auoms.pp'
 
 %Files
@@ -15,8 +13,16 @@ ${{SEPKG_DIR}}/auoms.fc;                      installer/selinux/auoms.fc;       
 /usr/share/selinux/packages/auoms;            755; root; root
 
 %Dependencies
-audit
-audit-libs
+
+%Preinstall_100
+if [ $1 -gt 1 ] ; then
+    if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
+        if [ -e ${{AUOMS_AUDISP_CONF}}.auomssave ]; then
+            rm ${{AUOMS_AUDISP_CONF}}.auomssave
+        fi
+        cp -p ${{AUOMS_AUDISP_CONF}} ${{AUOMS_AUDISP_CONF}}.auomssave
+    fi
+fi
 
 %Postinstall_100
 if [ -e /usr/sbin/semodule ]; then
@@ -51,43 +57,44 @@ if [ -e /usr/sbin/semodule ]; then
     fi
     echo "Labeling auoms files"
     /sbin/restorecon -R -v /opt/microsoft/auoms/bin/auoms
+    /sbin/restorecon -R -v /opt/microsoft/auoms/bin/auomscollect
 fi
-
-echo "Restarting auditd"
-service auditd restart
-sleep 3
-# On CentOS/RHEL 7 the restart may fail to start auditd
-# So, double check and start the service if restart failed
-pgrep -x auditd >/dev/null 2>&1
-if [ $? -ne 0 ]; then
-    service auditd start
+if [ $1 -gt 1 ] ; then
+    if [ -e ${{AUOMS_AUDISP_CONF}}.auomssave ]; then
+        if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
+            rm ${{AUOMS_AUDISP_CONF}}
+        fi
+        cp -p ${{AUOMS_AUDISP_CONF}}.auomssave ${{AUOMS_AUDISP_CONF}}
+    fi
+    /opt/microsoft/auoms/bin/auomsctl upgrade
 fi
+rm -rf ${{AUOMS_AUDISP_CONF}}.*
 
 %Preuninstall_100
 if [ $1 -eq 0 ]; then
-    if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
-        rm ${{AUOMS_AUDISP_CONF}}
-    fi
-    service auditd reload
-    pgrep -f ${{AUOMS_BIN}} 2>&1 >/dev/null
-    if [ $? -eq 0 ]; then
-        pkill -KILL -f ${{AUOMS_BIN}}
-    fi
+    /opt/microsoft/auoms/bin/auomsctl disable
 fi
 
 %Postuninstall_100
 if [ $1 -eq 0 ]; then
+    if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
+        rm ${{AUOMS_AUDISP_CONF}}
+    fi
+
     if [ -e /usr/sbin/semodule ]; then
         if [ ! -z "$(semodule -l | grep '^auoms\s*[0-9]')" ]; then
             echo "Removing selinux policy module for auoms"
             /usr/sbin/semodule -r auoms
-            echo "Restarting auditd"
-            sleep 3
-            # On CentOS/RHEL 7 the restart may fail to start auditd
-            # So, double check and start the service if restart failed
-            pgrep -x auditd >/dev/null 2>&1
-            if [ $? -ne 0 ]; then
-                service auditd start
+            if [ -e /sbin/auditd ]; then
+                echo "Restarting auditd"
+                service auditd restart
+                sleep 1
+                # On CentOS/RHEL 7 the restart may fail to start auditd
+                # So, double check and start the service if restart failed
+                pgrep -x auditd >/dev/null 2>&1
+                if [ $? -ne 0 ]; then
+                    service auditd start
+                fi
             fi
         fi
     fi

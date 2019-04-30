@@ -41,25 +41,25 @@ ssize_t JSONEventWriter::WriteEvent(const Event& event, IWriter* writer) {
         _writer.Key("type-code");
         _writer.Int64(rec.RecordType());
         _writer.Key("type-name");
-        _writer.String(rec.RecordTypeName(), rec.RecordTypeNameSize(), true);
+        _writer.String(rec.RecordTypeNamePtr(), rec.RecordTypeNameSize(), true);
         _writer.Key("raw-text");
-        _writer.String(rec.RecordText(), rec.RecordTextSize(), true);
+        _writer.String(rec.RecordTextPtr(), rec.RecordTextSize(), true);
         _writer.Key("field-names");
         _writer.StartArray(); // Field Names
         for (auto f: rec) {
-            _writer.String(f.FieldName(), f.FieldNameSize(), true);
+            _writer.String(f.FieldNamePtr(), f.FieldNameSize(), true);
         }
         _writer.EndArray(); // Field Names
         _writer.Key("field-types");
         _writer.StartArray(); // Field Types
         for (auto f: rec) {
-            _writer.Int64(f.FieldType());
+            _writer.Int64(static_cast<int64_t>(f.FieldType()));
         }
         _writer.EndArray(); // Field Types
         _writer.Key("raw-values");
         _writer.StartArray(); // Field Raw Values
         for (auto f: rec) {
-            _writer.Key(f.RawValue(), f.RawValueSize(), true);
+            _writer.Key(f.RawValuePtr(), f.RawValueSize(), true);
         }
         _writer.EndArray(); // Field Raw Values
         _writer.Key("interp-values");
@@ -67,7 +67,7 @@ ssize_t JSONEventWriter::WriteEvent(const Event& event, IWriter* writer) {
         for (auto f: rec) {
             if (f.InterpValueSize() > 0) {
                 _writer.Key("i");
-                _writer.Key(f.InterpValue(), f.InterpValueSize(), true);
+                _writer.Key(f.InterpValuePtr(), f.InterpValueSize(), true);
             } else {
                 _writer.Null();
             }

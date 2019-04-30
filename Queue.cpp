@@ -124,7 +124,7 @@ Queue::Queue(size_t size):
 }
 
 Queue::Queue(const std::string& path, size_t size):
-        _path(path), _file_size(size), _fd(-1), _next_id(1), _closed(true), _save_active(false)
+        _path(path), _file_size(size), _fd(-1), _next_id(1), _closed(true), _save_active(false), _int_id(0)
 {
     if (_file_size < MIN_QUEUE_SIZE) {
         _file_size = MIN_QUEUE_SIZE;
@@ -206,7 +206,7 @@ void Queue::Open()
 
         if (hdr.version != VERSION) {
             Logger::Warn(
-                    "Queue file version mismatch, discarding existing contents: Expected version %d, found version %d",
+                    "Queue file version mismatch, discarding existing contents: Expected version %ld, found version %ld",
                     VERSION, hdr.version);
             hdr.version = VERSION;
             hdr.size = _file_size;
@@ -329,6 +329,8 @@ void Queue::save_locked(std::unique_lock<std::mutex>& lock)
         return;
     }
 
+    auto fd = _fd;
+
     _save_active = true;
 
     FileHeader before;
@@ -391,15 +393,15 @@ void Queue::save_locked(std::unique_lock<std::mutex>& lock)
     int64_t save_size = 0;
 
     if (nregions > 0) {
-        _pwrite(_fd, &before, sizeof(FileHeader), 0);
+        _pwrite(fd, &before, sizeof(FileHeader), 0);
 
         for (int i = 0; i < nregions; i++) {
-            _pwrite(_fd, regions[i].data, regions[i].size, regions[i].index);
+            _pwrite(fd, regions[i].data, regions[i].size, regions[i].index);
             save_size += regions[i].size;
         }
     }
 
-    _pwrite(_fd, &after, sizeof(FileHeader), 0);
+    _pwrite(fd, &after, sizeof(FileHeader), 0);
 
     lock.lock();
 
@@ -422,6 +424,19 @@ uint64_t Queue::unsaved_size()
     } else {
         return 0;
     }
+}
+
+void Queue::Reset() {
+    std::unique_lock<std::mutex> lock(_lock);
+
+    _head = 0;
+    _tail = 0;
+    _next_id = 1;
+    _int_id = 0;
+
+    save_locked(lock);
+
+    _saved_size = 0;
 }
 
 void Queue::Autosave(uint64_t min_save, int max_delay)

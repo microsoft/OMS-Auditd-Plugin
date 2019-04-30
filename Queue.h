@@ -49,8 +49,8 @@ public:
 class Queue {
 public:
     static constexpr uint64_t HEADER_MAGIC = 0x4555455551465542; // AUFQUEUE
-    static constexpr uint64_t VERSION = 2;
-    static constexpr size_t MIN_QUEUE_SIZE = 64*1024;
+    static constexpr uint64_t VERSION = 3;
+    static constexpr size_t MIN_QUEUE_SIZE = 256*1024;
     static constexpr size_t MAX_ITEM_SIZE = 256*1024;
     static constexpr int OK = 1;
     static constexpr int TIMEOUT = 0;
@@ -75,6 +75,8 @@ public:
     void Close();
     void Close(bool save); // Only required for unit tests
     void Save();
+
+    void Reset();
 
     void Interrupt();
 

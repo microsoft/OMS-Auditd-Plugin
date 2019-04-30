@@ -115,6 +115,9 @@ bool ProcessInfo::parse_stat() {
         return false;
     }
     f_end = strchr(ptr, ')');
+    if (f_end != nullptr && f_end+1 < end && f_end[1] == ')') {
+        f_end += 1;
+    }
     if (f_end == nullptr || f_end >= end) {
         return false;
     }

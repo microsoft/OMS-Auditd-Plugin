@@ -160,7 +160,7 @@ bool ProcFilter::ParseConfig(const Config& config) {
                         return false;
                     }
                 } else {
-                    Logger::Error("Invalid entry (exe_prefix) at (%d) in config for '%s' is missing", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                    Logger::Error("Invalid entry (%s) at (%d) in config for '%s' is missing", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
                     _filters.clear();
                     return false;
                 }
@@ -190,7 +190,7 @@ bool ProcFilter::ParseConfig(const Config& config) {
                         return false;
                     }
                 } else {
-                    Logger::Error("Entry (flags) at (%d) in config for '%s' is missing", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                    Logger::Error("Entry (%s) at (%d) in config for '%s' is missing", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
                     _filters.clear();
                     return false;
                 }

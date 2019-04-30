@@ -17,12 +17,12 @@
 
 #include <thread>
 
-extern "C" {
+#include <unistd.h>
 #include <signal.h>
-}
 
 std::atomic<bool> Signals::_exit(false);
 std::function<void()> Signals::_hup_fn;
+std::function<void()> Signals::_exit_fn;
 pthread_t Signals::_main_id;
 
 void handle_sigquit(int sig) {
@@ -55,6 +55,20 @@ void Signals::Init()
     sigprocmask(SIG_BLOCK, &set, nullptr);
 }
 
+void Signals::InitThread()
+{
+    sigset_t set;
+
+    // Make sure no signals interrupt the thread
+    sigfillset(&set);
+    pthread_sigmask(SIG_BLOCK, &set, NULL);
+
+    // Make sure the thread will get interrupted by SIGQUIT
+    sigemptyset(&set);
+    sigaddset(&set, SIGQUIT);
+    pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+}
+
 void Signals::Start()
 {
     // Start sig handler thread
@@ -67,6 +81,10 @@ bool Signals::IsExit()
     return _exit.load();
 }
 
+void Signals::Terminate() {
+    kill(getpid(), SIGTERM);
+}
+
 void Signals::run() {
     sigset_t set;
 
@@ -75,7 +93,7 @@ void Signals::run() {
     sigaddset(&set, SIGQUIT);
     sigprocmask(SIG_BLOCK, &set, nullptr);
 
-    // Wait for these threads
+    // Wait for these signals
     sigemptyset(&set);
     sigaddset(&set, SIGHUP);
     sigaddset(&set, SIGINT);
@@ -93,6 +111,9 @@ void Signals::run() {
             }
         } else {
             _exit.store(true);
+            if (_exit_fn) {
+                _exit_fn();
+            }
             // Break main thread out of blocking syscall
             pthread_kill(_main_id, SIGQUIT);
             return;

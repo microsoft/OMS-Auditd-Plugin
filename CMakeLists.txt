@@ -14,17 +14,26 @@
 # THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ####
 
-cmake_minimum_required(VERSION 2.6)
+cmake_minimum_required(VERSION 2.8.12)
 project(auoms)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ggdb")
-set(CMAKE_C_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ggdb")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -ggdb")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -ggdb")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -ggdb")
 
 include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include)
 
-set(SOURCE_FILES
-        main.cpp
+add_custom_command(
+        OUTPUT ${CMAKE_SOURCE_DIR}/auoms_version.h
+        COMMAND bash -c \"grep AUOMS_BUILDVERSION auoms.version | head -n 4 | cut -d'=' -f2 | tr '\\n' '.' | sed 's/^\\\([0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\\)\\.*/\#define AUOMS_VERSION \\"\\1\\"/' > auoms_version.h\"
+        MAIN_DEPENDENCY auoms.version
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+add_executable(auomscollect
+        auomscollect.cpp
         IO.cpp
         Event.cpp
         OMSEventWriterConfig.cpp
@@ -32,7 +41,6 @@ set(SOURCE_FILES
         JSONEventWriter.cpp
         MsgPackEventWriter.cpp
         TextEventWriter.cpp
-        AuditEventProcessor.cpp
         Signals.cpp
         Queue.cpp
         UnixDomainWriter.cpp
@@ -40,14 +48,82 @@ set(SOURCE_FILES
         Config.cpp
         UserDB.cpp
         RunBase.cpp
+        Output.cpp
+        StringUtils.cpp
+        RawEventRecord.cpp
+        RawEventAccumulator.cpp
+        StdinReader.cpp
+        Netlink.cpp
+        FileWatcher.cpp
+        Gate.h
+        Defer.h
+        TranslateRecordType.cpp
+        FileUtils.cpp
+        Retry.h
+)
+
+# See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
+# and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
+# for why it is safe to use -static-libgcc -static-libstdc++
+set_target_properties(auomscollect PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+
+target_link_libraries(auomscollect
+        dl
+        pthread
+        rt
+)
+
+install(TARGETS
+        auomscollect
+        RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
+)
+
+add_executable(auoms
+        auoms.cpp
+        auoms_version.h
+        IO.cpp
+        Event.cpp
+        OMSEventWriterConfig.cpp
+        OMSEventWriter.cpp
+        JSONEventWriter.cpp
+        MsgPackEventWriter.cpp
+        TextEventWriter.cpp
+        RawEventProcessor.cpp
+        Signals.cpp
+        Queue.cpp
+        UnixDomainWriter.cpp
+        Logger.cpp
+        Config.cpp
+        UserDB.cpp
+        RunBase.cpp
+        InputBuffer.h
+        Inputs.cpp
+        Input.cpp
         Outputs.cpp
         Output.cpp
         ProcessInfo.cpp
         ProcFilter.cpp
         StringUtils.cpp
+        Interpret.cpp
+        CollectionMonitor.cpp
+        Netlink.cpp
+        NetlinkAudit.cpp
+        TranslateArch.cpp
+        TranslateSyscall.cpp
+        TranslateRecordType.cpp
+        TranslateFieldType.cpp
+        TranslateField.cpp
+        AuditRules.cpp
+        AuditRulesMonitor.cpp
+        KernelInfo.cpp
+        Version.cpp
+        UnixDomainListener.cpp
+        OperationalStatus.cpp
+        FileUtils.cpp
+        ExecUtil.cpp
+        StringTable.h
+        ExecveConverter.cpp
 )
-
-add_executable(auoms ${SOURCE_FILES})
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
 # and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
@@ -56,8 +132,6 @@ add_executable(auoms ${SOURCE_FILES})
 set_target_properties(auoms PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 target_link_libraries(auoms
-        audit
-        auparse
         dl
         pthread
         rt
@@ -68,16 +142,58 @@ install(TARGETS
         RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 
-add_executable(fakereceiver
-        Event.cpp
+add_executable(auomsctl
+        auomsctl.cpp
+        auoms_version.h
+        Netlink.cpp
+        NetlinkAudit.cpp
+        RunBase.cpp
+        Signals.cpp
         Logger.cpp
-        fakereceiver.cpp
+        TranslateArch.cpp
+        TranslateSyscall.cpp
+        TranslateRecordType.cpp
+        TranslateFieldType.cpp
+        TranslateField.cpp
+        AuditRules.cpp
+        StringUtils.cpp
+        KernelInfo.cpp
+        Version.cpp
+        IO.cpp
+        UnixDomainWriter.cpp
+        ExecUtil.cpp
+        FileUtils.cpp
+        UnixDomainListener.cpp
+        Event.cpp
 )
 
-set_target_properties(fakereceiver PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+# See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
+# and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
+# for why it is safe to use -static-libgcc -static-libstdc++
+#set_target_properties(auoms PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -Wl,--wrap=memcpy -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+set_target_properties(auomsctl PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+
+target_link_libraries(auomsctl
+        pthread
+        rt
+)
 
 install(TARGETS
-        fakereceiver
+        auomsctl
+        RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
+)
+
+add_executable(testreceiver
+        testreceiver.cpp
+        Event.cpp
+        Logger.cpp
+        UnixDomainListener.cpp
+)
+
+set_target_properties(testreceiver PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+
+install(TARGETS
+        testreceiver
         RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 
@@ -92,14 +208,18 @@ install(TARGETS
         RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 
-add_executable(fakepipe
-        fakepipe.cpp
+add_executable(file2sock
+        file2sock.cpp
+        UnixDomainWriter.cpp
+        IO.cpp
+        Logger.cpp
+        Event.cpp
 )
 
-set_target_properties(fakepipe PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+set_target_properties(file2sock PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 install(TARGETS
-        fakepipe
+        file2sock
         RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 
@@ -146,6 +266,7 @@ add_test(Queue ${CMAKE_BINARY_DIR}/QueueTests --log_sink=QueueTests.log --report
 add_executable(UserDBTests
         TempDir.cpp
         Logger.cpp
+        Signals.cpp
         UserDB.cpp
         UserDBTests.cpp
 )
@@ -167,7 +288,9 @@ add_executable(EventProcessorTests
         EventProcessorTests.cpp
         Event.cpp
         TextEventWriter.cpp
-        AuditEventProcessor.cpp
+        RawEventProcessor.cpp
+        RawEventAccumulator.cpp
+        RawEventRecord.cpp
         Signals.cpp
         Logger.cpp
         Config.cpp
@@ -178,6 +301,13 @@ add_executable(EventProcessorTests
         StringUtils.cpp
         TempDir.cpp
         TestEventData.cpp
+        TranslateRecordType.cpp
+        TranslateSyscall.cpp
+        TranslateFieldType.cpp
+        TranslateField.cpp
+        TranslateArch.cpp
+        Interpret.cpp
+        ExecveConverter.cpp
 )
 
 target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
@@ -190,6 +320,26 @@ target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
 
 add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=EventProcessorTests.log --report_sink=EventProcessorTests.report)
 
+add_executable(ExecveConverterTests
+        ExecveConverterTests.cpp
+        ExecveConverter.cpp
+        Event.cpp
+        RawEventAccumulator.cpp
+        RawEventRecord.cpp
+        Logger.cpp
+        StringUtils.cpp
+        TranslateRecordType.cpp
+)
+
+target_link_libraries(ExecveConverterTests ${Boost_LIBRARIES}
+        audit
+        auparse
+        dl
+        pthread
+        rt
+)
+
+add_test(ExecveConverter ${CMAKE_BINARY_DIR}/ExecveConverterTests --log_sink=ExecveConverterTests.log --report_sink=ExecveConverterTests.report)
 
 add_executable(OMSEventWriterTests
         OMSEventWriterTests.cpp

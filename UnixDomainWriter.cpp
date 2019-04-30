@@ -31,21 +31,20 @@ extern "C" {
 
 bool UnixDomainWriter::Open()
 {
-    Logger::Warn("Connecting to '%s'", _addr.c_str());
-
     struct sockaddr_un unaddr;
     memset(&unaddr, 0, sizeof(struct sockaddr_un));
     unaddr.sun_family = AF_UNIX;
     _addr.copy(unaddr.sun_path, sizeof(unaddr.sun_path));
 
-    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    int fd = socket(AF_UNIX, SOCK_STREAM|SOCK_CLOEXEC, 0);
     if (-1 == fd) {
         throw std::system_error(errno, std::system_category(), "socket() failed");
     }
 
     if (connect(fd, reinterpret_cast<struct sockaddr*>(&unaddr), sizeof(unaddr)) != 0) {
+        auto err = errno;
         ::close(fd);
-        Logger::Warn("Failed to connect to '%s': %s", _addr.c_str(), std::strerror(errno));
+        errno = err;
         return false;
     }
 

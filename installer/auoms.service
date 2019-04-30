@@ -1,0 +1,16 @@
+[Unit]
+Description=OMS Audit data collection daemon
+Documentation=man:auoms(8)
+
+[Service]
+Type=forking
+Restart=on-failure
+RestartSec=3
+TimeoutSec=30
+KillMode=process
+ExecStart=/etc/init.d/auoms start
+ExecStop=/etc/init.d/auoms stop
+ExecReload=/etc/init.d/auoms reload
+
+[Install]
+WantedBy=multi-user.target

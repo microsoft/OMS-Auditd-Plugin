@@ -16,25 +16,38 @@
 #ifndef AUOMS_EVENTQUEUE_H
 #define AUOMS_EVENTQUEUE_H
 
+#include "Event.h"
 #include "Queue.h"
 
 class EventQueue: public IEventBuilderAllocator {
 public:
-    EventQueue(std::shared_ptr<Queue> queue): _queue(queue) {}
+    explicit EventQueue(std::shared_ptr<Queue> queue): _buffer(), _size(0), _queue(std::move(queue)) {}
 
-    virtual int Allocate(void** data, size_t size) {
-        return _queue->Allocate(data, size);
+    int Allocate(void** data, size_t size) override {
+        if (_size != size) {
+            _size = size;
+        }
+        if (_buffer.size() < _size) {
+            _buffer.resize(_size);
+        }
+        *data = _buffer.data();
+        return 1;
     }
 
-    virtual int Commit() {
-        return _queue->Commit();
+    int Commit() override {
+        auto ret =  _queue->Put(_buffer.data(), _size);
+        _size = 0;
+        return ret;
     }
 
-    virtual int Rollback() {
-        return _queue->Rollback();
+    int Rollback() override {
+        _size = 0;
+        return 1;
     }
 
 private:
+    std::vector<uint8_t> _buffer;
+    size_t _size;
     std::shared_ptr<Queue> _queue;
 };
 
