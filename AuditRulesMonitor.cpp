@@ -2,13 +2,20 @@
 // Created by tad on 3/18/19.
 //
 
+#include <sstream>
 #include "AuditRulesMonitor.h"
 
 #include "Logger.h"
 #include "ExecUtil.h"
 
+#define PREFERRED_BACKLOG_LIMIT 8192
+
+
 void AuditRulesMonitor::run() {
     Logger::Info("AuditRulesMonitor: Starting");
+
+    check_audit_status();
+
     while(!_sleep(1000)) {
         auto now = std::chrono::steady_clock::now();
 
@@ -35,7 +42,8 @@ void AuditRulesMonitor::on_stop() {
 
 void AuditRulesMonitor::get_desired_rules() {
     try {
-        auto rules = ReadAuditRulesFromDir(_audit_rules_dir);
+        std::vector<std::string> errors;
+        auto rules = ReadAuditRulesFromDir(_audit_rules_dir, &errors);
         _desired_rules.resize(0);
         for (auto& rule: rules) {
             // Only include the rule in the desired rules if it is supported on the host system
@@ -44,7 +52,16 @@ void AuditRulesMonitor::get_desired_rules() {
                 _desired_rules.emplace_back(rule);
             }
         }
-        _op_status->ClearErrorCondition(ErrorCategory::DESIRED_RULES);
+        if (errors.empty()) {
+            _op_status->ClearErrorCondition(ErrorCategory::DESIRED_RULES);
+        } else {
+            std::stringstream ss;
+            ss << " Encountered parse errors: " << std::endl;
+            for (auto& err : errors) {
+                ss << "    " << err << std::endl;
+            }
+            _op_status->SetErrorCondition(ErrorCategory::DESIRED_RULES, ss.str());
+        }
     } catch(std::exception& ex) {
         Logger::Error("AuditRulesMonitor: Failed to read desired rules from %s: %s", _audit_rules_dir.c_str(), ex.what());
         _op_status->SetErrorCondition(ErrorCategory::DESIRED_RULES, "Failed to read desired rules from " + _audit_rules_dir + ": " + ex.what());
@@ -57,16 +74,27 @@ void AuditRulesMonitor::check_file_rules() {
         return;
     }
     try {
-        auto rules = ReadActualAuditdRules(false);
+        std::vector<std::string> errors;
+        auto rules = ReadActualAuditdRules(false, &errors);
         auto merged_rules = MergeRules(rules);
         auto diff = DiffRules(merged_rules, _desired_rules, "");
         if (diff.empty()) {
-            _op_status->ClearErrorCondition(ErrorCategory::AUDIT_RULES_FILE);
+            if (errors.empty()) {
+                _op_status->ClearErrorCondition(ErrorCategory::AUDIT_RULES_FILE);
+            } else {
+                std::stringstream ss;
+                ss << " Encountered parse errors: " << std::endl;
+                for (auto& err : errors) {
+                    ss << "    " << err << std::endl;
+                }
+                _op_status->SetErrorCondition(ErrorCategory::AUDIT_RULES_FILE, ss.str());
+            }
             return;
         }
         Logger::Info("AuditRulesMonitor: Found desired audit rules not currently present in auditd rules files(s), adding new rules");
         // Re-read rules but exclude auoms rules
-        rules = ReadActualAuditdRules(true);
+        errors.clear();
+        rules = ReadActualAuditdRules(true, &errors);
         merged_rules = MergeRules(rules);
         // Re-calculate diff
         diff = DiffRules(merged_rules, _desired_rules, "");
@@ -78,12 +106,32 @@ void AuditRulesMonitor::check_file_rules() {
             if (ret != 0) {
                 Logger::Warn("AuditRulesMonitor: augenrules failed: %s", cmd.FailMsg().c_str());
                 Logger::Warn("AuditRulesMonitor: augenrules output: %s", output.c_str());
-                _op_status->SetErrorCondition(ErrorCategory::AUDIT_RULES_FILE, std::string("augenrules failed: ") + cmd.FailMsg());
+                if (errors.empty()) {
+                    _op_status->SetErrorCondition(ErrorCategory::AUDIT_RULES_FILE, std::string("augenrules failed: ") + cmd.FailMsg());
+                } else {
+                    std::stringstream ss;
+                    ss << " Encountered parse errors and augenrules failed: " << std::endl;
+                    ss << "    augenrules error:" << cmd.FailMsg() << std::endl;
+                    for (auto& err : errors) {
+                        ss << "    " << err << std::endl;
+                    }
+                    _op_status->SetErrorCondition(ErrorCategory::AUDIT_RULES_FILE, ss.str());
+                }
+                return;
             } else {
                 Logger::Warn("AuditRulesMonitor: augenrules succeeded");
             }
         }
-        _op_status->ClearErrorCondition(ErrorCategory::AUDIT_RULES_FILE);
+        if (errors.empty()) {
+            _op_status->ClearErrorCondition(ErrorCategory::AUDIT_RULES_FILE);
+        } else {
+            std::stringstream ss;
+            ss << " Encountered parse errors: " << std::endl;
+            for (auto& err : errors) {
+                ss << "    " << err << std::endl;
+            }
+            _op_status->SetErrorCondition(ErrorCategory::AUDIT_RULES_FILE, ss.str());
+        }
     } catch (std::exception& ex) {
         Logger::Error("AuditRulesMonitor: Failed to check/update auditd rules: %s", ex.what());
         _op_status->SetErrorCondition(ErrorCategory::AUDIT_RULES_FILE, std::string("Failed to check/update auditd rules: ") + ex.what());
@@ -225,4 +273,27 @@ bool AuditRulesMonitor::check_kernel_rules() {
     }
 
     return true;
+}
+
+void AuditRulesMonitor::check_audit_status() {
+    audit_status status;
+    auto ret = NetlinkRetry([this,&status]() { return _netlink.AuditGet(status); } );
+    if (ret != 0) {
+        Logger::Error("Failed to get audit status: %s", std::strerror(-ret));
+        return;
+    }
+    if (status.backlog_limit < PREFERRED_BACKLOG_LIMIT) {
+        Logger::Error("Increasing audit backlog limit from %u to %u", status.backlog_limit, PREFERRED_BACKLOG_LIMIT);
+        ret = NetlinkRetry([this]() {
+            audit_status status;
+            ::memset(&status, 0, sizeof(status));
+            status.mask = AUDIT_STATUS_BACKLOG_LIMIT;
+            status.backlog_limit = PREFERRED_BACKLOG_LIMIT;
+            return _netlink.AuditSet(status);
+        });
+        if (ret != 0) {
+            Logger::Error("Failed to set audit backlog limit to %d: %s", PREFERRED_BACKLOG_LIMIT, std::strerror(-ret));
+            return;
+        }
+    }
 }

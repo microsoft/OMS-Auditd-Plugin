@@ -204,8 +204,9 @@ void UserDB::update_task()
     }
 }
 
-void parse_file(const std::string& path, std::unordered_map<int, std::string>& db)
+std::vector<std::pair<int, std::string>> parse_file(const std::string& path)
 {
+    std::vector<std::pair<int, std::string>> entries;
     std::ifstream fs(path);
 
     int line_num = 1;
@@ -232,11 +233,9 @@ void parse_file(const std::string& path, std::unordered_map<int, std::string>& d
         } catch (...) {
             continue;
         }
-        // Just in case there are multiple entries, only the first id->name is used
-        if (db.count(id) == 0) {
-            db.emplace(std::make_pair(id, name));
-        }
+        entries.emplace_back(id, name);
     }
+    return entries;
 }
 
 void UserDB::update()
@@ -245,8 +244,18 @@ void UserDB::update()
     std::unordered_map<int, std::string> groups;
 
     try {
-        parse_file(_dir + "/passwd", users);
-        parse_file(_dir + "/group", groups);
+        for (auto& e : parse_file(_dir + "/passwd")) {
+            // Just in case there are multiple entries, only the first id->name is used
+            if (users.count(e.first) == 0) {
+                users.emplace(e);
+            }
+        }
+        for (auto& e : parse_file(_dir + "/group")) {
+            // Just in case there are multiple entries, only the first id->name is used
+            if (groups.count(e.first) == 0) {
+                groups.emplace(e);
+            }
+        }
     } catch (const std::exception& ex) {
         Logger::Warn("UserDB: Update failed: %s", ex.what());
         return;
@@ -255,4 +264,30 @@ void UserDB::update()
     std::lock_guard<std::mutex> lock(_lock);
     _users = users;
     _groups = groups;
+}
+
+int UserDB::UserNameToUid(const std::string& name) {
+    try {
+        for (auto& e : parse_file("/etc/passwd")) {
+            if (e.second == name) {
+                return e.first;
+            }
+        }
+    } catch (const std::exception& ex) {
+        return -1;
+    }
+    return -1;
+}
+
+int UserDB::GroupNameToGid(const std::string& name) {
+    try {
+        for (auto& e : parse_file("/etc/group")) {
+            if (e.second == name) {
+                return e.first;
+            }
+        }
+    } catch (const std::exception& ex) {
+        return -1;
+    }
+    return -1;
 }

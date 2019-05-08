@@ -77,9 +77,6 @@ int show_audit_status() {
         return 1;
     }
 
-    Signals::Init();
-    Signals::Start();
-
     Netlink netlink;
     netlink.SetQuite();
 
@@ -115,9 +112,6 @@ int list_rules(bool raw_fmt, const std::string& key) {
         std::cerr << "Must be root to request audit rules" << std::endl;
         return 1;
     }
-
-    Signals::Init();
-    Signals::Start();
 
     Netlink netlink;
     netlink.SetQuite();
@@ -162,9 +156,6 @@ int delete_rules(const std::string& key) {
         std::cerr << "Must be root to delete audit rules" << std::endl;
         return 1;
     }
-
-    Signals::Init();
-    Signals::Start();
 
     Netlink netlink;
     netlink.SetQuite();
@@ -222,10 +213,7 @@ int load_rules(const std::string& path) {
     int exit_code = 0;
     try {
         auto lines = ReadFile(path);
-        auto rules = ParseRules(lines);
-
-        Signals::Init();
-        Signals::Start();
+        auto rules = ParseRules(lines, nullptr);
 
         Netlink netlink;
         netlink.SetQuite();
@@ -268,9 +256,16 @@ int load_rules(const std::string& path) {
 int print_rules(const std::string& path) {
     try {
         auto lines = ReadFile(path);
-        auto rules = ParseRules(lines);
-        for (auto& rule: rules) {
-            std::cout << rule.CanonicalText() << std::endl;
+        std::vector<AuditRule> rules;
+        for (int i = 0; i < lines.size(); ++i) {
+            AuditRule rule;
+            std::string error;
+            if (rule.Parse(lines[i], error)) {
+                std::cout << rule.CanonicalText() << std::endl;
+            } else if (!error.empty()) {
+                std::cout << "Failed to parse line " << i+1 << ": " << error << std::endl;
+                std::cout << "    " << lines[i] << std::endl;
+            }
         }
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;
@@ -282,8 +277,8 @@ int print_rules(const std::string& path) {
 
 int merge_rules(const std::string& file1, const std::string& file2) {
     try {
-        auto rules1 = ParseRules(ReadFile(file1));
-        auto rules2 = ParseRules(ReadFile(file2));
+        auto rules1 = ParseRules(ReadFile(file1), nullptr);
+        auto rules2 = ParseRules(ReadFile(file2), nullptr);
         auto merged_rules = MergeRules(rules1, rules2);
         for (auto& rule: merged_rules) {
             std::cout << rule.CanonicalText() << std::endl;
@@ -298,8 +293,8 @@ int merge_rules(const std::string& file1, const std::string& file2) {
 
 int diff_rules(const std::string& file1, const std::string& file2) {
     try {
-        auto rules1 = MergeRules(ParseRules(ReadFile(file1)));
-        auto rules2 = MergeRules(ParseRules(ReadFile(file2)));
+        auto rules1 = MergeRules(ParseRules(ReadFile(file1), nullptr));
+        auto rules2 = MergeRules(ParseRules(ReadFile(file2), nullptr));
         auto diffed_rules = DiffRules(rules1, rules2, "");
         for (auto& rule: diffed_rules) {
             std::cout << rule.CanonicalText() << std::endl;
@@ -317,9 +312,6 @@ int show_auoms_status() {
         std::cerr << "Must be root to request auoms status" << std::endl;
         return 1;
     }
-
-    Signals::Init();
-    Signals::Start();
 
     UnixDomainWriter io("/var/run/auoms/status.socket");
     if (!io.Open()) {
@@ -676,10 +668,6 @@ int enable_auoms() {
         return 1;
     }
 
-    Signals::Init();
-    Signals::Start();
-    Signals::SetExitHandler([](){ exit(1); });
-
     // Return
     //      0 on success
     //      1 if service could not be enabled
@@ -738,10 +726,6 @@ int disable_auoms() {
         std::cerr << "Must be root to disable auoms" << std::endl;
         return 1;
     }
-
-    Signals::Init();
-    Signals::Start();
-    Signals::SetExitHandler([](){ exit(1); });
 
     // Return
     //      0 on success
@@ -883,9 +867,6 @@ int tap_audit() {
         }
         return false;
     };
-
-    Signals::Init();
-    Signals::Start();
 
     Logger::Info("Connecting to AUDIT NETLINK socket");
     auto ret = netlink.Open(handler);
@@ -1068,9 +1049,6 @@ int monitor_auoms_events() {
     std::string sock_path = "/var/run/auoms/auomsctl.socket";
     std::string config_path = "/etc/opt/microsoft/auoms/outconf.d/auomsctl.conf";
 
-    Signals::Init();
-    Signals::Start();
-
     UnixDomainListener listener(sock_path, 0666);
     if (!listener.Open()) {
         return -1;
@@ -1106,7 +1084,7 @@ int monitor_auoms_events() {
 }
 
 int set_rules() {
-    auto rules = ReadAuditRulesFromDir("/etc/opt/microsoft/auoms/rules.d");
+    auto rules = ReadAuditRulesFromDir("/etc/opt/microsoft/auoms/rules.d", nullptr);
     std::vector<AuditRule> desired_rules;
     for (auto& rule: rules) {
         // Only include the rule in the desired rules if it is supported on the host system
@@ -1117,14 +1095,14 @@ int set_rules() {
     }
 
     try {
-        auto rules = ReadActualAuditdRules(false);
+        auto rules = ReadActualAuditdRules(false, nullptr);
         auto diff = DiffRules(rules, desired_rules, "");
         if (diff.empty()) {
             return 0;
         }
         Logger::Info("AuditRulesMonitor: Found desired audit rules not currently present in auditd rules files(s), adding new rules");
         // Re-read rules but exclude auoms rules
-        rules = ReadActualAuditdRules(true);
+        rules = ReadActualAuditdRules(true, nullptr);
         // Re-calculate diff
         diff = DiffRules(rules, desired_rules, "");
         if (WriteAuditdRules(diff)) {
@@ -1156,7 +1134,7 @@ bool is_set_intersect(T a, T b) {
 }
 
 int load_rules() {
-    auto rules = ReadAuditRulesFromDir("/etc/opt/microsoft/auoms/rules.d");
+    auto rules = ReadAuditRulesFromDir("/etc/opt/microsoft/auoms/rules.d", nullptr);
     std::vector<AuditRule> desired_rules;
     for (auto& rule: rules) {
         // Only include the rule in the desired rules if it is supported on the host system
@@ -1167,9 +1145,6 @@ int load_rules() {
     }
 
     Netlink netlink;
-
-    Signals::Init();
-    Signals::Start();
 
     Logger::Info("Connecting to AUDIT NETLINK socket");
     auto ret = netlink.Open(nullptr);
@@ -1285,10 +1260,6 @@ int upgrade() {
         return 1;
     }
 
-    Signals::Init();
-    Signals::Start();
-    Signals::SetExitHandler([](){ exit(1); });
-
     try {
         // Use auditd plugin file to determine if auoms should be enabled
         if (is_auditd_plugin_enabled()) {
@@ -1353,6 +1324,10 @@ int main(int argc, char**argv) {
         usage();
         exit(1);
     }
+
+    Signals::Init();
+    Signals::Start();
+    Signals::SetExitHandler([](){ exit(1); });
 
     if (strcmp(argv[1], "-v") == 0) {
         std::cout << std::string(AUOMS_VERSION) << std::endl;

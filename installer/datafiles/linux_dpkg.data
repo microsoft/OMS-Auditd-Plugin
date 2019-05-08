@@ -28,7 +28,6 @@ if [ "$1" = "upgrade" ]; then
 fi
 
 %Postinstall_100
-echo "Postinstall_100 $1"
 if [ "$1" = "configure" ]; then
     if [ -e ${{AUOMS_AUDISP_CONF}}.auomssave ]; then
         if [ -e ${{AUOMS_AUDISP_CONF}} ]; then

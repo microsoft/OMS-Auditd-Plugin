@@ -45,4 +45,7 @@ field_type_t FieldNameToType(RecordType rtype, const std::string_view& name, con
 std::string FieldIdToName(int field);
 int FieldNameToId(const std::string_view& name);
 
+std::string ErrnoToName(int field);
+int NameToErrno(const std::string_view& name);
+
 #endif //AUOMS_TRANSLATE_H

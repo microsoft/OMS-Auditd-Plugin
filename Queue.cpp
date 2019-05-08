@@ -294,8 +294,13 @@ void Queue::Close(bool save)
         save_locked(lock);
     }
 
+    // Wait for any active save to complete
+    _cond.wait(lock, [this]() { return !_save_active; });
+
     close(_fd);
     _fd = -1;
+
+    _cond.notify_all();
 }
 
 void Queue::Save() {
@@ -328,8 +333,6 @@ void Queue::save_locked(std::unique_lock<std::mutex>& lock)
     if (_save_active) {
         return;
     }
-
-    auto fd = _fd;
 
     _save_active = true;
 
@@ -393,20 +396,22 @@ void Queue::save_locked(std::unique_lock<std::mutex>& lock)
     int64_t save_size = 0;
 
     if (nregions > 0) {
-        _pwrite(fd, &before, sizeof(FileHeader), 0);
+        _pwrite(_fd, &before, sizeof(FileHeader), 0);
 
         for (int i = 0; i < nregions; i++) {
-            _pwrite(fd, regions[i].data, regions[i].size, regions[i].index);
+            _pwrite(_fd, regions[i].data, regions[i].size, regions[i].index);
             save_size += regions[i].size;
         }
     }
 
-    _pwrite(fd, &after, sizeof(FileHeader), 0);
+    _pwrite(_fd, &after, sizeof(FileHeader), 0);
 
     lock.lock();
 
     _saved_size += save_size;
     _save_active = false;
+
+    _cond.notify_all();
 }
 
 // Assumes queue is locked
