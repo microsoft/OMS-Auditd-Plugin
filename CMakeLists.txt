@@ -113,6 +113,7 @@ add_executable(auoms
         TranslateRecordType.cpp
         TranslateFieldType.cpp
         TranslateField.cpp
+        TranslateErrno.cpp
         AuditRules.cpp
         AuditRulesMonitor.cpp
         KernelInfo.cpp
@@ -155,6 +156,7 @@ add_executable(auomsctl
         TranslateRecordType.cpp
         TranslateFieldType.cpp
         TranslateField.cpp
+        TranslateErrno.cpp
         AuditRules.cpp
         StringUtils.cpp
         KernelInfo.cpp
@@ -165,6 +167,7 @@ add_executable(auomsctl
         FileUtils.cpp
         UnixDomainListener.cpp
         Event.cpp
+        UserDB.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html

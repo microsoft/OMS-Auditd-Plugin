@@ -180,8 +180,6 @@ bool CollectionMonitor::is_collector_alive() {
 }
 
 void CollectionMonitor::send_audit_pid_report(int pid) {
-    Logger::Info("CollectionMonitor: Audit Pid: %d", pid);
-
     auto pinfo = ProcessInfo::Open(pid);
     std::string exe;
     int ppid = -1;

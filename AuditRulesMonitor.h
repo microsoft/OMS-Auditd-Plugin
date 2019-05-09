@@ -36,6 +36,7 @@ private:
     void get_desired_rules();
     void check_file_rules();
     bool check_kernel_rules();
+    void check_audit_status();
 
     Netlink& _netlink;
     std::string _audit_rules_dir;

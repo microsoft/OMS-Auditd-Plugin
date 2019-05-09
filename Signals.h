@@ -18,6 +18,7 @@
 
 #include <atomic>
 #include <functional>
+#include <mutex>
 
 #include <pthread.h>
 
@@ -29,13 +30,20 @@ public:
     static bool IsExit();
     static void Terminate();
 
-    static void SetHupHandler(std::function<void()> fn) { _hup_fn = fn; }
-    static void SetExitHandler(std::function<void()> fn) { _exit_fn = fn; }
+    static void SetHupHandler(std::function<void()> fn) {
+        std::lock_guard<std::mutex> _lock(_mutex);
+        _hup_fn = fn;
+    }
+    static void SetExitHandler(std::function<void()> fn) {
+        std::lock_guard<std::mutex> _lock(_mutex);
+        _exit_fn = fn;
+    }
 
 private:
     static void run();
 
     static std::atomic<bool> _exit;
+    static std::mutex _mutex;
     static std::function<void()> _hup_fn;
     static std::function<void()> _exit_fn;
     static pthread_t _main_id;

@@ -21,6 +21,7 @@
 #include <signal.h>
 
 std::atomic<bool> Signals::_exit(false);
+std::mutex Signals::_mutex;
 std::function<void()> Signals::_hup_fn;
 std::function<void()> Signals::_exit_fn;
 pthread_t Signals::_main_id;
@@ -106,13 +107,17 @@ void Signals::run() {
             return;
         }
         if (sig == SIGHUP) {
+            std::lock_guard<std::mutex> _lock(_mutex);
             if (_hup_fn) {
                 _hup_fn();
             }
         } else {
             _exit.store(true);
-            if (_exit_fn) {
-                _exit_fn();
+            {
+                std::lock_guard<std::mutex> _lock(_mutex);
+                if (_exit_fn) {
+                    _exit_fn();
+                }
             }
             // Break main thread out of blocking syscall
             pthread_kill(_main_id, SIGQUIT);

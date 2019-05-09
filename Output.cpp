@@ -107,7 +107,7 @@ bool CursorWriter::Read() {
             Logger::Error("Output(%s): Failed to open cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
             return false;
         } else {
-            _cursor = QueueCursor::TAIL;
+            _cursor = QueueCursor::HEAD;
             return true;
         }
     }

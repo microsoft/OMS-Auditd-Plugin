@@ -141,6 +141,9 @@ public:
 
     AuditRule(const void* data, size_t len): _data(), _value_offsets(), is_delete_rule(false) {
         _data.fill(0);
+        if (len > _data.size()) {
+            throw std::out_of_range("len too large");
+        }
         ::memcpy(_data.data(), data, len);
         fill_value_offsets();
     }
@@ -240,7 +243,10 @@ private:
 
 void ReplaceSection(std::vector<std::string>& lines, const std::vector<std::string>& replacement, const std::string& start_marker,  const std::string& end_marker);
 void RemoveSection(std::vector<std::string>& lines, const std::string& start_marker,  const std::string& end_marker);
-std::vector<AuditRule> ParseRules(const std::vector<std::string>& lines);
+
+// If errors is null, then ParseRules will throiw an exception if there is a parse error
+// If errors is not null, then ParseRules willa append each parse error to errors and return only the parsed rules.
+std::vector<AuditRule> ParseRules(const std::vector<std::string>& lines, std::vector<std::string>* errors);
 
 std::vector<AuditRule> MergeRules(const std::vector<AuditRule>& rules1);
 std::vector<AuditRule> MergeRules(const std::vector<AuditRule>& rules1, const std::vector<AuditRule>& rules2);
@@ -253,10 +259,10 @@ std::vector<AuditRule> DiffRules(const std::vector<AuditRule>& actual, const std
 bool HasAuditdRulesFiles();
 
 // Read all *.rules files from dir, parse, merge then return them.
-std::vector<AuditRule> ReadAuditRulesFromDir(const std::string& dir);
+std::vector<AuditRule> ReadAuditRulesFromDir(const std::string& dir, std::vector<std::string>* errors);
 
 // Read rules from auditd rules (excluding auoms rules)
-std::vector<AuditRule> ReadActualAuditdRules(bool exclude_auoms);
+std::vector<AuditRule> ReadActualAuditdRules(bool exclude_auoms, std::vector<std::string>* errors);
 
 // Adds auoms's desired rules to auditd config
 // Returns true if augenrules needs to be run

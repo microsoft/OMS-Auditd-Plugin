@@ -37,6 +37,9 @@ public:
 
     void update(); // Exposed only to simplify tests
 
+    static int UserNameToUid(const std::string& name);
+    static int GroupNameToGid(const std::string& name);
+
 private:
     void inotify_task();
 

@@ -20,6 +20,7 @@
 #include "StringUtils.h"
 #include "KernelInfo.h"
 #include "FileUtils.h"
+#include "UserDB.h"
 
 #include <algorithm>
 #include <sstream>
@@ -28,6 +29,8 @@
 
 #include <climits>
 #include <system_error>
+#include <pwd.h>
+#include <fcntl.h>
 
 // Character that seperates key in AUDIT_FILTERKEY field in rules
 #define KEY_SEP 0x01
@@ -216,11 +219,13 @@ bool AuditRule::Parse(const std::string& text, std::string& error) {
                 if (!parse_add_p_arg(args[idx+1], error)) {
                     return false;
                 }
+                idx += 2;
                 break;
             case 'k':
                 if (!parse_add_k_arg(args[idx+1], error)) {
                     return false;
                 }
+                idx += 2;
                 break;
             case 'S':
                 if (watch) {
@@ -236,6 +241,7 @@ bool AuditRule::Parse(const std::string& text, std::string& error) {
                 if (!parse_add_S_arg(args[idx+1], error)) {
                     return false;
                 }
+                idx += 2;
                 break;
             case 'F':
                 if (watch) {
@@ -244,8 +250,16 @@ bool AuditRule::Parse(const std::string& text, std::string& error) {
                     error.append("' option");
                     return false;
                 }
-                if (!parse_add_F_arg(args[idx+1], error)) {
-                    return false;
+                if (args[idx].size() > 2) {
+                    if (!parse_add_F_arg(args[idx].substr(2), error)) {
+                        return false;
+                    }
+                    idx += 1;
+                } else {
+                    if (!parse_add_F_arg(args[idx+1], error)) {
+                        return false;
+                    }
+                    idx += 2;
                 }
                 break;
             case 'C':
@@ -258,6 +272,7 @@ bool AuditRule::Parse(const std::string& text, std::string& error) {
                 if (!parse_add_C_arg(args[idx+1], error)) {
                     return false;
                 }
+                idx += 2;
                 break;
             default:
                 error.append("Unsupported option '");
@@ -265,7 +280,6 @@ bool AuditRule::Parse(const std::string& text, std::string& error) {
                 error.append("'");
                 return false;
         }
-        idx += 2;
     }
 
     return true;
@@ -302,28 +316,32 @@ bool AuditRule::parse_add_a_arg(const std::string& val, std::string& error) {
         return false;
     }
 
+    bool action_found = false;
     for (auto& part: parts) {
         auto itr = s_a_actions.find(part);
         if (itr != s_a_actions.end()) {
             ruleptr()->action = itr->second;
+            action_found = true;
         }
     }
 
-    if (ruleptr()->action == 0) {
+    if (!action_found) {
         error.append("Invalid or missing action value for option '-a': '");
         error.append(val);
         error.append("'");
         return false;
     }
 
+    bool flags_found = false;
     for (auto& part: parts) {
         auto itr = s_a_flags.find(part);
         if (itr != s_a_flags.end()) {
             ruleptr()->flags |= itr->second;
+            flags_found = true;
         }
     }
 
-    if (ruleptr()->flags == 0) {
+    if (!flags_found) {
         error.append("Invalid or missing flags value for option '-a': '");
         error.append(val);
         error.append("'");
@@ -422,6 +440,18 @@ std::unordered_map<std::string, uint32_t> s_F_ops(
         }
 );
 
+std::unordered_map<std::string, uint32_t> s_F_ftypes(
+        {
+                {"socket", S_IFSOCK},
+                {"link", S_IFLNK},
+                {"file", S_IFREG},
+                {"block", S_IFBLK},
+                {"dir", S_IFDIR},
+                {"character", S_IFCHR},
+                {"fifo", S_IFIFO},
+        }
+);
+
 bool AuditRule::parse_add_F_arg(const std::string& val, std::string& error) {
     auto idx = val.find_first_of("=!<>&");
     if (idx == 0) {
@@ -474,6 +504,128 @@ bool AuditRule::parse_add_F_arg(const std::string& val, std::string& error) {
     }
 
     switch (field) {
+        case AUDIT_UID:
+        case AUDIT_EUID:
+        case AUDIT_SUID:
+        case AUDIT_FSUID:
+        case AUDIT_LOGINUID:
+        case AUDIT_OBJ_UID:
+            try {
+                if (std::isdigit(value[0])) {
+                    uint32_t v = static_cast<uint32_t>(stoul(value, 0, 0));
+                    add_field(field, op, v);
+                } else if (value.size() > 1 && value[0] == '-' && std::isdigit(value[1])) {
+                    uint32_t v = static_cast<uint32_t>(stol(value, 0, 0));
+                    add_field(field, op, v);
+                } else {
+                    if (value == "unset") {
+                        add_field(field, op, 4294967295);
+                    } else {
+                        auto uid = UserDB::UserNameToUid(value);
+                        if (uid < 0) {
+                            error.append("Invalid value for option '-F': Unknown username: '");
+                            error.append(val);
+                            error.append("'");
+                            return false;
+                        }
+                        add_field(field, op, uid);
+                    }
+                }
+            } catch (std::exception &) {
+                error.append("Invalid value for option '-F': Invalid numeric value: '");
+                error.append(val);
+                error.append("'");
+                return false;
+            }
+            break;
+        case AUDIT_GID:
+        case AUDIT_EGID:
+        case AUDIT_SGID:
+        case AUDIT_FSGID:
+        case AUDIT_OBJ_GID:
+            try {
+                if (std::isdigit(value[0])) {
+                    uint32_t v = static_cast<uint32_t>(stoul(value, 0, 0));
+                    add_field(field, op, v);
+                } else if (value.size() > 1 && value[0] == '-' && std::isdigit(value[1])) {
+                    uint32_t v = static_cast<uint32_t>(stol(value, 0, 0));
+                    add_field(field, op, v);
+                } else {
+                    if (value == "unset") {
+                        add_field(field, op, 4294967295);
+                    } else {
+                        auto gid = UserDB::GroupNameToGid(value);
+                        if (gid < 0) {
+                            error.append("Invalid value for option '-F': Unknown group name: '");
+                            error.append(val);
+                            error.append("'");
+                            return false;
+                        }
+                        add_field(field, op, gid);
+                    }
+                }
+            } catch (std::exception &) {
+                error.append("Invalid value for option '-F': Invalid numeric value: '");
+                error.append(val);
+                error.append("'");
+                return false;
+            }
+            break;
+        case AUDIT_EXIT:
+            if ((ruleptr()->flags & FILTER_MASK) != AUDIT_FILTER_EXIT) {
+                error.append("Invalid value for option '-F': Cannot filter on exit field unless flags (-a option) == 'exit'");
+                return false;
+            }
+            try {
+                if (std::isdigit(value[0])) {
+                    uint32_t v = static_cast<uint32_t>(stoul(value, 0, 0));
+                    add_field(field, op, v);
+                } else if (value.size() > 1 && value[0] == '-' && std::isdigit(value[1])) {
+                    uint32_t v = static_cast<uint32_t>(stol(value, 0, 0));
+                    add_field(field, op, v);
+                } else {
+                    auto v = NameToErrno(value);
+                    if (v == 0) {
+                        error.append("Invalid value for option '-F': Invalid errno name: '");
+                        error.append(val);
+                        error.append("'");
+                        return false;
+                    }
+                    add_field(field, op, v);
+                }
+            } catch (std::exception &) {
+                error.append("Invalid value for option '-F': Invalid numeric value: '");
+                error.append(val);
+                error.append("'");
+                return false;
+            }
+            break;
+        case AUDIT_MSGTYPE:
+            if ((ruleptr()->flags & FILTER_MASK) != AUDIT_FILTER_TYPE) {
+                error.append("Invalid value for option '-F': Cannot filter on msg type unless flags (-a option) == 'exclude'");
+                return false;
+            }
+            if (std::isdigit(value[0])) {
+                try {
+                    uint32_t v = static_cast<uint32_t>(stoul(value, 0, 0));
+                    add_field(field, op, v);
+                } catch (std::exception &) {
+                    error.append("Invalid value for option '-F': Invalid numeric value: '");
+                    error.append(val);
+                    error.append("'");
+                    return false;
+                }
+            } else {
+                auto rt = RecordNameToType(value);
+                if (rt == RecordType::UNKNOWN) {
+                    error.append("Invalid value for option '-F': Invalid record type name: '");
+                    error.append(val);
+                    error.append("'");
+                    return false;
+                }
+                add_field(field, op, static_cast<uint32_t>(rt));
+            }
+            break;
         case AUDIT_ARCH: {
             auto arch = ArchNameToArch(value);
             if (arch == 0) {
@@ -489,12 +641,6 @@ bool AuditRule::parse_add_F_arg(const std::string& val, std::string& error) {
             add_field(field, op, arch);
             break;
         }
-        case AUDIT_MSGTYPE:
-            if ((ruleptr()->flags & FILTER_MASK) != AUDIT_FILTER_TYPE) {
-                error.append("Invalid value for option '-F': Cannot filter on msg type unless flags (-a option) == 'exclude'");
-                return false;
-            }
-            break;
         case AUDIT_PERM: {
             uint32_t perms = 0;
             for (auto c: value) {
@@ -521,11 +667,29 @@ bool AuditRule::parse_add_F_arg(const std::string& val, std::string& error) {
             add_field(AUDIT_PERM, op, perms);
             break;
         }
+        case AUDIT_OBJ_USER:
+            /* fallthrough */
+        case AUDIT_OBJ_ROLE:
+            /* fallthrough */
+        case AUDIT_OBJ_TYPE:
+            /* fallthrough */
+        case AUDIT_OBJ_LEV_LOW:
+            /* fallthrough */
+        case AUDIT_OBJ_LEV_HIGH:
+            if (ruleptr()->flags != AUDIT_FILTER_EXIT) {
+                error = "Field '" + field_name + "' can only be used with 'exit' filter";
+                return false;
+            }
+            add_str_field(field, op, value);
+            break;
         case AUDIT_WATCH:
             /* fallthrough */
         case AUDIT_DIR: {
-            /* fallthrough */
-            auto path = clean_path(val);
+            if (ruleptr()->flags != AUDIT_FILTER_EXIT) {
+                error = "Field '" + field_name + "' can only be used with 'exit' filter";
+                return false;
+            }
+            auto path = clean_path(value);
             if (!check_path(path, error)) {
                 error = "Invalid path option: " + error;
                 return false;
@@ -533,12 +697,38 @@ bool AuditRule::parse_add_F_arg(const std::string& val, std::string& error) {
             add_str_field(field, op, path);
             break;
         }
+        case AUDIT_SUBJ_USER:
+            /* fallthrough */
+        case AUDIT_SUBJ_ROLE:
+            /* fallthrough */
+        case AUDIT_SUBJ_TYPE:
+            /* fallthrough */
+        case AUDIT_SUBJ_SEN:
+            /* fallthrough */
+        case AUDIT_SUBJ_CLR:
+            /* fallthrough */
         case AUDIT_EXE:
             add_str_field(field, op, value);
             break;
         case AUDIT_FILTERKEY:
             AddKey(value);
             break;
+        case AUDIT_FILETYPE: {
+            if (ruleptr()->flags != AUDIT_FILTER_EXIT) {
+                error = "Field '" + field_name + "' can only be used with 'exit' filter";
+                return false;
+            }
+            auto ft = s_F_ftypes.find(value);
+            if (ft != s_F_ftypes.end()) {
+                add_field(field, op, ft->second);
+            } else {
+                error.append("Invalid value for option '-F': Invalid filetype name: '");
+                error.append(val);
+                error.append("'");
+                return false;
+            }
+            break;
+        }
         default:
             try {
                 uint32_t v = static_cast<uint32_t>(stol(value, 0, 0));
@@ -1689,7 +1879,7 @@ void RemoveSection(std::vector<std::string>& lines, const std::string& start_mar
     lines.erase(start, end);
 }
 
-std::vector<AuditRule> ParseRules(const std::vector<std::string>& lines) {
+std::vector<AuditRule> ParseRules(const std::vector<std::string>& lines, std::vector<std::string>* errors) {
     std::vector<AuditRule> rules;
     for (int i = 0; i < lines.size(); ++i) {
         AuditRule rule;
@@ -1697,7 +1887,11 @@ std::vector<AuditRule> ParseRules(const std::vector<std::string>& lines) {
         if (rule.Parse(lines[i], error)) {
             rules.emplace_back(rule);
         } else if (!error.empty()) {
-            throw std::runtime_error("Failed to parse line " + std::to_string(i+1) + ": " + error);
+            if (errors != nullptr) {
+                errors->emplace_back("Failed to parse line " + std::to_string(i + 1) + ": " + error);
+            } else {
+                throw std::runtime_error("Failed to parse line " + std::to_string(i + 1) + ": " + error);
+            }
         }
     }
     return rules;
@@ -1827,7 +2021,7 @@ std::vector<AuditRule> DiffRules(const std::vector<AuditRule>& actual, const std
     return rules;
 }
 
-std::vector<AuditRule> ReadAuditRulesFromDir(const std::string& dir) {
+std::vector<AuditRule> ReadAuditRulesFromDir(const std::string& dir, std::vector<std::string>* errors) {
     std::vector<std::string> files;
     std::vector<AuditRule> rules;
 
@@ -1836,7 +2030,7 @@ std::vector<AuditRule> ReadAuditRulesFromDir(const std::string& dir) {
     for(auto& file: files) {
         if (ends_with(file, ".rules")) {
             auto lines = ReadFile(dir + "/" + file);
-            rules = MergeRules(rules, ParseRules(lines));
+            rules = MergeRules(rules, ParseRules(lines, errors));
         }
     }
 
@@ -1844,7 +2038,7 @@ std::vector<AuditRule> ReadAuditRulesFromDir(const std::string& dir) {
 }
 
 // Read rules from auditd rules.d dir
-std::vector<AuditRule> ReadAuditdRulesDir(bool exclude_auoms) {
+std::vector<AuditRule> ReadAuditdRulesDir(bool exclude_auoms, std::vector<std::string>* errors) {
     std::vector<std::string> files;
     std::vector<AuditRule> rules;
 
@@ -1853,8 +2047,9 @@ std::vector<AuditRule> ReadAuditdRulesDir(bool exclude_auoms) {
     for(auto& file: files) {
         if (ends_with(file, ".rules")) {
             auto lines = ReadFile(std::string(AUDITD_RULES_DIR) + "/" + file);
+            std::vector<std::string> file_errors;
             if (exclude_auoms) {
-                auto in_rules = ParseRules(lines);
+                auto in_rules = ParseRules(lines, &file_errors);
                 std::vector<AuditRule> out_rules;
                 out_rules.reserve(in_rules.size());
                 // Only include non-auoms rules
@@ -1866,7 +2061,19 @@ std::vector<AuditRule> ReadAuditdRulesDir(bool exclude_auoms) {
                 }
                 rules = MergeRules(rules, out_rules);
             } else {
-                rules = MergeRules(rules, ParseRules(lines));
+                rules = MergeRules(rules, ParseRules(lines, &file_errors));
+            }
+            if (errors != nullptr) {
+                for (auto &err : file_errors) {
+                    errors->emplace_back("Encountered parse error in '" + std::string(AUDITD_RULES_DIR) + "/" + file + "': " + err);
+                }
+            } else {
+                std::stringstream ss;
+                ss << "Encountered parse errors in '" << std::string(AUDITD_RULES_DIR) << "/" << file << "': " << std::endl;
+                for (auto &err : file_errors) {
+                    ss << "    " << err << std::endl;
+                }
+                throw std::runtime_error(ss.str());
             }
         }
     }
@@ -1908,7 +2115,7 @@ bool HasAuditdRulesFiles() {
     return PathExists(AUDITD_RULES_FILE);
 }
 
-std::vector<AuditRule> ReadActualAuditdRules(bool exclude_auoms) {
+std::vector<AuditRule> ReadActualAuditdRules(bool exclude_auoms, std::vector<std::string>* errors) {
     if (!PathExists(AUDITD_RULES_FILE)) {
         return std::vector<AuditRule>();
     }
@@ -1918,13 +2125,15 @@ std::vector<AuditRule> ReadActualAuditdRules(bool exclude_auoms) {
     // If the audit.rules file was at any time in the past generated with augenrules
     // assume it is still in use
     if (PathExists(AUGENRULES_BIN) && lines.size() > 0 && starts_with(lines[0], AUGENRULES_HEADER)) {
-        return ReadAuditdRulesDir(exclude_auoms);
+        return ReadAuditdRulesDir(exclude_auoms, errors);
     } else {
+        std::vector<AuditRule> rules;
+        std::vector<std::string> file_errors;
         if (exclude_auoms) {
             // Remove the auoms rules section if present.
             RemoveSection(lines, AUOMS_AUDITD_RULES_FILE_START_MARKER, AUOMS_AUDITD_RULES_FILE_END_MARKER);
 
-            auto in_rules = ParseRules(lines);
+            auto in_rules = ParseRules(lines, &file_errors);
             std::vector<AuditRule> out_rules;
             out_rules.reserve(in_rules.size());
             // Only include non-auoms rules
@@ -1934,17 +2143,30 @@ std::vector<AuditRule> ReadActualAuditdRules(bool exclude_auoms) {
                     out_rules.emplace_back(rule);
                 }
             }
-            return MergeRules({}, out_rules);
+            rules = MergeRules({}, out_rules);
         } else {
-            return MergeRules({}, ParseRules(lines));
+            rules = MergeRules({}, ParseRules(lines, &file_errors));
         }
+        if (errors != nullptr) {
+            for (auto &err : file_errors) {
+                errors->emplace_back("Encountered parse error in '" + std::string(AUDITD_RULES_FILE) + "': " + err);
+            }
+        } else {
+            std::stringstream ss;
+            ss << "Encountered parse errors in '" << std::string(AUDITD_RULES_FILE) << "': " << std::endl;
+            for (auto &err : file_errors) {
+                ss << "    " << err << std::endl;
+            }
+            throw std::runtime_error(ss.str());
+        }
+        return rules;
     }
 }
 
 bool WriteAuditdRules(const std::vector<AuditRule>& rules) {
     auto lines = ReadFile(AUDITD_RULES_FILE);
 
-    if (PathExists(AUGENRULES_BIN) && lines.size() > 0 && starts_with(lines[0], AUGENRULES_HEADER)) {
+    if (PathExists(AUGENRULES_BIN) && !lines.empty() && starts_with(lines[0], AUGENRULES_HEADER)) {
         WriteAuomsRuleToAuditDir(rules);
         return true;
     } else {
@@ -1960,8 +2182,9 @@ bool WriteAuditdRules(const std::vector<AuditRule>& rules) {
 // Remove auoms's desired rules to auditd config
 // Returns true if augenrules needs to be run
 bool RemoveAuomsRulesAuditdFiles() {
+    std::vector<std::string> errors;
     bool has_auoms_rules = false;
-    auto rules = ReadActualAuditdRules(false);
+    auto rules = ReadActualAuditdRules(false, &errors);
     for (auto &rule: rules) {
         auto keys = rule.GetKeys();
         if (keys.count(AUOMS_RULE_KEY) > 0) {
