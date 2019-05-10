@@ -36,8 +36,8 @@ SEPOLICY_DIR=$(INTERMEDIATE_DIR)/selinux
 
 # Compiler flags
 
-#CMAKE_BUILD_TYPE=Release
-CMAKE_BUILD_TYPE=RelWithDebInfo
+CMAKE_BUILD_TYPE=Release
+#CMAKE_BUILD_TYPE=RelWithDebInfo
 ifeq ($(ENABLE_DEBUG),1)
 CMAKE_BUILD_TYPE=Debug
 endif
