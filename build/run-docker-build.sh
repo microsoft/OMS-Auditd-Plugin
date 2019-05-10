@@ -24,5 +24,7 @@ fi
 
 cd $(dirname $0)/../..
 ROOT=$(pwd)
+VDIR=$(dirname $ROOT)
+DIR=$(basename $ROOT)
 
-docker run --rm -it -v $ROOT:/var/oms $DOCKER_IMAGE /var/oms/OMS-Auditd-Plugin/build/docker-build-auoms.sh
+docker run --rm -v $VDIR:/var/oms $DOCKER_IMAGE /var/oms/$DIR/build/docker-build-auoms.sh
