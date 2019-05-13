@@ -16,31 +16,4 @@
 # THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ####
 
-ISSUE_WARNING=0
-
-echo "Checking if required dependencies for auoms are installed..." 1>&2
-if [ ! -e /sbin/auditd ]; then
-        echo "  /sbin/auditd isn't installed" 1>&2
-        ISSUE_WARNING=1
-fi
-if [ ! -e /sbin/audispd ]; then
-        echo "  /sbin/audispd isn't installed" 1>&2
-        ISSUE_WARNING=1
-fi
-/sbin/ldconfig -p | grep libaudit.so >/dev/null 2>&1
-if [ $? -ne 0 ]; then
-        echo "  libaudit.so isn't installed" 1>&2
-        ISSUE_WARNING=1
-fi
-/sbin/ldconfig -p | grep libauparse.so >/dev/null 2>&1
-if [ $? -ne 0 ]; then
-        echo "  libauparse.so isn't installed" 1>&2
-        ISSUE_WARNING=1
-fi
-
-if [ $ISSUE_WARNING -ne 0 ]; then
-    echo "  Because the necessary dependencies are not installed, the auoms auditd plugin will not be installed." 1>&2
-    echo "      For Debian & Ubuntu, install the 'auditd' package." 1>&2
-    echo "      For CentOS, RHEL & SLES, install the 'audit' package." 1>&2
-    exit 1
-fi
+exit 0
