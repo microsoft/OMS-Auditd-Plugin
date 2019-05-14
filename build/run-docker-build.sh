@@ -22,7 +22,7 @@ if [ "$1" == "32" ]; then
     DOCKER_IMAGE=auoms-build32
 fi
 
-cd $(dirname $0)/../..
+cd $(dirname $0)/..
 ROOT=$(pwd)
 VDIR=$(dirname $ROOT)
 DIR=$(basename $ROOT)

@@ -120,11 +120,13 @@ int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t reply_
 }
 
 int Netlink::AuditGet(audit_status& status) {
+    ::memset(&status, 0, sizeof(status));
     return Send(AUDIT_GET, nullptr, 0, [&status](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
         if (type == AUDIT_GET) {
             std::memcpy(&status, data, std::min(len, sizeof(status)));
             return false;
         }
+        return true;
     });
 }
 
