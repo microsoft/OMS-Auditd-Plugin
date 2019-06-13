@@ -158,6 +158,7 @@ enum class RecordType: int {
     FIRST_KERN_ANOM_MSG       = 1700,
     LAST_KERN_ANOM_MSG        = 1799,
     ANOM_PROMISCUOUS          = 1700,
+    ANOM_ABEND                = 1701,
     ANOM_LINK                 = 1702,
     INTEGRITY_FIRST_MSG       = 1800,
     INTEGRITY_LAST_MSG        = 1899,
