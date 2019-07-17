@@ -35,6 +35,7 @@
 #include <unistd.h>
 #include <cstring>
 #include <sys/stat.h>
+#include <sstream>
 
 #define AUOMS_SERVICE_NAME "auoms"
 #define AUDITD_SERVICE_NAME "auditd"
@@ -1095,16 +1096,35 @@ int set_rules() {
     }
 
     try {
-        auto rules = ReadActualAuditdRules(false, nullptr);
-        auto diff = DiffRules(rules, desired_rules, "");
+        std::vector<std::string> errors;
+        auto rules = ReadActualAuditdRules(false, &errors);
+        if (!errors.empty()) {
+            std::cout << " Encountered parse errors: " << std::endl;
+            for (auto& err : errors) {
+                std::cout << "    " << err << std::endl;
+            }
+            return -1;
+        }
+        auto merged_rules = MergeRules(rules);
+        auto diff = DiffRules(merged_rules, desired_rules, "");
         if (diff.empty()) {
             return 0;
         }
         Logger::Info("AuditRulesMonitor: Found desired audit rules not currently present in auditd rules files(s), adding new rules");
+
         // Re-read rules but exclude auoms rules
-        rules = ReadActualAuditdRules(true, nullptr);
+        errors.clear();
+        rules = ReadActualAuditdRules(true, &errors);
+        if (!errors.empty()) {
+            std::cout << " Encountered parse errors: " << std::endl;
+            for (auto& err : errors) {
+                std::cout << "    " << err << std::endl;
+            }
+            return -1;
+        }
+        merged_rules = MergeRules(rules);
         // Re-calculate diff
-        diff = DiffRules(rules, desired_rules, "");
+        diff = DiffRules(merged_rules, desired_rules, "");
         if (WriteAuditdRules(diff)) {
             Logger::Info("AuditRulesMonitor: augenrules appears to be in-use, running augenrules after updating auoms rules in /etc/audit/rules.d");
             Cmd cmd(AUGENRULES_BIN, {}, Cmd::NULL_STDIN|Cmd::COMBINE_OUTPUT);
@@ -1113,12 +1133,14 @@ int set_rules() {
             if (ret != 0) {
                 Logger::Warn("AuditRulesMonitor: augenrules failed: %s", cmd.FailMsg().c_str());
                 Logger::Warn("AuditRulesMonitor: augenrules output: %s", output.c_str());
+                return -1;
             } else {
                 Logger::Warn("AuditRulesMonitor: augenrules succeeded");
             }
         }
     } catch (std::exception& ex) {
         Logger::Error("AuditRulesMonitor: Failed to check/update auditd rules: %s", ex.what());
+        return -1;
     }
     return 0;
 }

@@ -23,17 +23,9 @@
 #include "Interpret.h"
 #include "StringUtils.h"
 
-/*****************************************************************************
-* New record types are in 10000 range to avoid collision with existing codes.
-*
-* 14688 was chosen for aggregate process creation records, given similarity
-* to windows 4688 events.
-*
-* 11309 was chosen for fragmented EXECVE records, following use of 1309 for
-* native AUDIT_EXECVE.
-*
-******************************************************************************/
-
+// Character that separates key in AUDIT_FILTERKEY field in rules
+// This value mirrors what is defined for AUDIT_KEY_SEPARATOR in libaudit.h
+#define KEY_SEP 0x01
 
 #define PROCESS_INVENTORY_FETCH_INTERVAL 300
 #define PROCESS_INVENTORY_EVENT_INTERVAL 3600
@@ -659,6 +651,13 @@ bool RawEventProcessor::process_field(const EventRecord& record, const EventReco
             break;
         }
         case field_type_t::ESCAPED:
+            break;
+        case field_type_t::ESCAPED_KEY:
+            if (unescape_raw_field(_tmp_val, val_ptr, field.RawValueSize()) > 0) {
+                std::replace(_tmp_val.begin(), _tmp_val.end(), static_cast<char>(KEY_SEP), ',');
+            } else {
+                _tmp_val.resize(0);
+            }
             break;
         case field_type_t::PROCTITLE:
             break;
