@@ -77,7 +77,11 @@ int RawEvent::AddEvent(EventBuilder& builder) {
     if (_records.empty() && _num_dropped_records == 0) {
         return 1;
     }
-    auto ret = builder.BeginEvent(_event_id.Seconds(), _event_id.Milliseconds(), _event_id.Serial(), static_cast<uint16_t>(_records.size()+_execve_records.size()));
+    uint16_t num_records = static_cast<uint16_t>(_records.size()+_execve_records.size());
+    if (_num_dropped_records > 0 && _drop_count.size() > 0) {
+        num_records += 1;
+    }
+    auto ret = builder.BeginEvent(_event_id.Seconds(), _event_id.Milliseconds(), _event_id.Serial(), num_records);
     if (ret != 1) {
         return ret;
     }

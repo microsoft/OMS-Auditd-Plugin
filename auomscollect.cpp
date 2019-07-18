@@ -118,7 +118,7 @@ void DoStdinCollection(RawEventAccumulator& accumulator) {
     }
 }
 
-void DoNetlinkCollection(RawEventAccumulator& accumulator) {
+bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
     // Request that that this process receive a SIGTERM if the parent process (thread in parent) dies/exits.
     auto ret = prctl(PR_SET_PDEATHSIG, SIGTERM);
     if (ret != 0) {
@@ -157,7 +157,7 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
     ret = netlink.Open(handler);
     if (ret != 0) {
         Logger::Error("Failed to open AUDIT NETLINK connection: %s", std::strerror(-ret));
-        return;
+        return false;
     }
     Defer _close_netlink([&netlink]() { netlink.Close(); });
 
@@ -171,14 +171,14 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
     ret = NetlinkRetry([&netlink,&status]() { return netlink.AuditGet(status); } );
     if (ret != 0) {
         Logger::Error("Failed to get audit status: %s", std::strerror(-ret));
-        return;
+        return false;
     }
     uint32_t pid = status.pid;
     uint32_t enabled = status.enabled;
 
     if (pid != 0 && PathExists("/proc/" + std::to_string(pid))) {
         Logger::Error("There is another process (pid = %d) already assigned as the audit collector", pid);
-        return;
+        return false;
     }
 
     Logger::Info("Enabling AUDIT event collection");
@@ -186,18 +186,19 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
     do {
         if (retry_count > 5) {
             Logger::Error("Failed to set audit pid: Max retried exceeded");
+            return false;
         }
         ret = netlink.AuditSetPid(our_pid);
         if (ret == -ETIMEDOUT) {
             // If setpid timedout, it may have still succeeded, so re-fetch pid
-            ret = NetlinkRetry([&netlink,&status,&pid]() { return netlink.AuditGetPid(pid); });
+            ret = NetlinkRetry([&netlink,&pid]() { return netlink.AuditGetPid(pid); });
             if (ret != 0) {
                 Logger::Error("Failed to get audit pid: %s", std::strerror(-ret));
-                return;
+                return false;
             }
         } else if (ret != 0) {
             Logger::Error("Failed to set audit pid: %s", std::strerror(-ret));
-            return;
+            return false;
         } else {
             break;
         }
@@ -207,7 +208,7 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
         ret = NetlinkRetry([&netlink,&status]() { return netlink.AuditSetEnabled(1); });
         if (ret != 0) {
             Logger::Error("Failed to enable auditing: %s", std::strerror(-ret));
-            return;
+            return false;
         }
     }
 
@@ -224,23 +225,25 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
 
     Signals::SetExitHandler([&_stop_gate]() { _stop_gate.Open(); });
 
-    std::chrono::steady_clock::time_point _last_pid_check;
+    auto last_pid_check = std::chrono::steady_clock::now();
     while(!Signals::IsExit()) {
         if (_stop_gate.Wait(Gate::OPEN, 100)) {
-            return;
+            return false;
         }
 
         try {
             accumulator.Flush(200);
         } catch (const std::exception &ex) {
             Logger::Error("Unexpected exception while flushing input: %s", ex.what());
+            return false;
         } catch (...) {
             Logger::Error("Unexpected exception while flushing input");
+            return false;
         }
 
         auto now = std::chrono::steady_clock::now();
-        if (_last_pid_check < now - std::chrono::seconds(1)) {
-            _last_pid_check = now;
+        if (last_pid_check < now - std::chrono::seconds(1)) {
+            last_pid_check = now;
             pid = 0;
             int ret;
             ret = NetlinkRetry([&netlink,&pid]() { return netlink.AuditGetPid(pid); });
@@ -252,11 +255,16 @@ void DoNetlinkCollection(RawEventAccumulator& accumulator) {
                 } else {
                     Logger::Error("Failed to get audit pid: %s", std::strerror(-ret));
                 }
-                return;
+                return false;
             } else {
                 if (pid != our_pid) {
-                    Logger::Warn("Another process (pid = %d) has taken over AUDIT NETLINK event collection.", pid);
-                    return;
+                    if (pid != 0) {
+                        Logger::Warn("Another process (pid = %d) has taken over AUDIT NETLINK event collection.", pid);
+                        return false;
+                    } else {
+                        Logger::Warn("Audit pid was unexpectedly set to 0, restarting...");
+                        return true;
+                    }
                 }
             }
         }
@@ -406,7 +414,10 @@ int main(int argc, char**argv) {
     output.Start();
 
     if (netlink_mode) {
-        DoNetlinkCollection(accumulator);
+        bool restart;
+        do {
+            restart = DoNetlinkCollection(accumulator);
+        } while (restart);
     } else {
         DoStdinCollection(accumulator);
     }

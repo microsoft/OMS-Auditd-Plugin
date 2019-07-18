@@ -157,9 +157,6 @@ public:
     // Rule text minus mergable parts (perms syscalls, keys)
     std::string CanonicalMergeKey() const;
 
-    // Rule text minus keys
-    std::string CanonicalDiffText() const;
-
     // Full Rule test
     std::string CanonicalText() const;
 

@@ -19,7 +19,7 @@
 
 std::vector<const char*> raw_test_events = {
         // Test normal EXECVE transform
-        R"event(type=SYSCALL msg=audit(1521757638.392:262332): arch=c000003e syscall=59 success=yes exit=0 a0=55d782c96198 a1=55d782c96120 a2=55d782c96158 a3=1 items=2 ppid=26595 pid=26918 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=842 comm="logger" exe="/usr/bin/logger" key=(null)
+        R"event(type=SYSCALL msg=audit(1521757638.392:262332): arch=c000003e syscall=59 success=yes exit=0 a0=55d782c96198 a1=55d782c96120 a2=55d782c96158 a3=1 items=2 ppid=26595 pid=26918 auid=0 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=842 comm="logger" exe="/usr/bin/logger" key=61756F6D7301657865637665
 type=EXECVE msg=audit(1521757638.392:262332): argc=6 a0="logger" a1="-t" a2="zfs-backup" a3="-p" a4="daemon.err" a5=7A667320696E6372656D656E74616C206261636B7570206F662072706F6F6C2F6C7864206661696C65643A20
 type=CWD msg=audit(1521757638.392:262332):  cwd="/"
 type=PATH msg=audit(1521757638.392:262332): item=0 name="/usr/bin/logger" inode=312545 dev=00:13 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL
@@ -41,6 +41,8 @@ type=EOE msg=audit(1521757638.392:262334):
 )event",
         // Test to make sure pid gets reset from previous event
         R"event(type=BPRM_FCAPS msg=audit(1521773704.435:270957): fver=0 fp=0000000000000000 fi=0000000000000000 fe=0 old_pp=0000000000000000 old_pi=0000000000000000 old_pe=0000000000000000 new_pp=0000003fffffffff new_pi=0000000000000000 new_pe=0000003fffffffff
+)event",
+        R"event(type=USER_LOGIN msg=audit(1562867403.686:4179743): pid=26475 uid=0 auid=1000 ses=91158 msg='op=login id=1000 exe="/usr/sbin/sshd" hostname=131.107.147.6 addr=131.107.147.6 terminal=/dev/pts/0 res=success'
 )event",
         R"event(type=LOGIN msg=audit(1521757801.424:262683): pid=27127 uid=0 old-auid=4294967295 auid=0 old-ses=4294967295 ses=844 res=1
 )event",
@@ -69,7 +71,7 @@ const std::vector<TestEvent> test_events {
                 {"ses", "842", nullptr, field_type_t::SESSION},
                 {"comm", "\"logger\"", nullptr, field_type_t::ESCAPED},
                 {"exe", "\"/usr/bin/logger\"", nullptr, field_type_t::ESCAPED},
-                {"key", "(null)", nullptr, field_type_t::ESCAPED_KEY},
+                {"key", "61756F6D7301657865637665", "auoms,execve", field_type_t::ESCAPED_KEY},
                 // CWD
                 {"cwd", "\"/\"", nullptr, field_type_t::ESCAPED},
                 // PATH
@@ -156,6 +158,21 @@ const std::vector<TestEvent> test_events {
                 {"new_pe", "0000003fffffffff", nullptr, field_type_t::CAP_BITMAP},
             }}}
         },
+        {1562867403, 686, 4179743, 0, 26475, {
+            {1112, "USER_LOGIN", "type=USER_LOGIN msg=audit(1562867403.686:4179743): pid=26475 uid=0 auid=1000 ses=91158 msg='op=login id=1000 exe=\"/usr/sbin/sshd\" hostname=131.107.147.6 addr=131.107.147.6 terminal=/dev/pts/0 res=success'", {
+                {"pid", "26475", nullptr, field_type_t::UNCLASSIFIED},
+                {"uid", "0", "root", field_type_t::UID},
+                {"auid", "1000", "user", field_type_t::UID},
+                {"ses", "91158", nullptr, field_type_t::SESSION},
+                {"op", "login", nullptr, field_type_t::UNCLASSIFIED},
+                {"id", "1000", "user", field_type_t::UID},
+                {"exe", "\"/usr/sbin/sshd\"", nullptr, field_type_t::ESCAPED},
+                {"hostname", "131.107.147.6", nullptr, field_type_t::UNCLASSIFIED},
+                {"addr", "131.107.147.6", nullptr, field_type_t::ADDR},
+                {"terminal", "/dev/pts/0", nullptr, field_type_t::UNCLASSIFIED},
+                {"res", "success", nullptr, field_type_t::SUCCESS},
+            }}}
+        },
         {1521757801, 424, 262683, 0, 27127, {
             {1006, "LOGIN", "type=LOGIN msg=audit(1521757801.424:262683): pid=27127 uid=0 old-auid=4294967295 auid=0 old-ses=4294967295 ses=844 res=1", {
                 {"pid", "27127", nullptr, field_type_t::UNCLASSIFIED},
@@ -176,7 +193,8 @@ const std::vector<const char*> oms_test_events = {
 };
 */
 const std::vector<const char*> oms_test_events = {
-        R"event([1521757638.392,{"MessageType":"AUOMS_EVENT","Timestamp":"1521757638.392","SerialNumber":262332,"ProcessFlags":0,"records":[{"RecordTypeCode":14688,"RecordType":"AUOMS_EXECVE","arch":"x86_64","syscall":"execve","success":"yes","exit":"0","ppid":"26595","pid":"26918","audit_user":"root","auid":"0","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"842","comm":"logger","exe":"/usr/bin/logger","key":"(null)","cwd":"/","name":"/usr/bin/logger","inode":"312545","dev":"00:13","mode":"file,755","o_user":"root","ouid":"0","owner_group":"root","ogid":"0","rdev":"00:00","nametype":"NORMAL","argc":"6","cmdline":"logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \""}]}])event",
-        R"event([1521757638.392,{"MessageType":"AUOMS_EVENT","Timestamp":"1521757638.392","SerialNumber":262333,"ProcessFlags":0,"records":[{"RecordTypeCode":14688,"RecordType":"AUOMS_EXECVE","arch":"x86_64","syscall":"execve","success":"yes","exit":"0","ppid":"26595","pid":"26918","audit_user":"root","auid":"0","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"842","comm":"logger","exe":"/usr/bin/logger","key":"(null)","argc":"6","cmdline":"logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \""}]}])event",
+        R"event([1521757638.392,{"MessageType":"AUOMS_EVENT","Timestamp":"1521757638.392","SerialNumber":262332,"ProcessFlags":0,"records":[{"RecordTypeCode":14688,"RecordType":"AUOMS_EXECVE","arch":"x86_64","syscall":"execve","success":"yes","exit":"0","ppid":"26595","pid":"26918","audit_user":"root","auid":"0","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"842","comm":"logger","exe":"/usr/bin/logger","key":"auoms,execve","key_r":"61756F6D7301657865637665","cwd":"/","name":"/usr/bin/logger","inode":"312545","dev":"00:13","mode":"file,755","o_user":"root","ouid":"0","owner_group":"root","ogid":"0","rdev":"00:00","nametype":"NORMAL","argc":"6","cmdline":"logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \""}]}])event",
+        R"event([1521757638.392,{"MessageType":"AUOMS_EVENT","Timestamp":"1521757638.392","SerialNumber":262333,"ProcessFlags":0,"records":[{"RecordTypeCode":14688,"RecordType":"AUOMS_EXECVE","arch":"x86_64","syscall":"execve","success":"yes","exit":"0","ppid":"26595","pid":"26918","audit_user":"root","auid":"0","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"842","comm":"logger","exe":"/usr/bin/logger","key":"(null)","key_r":"(null)","argc":"6","cmdline":"logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \""}]}])event",
         R"event([1521757638.392,{"MessageType":"AUOMS_EVENT","Timestamp":"1521757638.392","SerialNumber":262334,"ProcessFlags":0,"records":[{"RecordTypeCode":10002,"RecordType":"AUOMS_SYSCALL_FRAGMENT","cwd":"/","name":"/usr/bin/logger","inode":"312545","dev":"00:13","mode":"file,755","o_user":"root","ouid":"0","owner_group":"root","ogid":"0","rdev":"00:00","nametype":"NORMAL","argc":"6","cmdline":"logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \""}]}])event",
+        R"event([1562867403.686,{"MessageType":"AUDIT_EVENT","Timestamp":"1562867403.686","SerialNumber":4179743,"ProcessFlags":0,"records":[{"RecordTypeCode":1112,"RecordType":"USER_LOGIN","pid":"26475","user":"root","uid":"0","audit_user":"user","auid":"1000","ses":"91158","op":"login","id":"user","id_r":"1000","exe":"/usr/sbin/sshd","hostname":"131.107.147.6","addr":"131.107.147.6","terminal":"/dev/pts/0","res":"success"}]}])event",
 };

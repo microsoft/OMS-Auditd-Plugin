@@ -79,6 +79,8 @@ void AuditRulesMonitor::check_file_rules() {
         auto merged_rules = MergeRules(rules);
         auto diff = DiffRules(merged_rules, _desired_rules, "");
         if (diff.empty()) {
+            // At this stage we only care about errors if the diff is empty.
+            // If diff is non-empty, the rules file will be reread/reparsed.
             if (errors.empty()) {
                 _op_status->ClearErrorCondition(ErrorCategory::AUDIT_RULES_FILE);
             } else {

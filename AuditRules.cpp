@@ -31,9 +31,15 @@
 #include <system_error>
 #include <pwd.h>
 #include <fcntl.h>
+#include <iostream>
 
 // Character that seperates key in AUDIT_FILTERKEY field in rules
+// This value mirrors what is defined for AUDIT_KEY_SEPARATOR in libaudit.h
 #define KEY_SEP 0x01
+
+// This value mirrors what is defined for AUDIT_FILTER_MASK in libaudit.h
+// It is a mask of AUDIT_FILTER_* values defined in /usr/include/linux/audit.h
+// AUDIT_FILTER_PREPEND is excluded from thye mask.
 #define FILTER_MASK 0x7
 
 #define AUDITD_RULES_FILE "/etc/audit/audit.rules"
@@ -889,40 +895,6 @@ std::string AuditRule::CanonicalMergeKey() const {
     for (int i = 0; i < ruleptr()->field_count; ++i) {
         int field = ruleptr()->fields[i] & ~AUDIT_OPERATORS;
         if (field != AUDIT_ARCH && field != AUDIT_PERM && field != AUDIT_FILTERKEY) {
-            append_field(text, i, watch);
-        }
-    }
-
-    return text;
-}
-
-std::string AuditRule::CanonicalDiffText() const {
-    std::string text;
-    auto watch = IsWatch();
-
-    if (!watch) {
-        if (is_delete_rule) {
-            text.append("-d ");
-        } else {
-            // Treat '-a' and '-A' as equivalent for comparison purposes since '-A' converts to '-a' after being loaded in the kernel.
-            text.append("-a ");
-        }
-        append_action(text);
-        text.append(",");
-        append_flag(text);
-
-        for (int i = 0; i < ruleptr()->field_count; ++i) {
-            if ((ruleptr()->fields[i] & ~AUDIT_OPERATORS) == AUDIT_ARCH) {
-                append_field(text, i, watch);
-            }
-        }
-
-        append_syscalls(text);
-    }
-
-    for (int i = 0; i < ruleptr()->field_count; ++i) {
-        int field = ruleptr()->fields[i] & ~AUDIT_OPERATORS;
-        if (field != AUDIT_ARCH && field != AUDIT_FILTERKEY) {
             append_field(text, i, watch);
         }
     }
@@ -1928,6 +1900,18 @@ void merge_rule(AuditRule& drule, const AuditRule& srule) {
 }
 
 // Assumes that drule and srule have the same CanonicalMergeKey() value
+// Returns true if srule is a strict subset (perms or syscalls) of drule
+bool is_subset(const AuditRule& drule, const AuditRule& srule) {
+    if (drule.IsWatch()) {
+        auto diff = diff_set(drule.GetPerms(), srule.GetPerms());
+        return diff.empty();
+    } else {
+        auto diff = diff_set(drule.GetSyscalls(), srule.GetSyscalls());
+        return diff.empty();
+    }
+}
+
+// Assumes that drule and srule have the same CanonicalMergeKey() value
 // Returns rule that has perms and syscalls found in srule that where not in drule.
 // Returned rule will have same CanonicalMergeKey() and keys as srule.
 AuditRule diff_rule(const AuditRule& drule, const AuditRule& srule) {
@@ -2011,7 +1995,7 @@ std::vector<AuditRule> DiffRules(const std::vector<AuditRule>& actual, const std
             ridxs.emplace(drule.CanonicalMergeKey(), rules.size()-1);
         } else {
             auto& arule = actual[aitr->second];
-            if (arule.CanonicalDiffText() != drule.CanonicalDiffText()) {
+            if (!is_subset(arule, drule)) {
                 auto diff = diff_rule(arule, drule);
                 rules.emplace_back(diff);
                 ridxs.emplace(diff.CanonicalMergeKey(), rules.size()-1);
