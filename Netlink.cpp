@@ -121,13 +121,22 @@ int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t reply_
 
 int Netlink::AuditGet(audit_status& status) {
     ::memset(&status, 0, sizeof(status));
-    return Send(AUDIT_GET, nullptr, 0, [&status](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
+    bool received_response = false;
+    auto ret = Send(AUDIT_GET, nullptr, 0, [&status,&received_response](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
         if (type == AUDIT_GET) {
             std::memcpy(&status, data, std::min(len, sizeof(status)));
+            received_response = true;
             return false;
         }
         return true;
     });
+    if (ret != 0) {
+        return ret;
+    }
+    if (!received_response) {
+        return -ENOMSG;
+    }
+    return 0;
 }
 
 // Return 1 on success, 0 on timeout, -1 on failure, throw exception if fn threw an exception
