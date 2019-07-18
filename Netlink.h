@@ -47,13 +47,19 @@ public:
 
     int Send(uint16_t type, const void* data, size_t len, reply_fn_t reply_fn);
 
+    // Will return -ENOMSG if no AUDIT_GET message received
     int AuditGet(audit_status& status);
+
     int AuditSet(audit_status& status);
 
+    // Will return -ENOMSG if no AUDIT_GET message received
     int AuditGetPid(uint32_t& pid);
+
     int AuditSetPid(uint32_t pid);
 
+    // Will return -ENOMSG if no AUDIT_GET message received
     int AuditGetEnabled(uint32_t& enabled);
+
     int AuditSetEnabled(uint32_t enabled);
 
     int AuditListRules(std::vector<AuditRule>& rules);
