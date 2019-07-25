@@ -31,10 +31,12 @@ public:
 
     virtual int Commit() {
         _events.emplace_back(std::make_shared<std::vector<uint8_t>>(_buffer.begin(), _buffer.end()));
+        return 1;
     }
 
     virtual int Rollback() {
         _buffer.resize(0);
+        return 1;
     }
 
     size_t GetEventCount() {

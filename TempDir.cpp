@@ -15,6 +15,7 @@
 */
 #include "TempDir.h"
 
+#include <iostream>
 #include <cassert>
 #include <cstring>
 #include <stdexcept>
@@ -42,6 +43,6 @@ TempDir::~TempDir()
 {
     std::string cmd = "rm -rf " +_path;
     if (system(cmd.c_str()) != 0) {
-        throw std::system_error(errno, std::system_category());
+        std::cerr << "Failed to remove temp dir (" << _path << "): " << std::strerror(errno) << std::endl;
     }
 }

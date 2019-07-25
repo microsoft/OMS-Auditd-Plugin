@@ -23,6 +23,13 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -ggdb")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -ggdb")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -ggdb")
 
+if(DEFINED DO_STATIC_LINK)
+    # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
+    # and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
+    # for why it is safe to use -static-libgcc -static-libstdc++
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+endif()
+
 include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include)
 
 add_custom_command(
@@ -65,7 +72,7 @@ add_executable(auomscollect
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
 # and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
 # for why it is safe to use -static-libgcc -static-libstdc++
-set_target_properties(auomscollect PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+#set_target_properties(auomscollect PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 target_link_libraries(auomscollect
         dl
@@ -130,7 +137,7 @@ add_executable(auoms
 # and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
 # for why it is safe to use -static-libgcc -static-libstdc++
 #set_target_properties(auoms PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -Wl,--wrap=memcpy -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
-set_target_properties(auoms PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+#set_target_properties(auoms PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 target_link_libraries(auoms
         dl
@@ -174,7 +181,7 @@ add_executable(auomsctl
 # and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
 # for why it is safe to use -static-libgcc -static-libstdc++
 #set_target_properties(auoms PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -Wl,--wrap=memcpy -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
-set_target_properties(auomsctl PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+#set_target_properties(auomsctl PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 target_link_libraries(auomsctl
         pthread
@@ -193,7 +200,7 @@ add_executable(testreceiver
         UnixDomainListener.cpp
 )
 
-set_target_properties(testreceiver PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+#set_target_properties(testreceiver PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 install(TARGETS
         testreceiver
@@ -204,7 +211,7 @@ add_executable(fakeaudispd
         fakeaudispd.cpp
 )
 
-set_target_properties(fakeaudispd PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+#set_target_properties(fakeaudispd PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 install(TARGETS
         fakeaudispd
@@ -219,7 +226,7 @@ add_executable(file2sock
         Event.cpp
 )
 
-set_target_properties(file2sock PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+#set_target_properties(file2sock PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 install(TARGETS
         file2sock

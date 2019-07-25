@@ -50,6 +50,6 @@ TempFile::TempFile(const std::string& prefix, const std::string& text)
 TempFile::~TempFile()
 {
     if (unlink(_path.c_str()) != 0) {
-        throw std::system_error(errno, std::system_category());
+        std::cerr << "Failed to remove temp file (" << _path << "): " << std::strerror(errno) << std::endl;
     }
 }

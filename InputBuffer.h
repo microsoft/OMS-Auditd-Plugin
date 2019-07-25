@@ -53,7 +53,7 @@ public:
         return true;
     }
 
-    int AbandonWrite() {
+    void AbandonWrite() {
         std::unique_lock<std::mutex> lock(_mutex);
         _has_writer = false;
         _data_size = 0;

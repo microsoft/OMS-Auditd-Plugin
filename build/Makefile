@@ -110,7 +110,7 @@ $(AUOMS_BIN) : $(INTERMEDIATE_DIR)/ext_include $(INTERMEDIATE_DIR)/boost_root $(
 $(BUILD_DIR) :
 	@echo "========================= Creating cmake builddir dir"
 	$(MKPATH) $(BUILD_DIR)
-	cd $(BUILD_DIR); PATH=$(DEV_TOOLS_PATH)$(PATH) BOOST_ROOT=$(INTERMEDIATE_DIR)/boost_root cmake -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) $(BASE_DIR)
+	cd $(BUILD_DIR); PATH=$(DEV_TOOLS_PATH)$(PATH) BOOST_ROOT=$(INTERMEDIATE_DIR)/boost_root cmake -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DDO_STATIC_LINK=1 -DCMAKE_BUILD_TYPE=$(CMAKE_BUILD_TYPE) $(BASE_DIR)
 else
 $(AUOMS_BIN) : $(INTERMEDIATE_DIR)/ext_include $(BUILD_DIR) $(BASE_DIR)/*.cpp $(BASE_DIR)/*.h
 	@echo "========================= Building auoms"

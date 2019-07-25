@@ -42,11 +42,7 @@ std::vector<std::string> GetDirList(const std::string& dir) {
     }
 
     struct dirent* dent;
-    while(readdir_r(dirp, reinterpret_cast<struct dirent*>(buffer.data()), &dent) == 0) {
-        if (dent == nullptr) {
-            break;
-        }
-
+    while((dent = readdir(dirp)) != nullptr) {
         std::string name(&dent->d_name[0]);
         if (name != "." && name != "..") {
             files.emplace_back(name);
