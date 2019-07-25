@@ -151,11 +151,7 @@ void Outputs::do_conf_sync() {
     }
 
     struct dirent* dent;
-    while(readdir_r(dir, reinterpret_cast<struct dirent*>(buffer.data()), &dent) == 0) {
-        if (dent == nullptr) {
-            break;
-        }
-
+    while((dent = readdir(dir)) != nullptr) {
         std::string name(&dent->d_name[0]);
         if (name.length() > 5) {
             auto prefix_len = name.length() - 5;

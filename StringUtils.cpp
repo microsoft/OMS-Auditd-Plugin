@@ -114,6 +114,9 @@ int unescape_raw_field(std::string& out, const char* in, size_t in_len) {
         if (in[in_len-1] == '"') {
             out.assign(&in[1], in_len-2);
             return 1;
+        } else {
+            out.assign(in, in_len);
+            return -1;
         }
     } else if (*in == '(') {
         out.assign(in, in_len);

@@ -235,7 +235,6 @@ int Cmd::Wait(bool wait) {
             _pid = 0;
             return 1;
         }
-        return 0;
     } else if (wait) {
         while(true) {
             ret = waitpid(_pid, &wstatus, 0);
@@ -261,6 +260,7 @@ int Cmd::Wait(bool wait) {
             }
         }
     }
+    return 0;
 }
 
 static std::unordered_map<int, std::string> s_failed_call({

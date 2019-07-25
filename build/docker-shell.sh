@@ -16,15 +16,28 @@
 # THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ####
 
-DOCKER_IMAGE=auoms-build
+cd $(dirname $0)/..
+SRC_ROOT=$(pwd)
+cd ..
+BIND_MOUNT_DIR=$(pwd)
 
-if [ "$1" == "32" ]; then
-    DOCKER_IMAGE=auoms-build32
+if [ ! -e $SRC_ROOT/build/configure ]; then
+    echo "The bind mount appears to be invalid: could not find $SRC_ROOT/build/configure"
+    exit 1
 fi
 
-cd $(dirname $0)/..
-ROOT=$(pwd)
-VDIR=$(dirname $ROOT)
-DIR=$(basename $ROOT)
+if [ ! -e $BIND_MOUNT_DIR/pal/installer/InstallBuilder/installbuilder.py ]; then
+    echo "The bind mount appears to be invalid: could not find $BIND_MOUNT_DIR/pal/installer/InstallBuilder/installbuilder.py"
+    exit 1
+fi
 
-exec docker run --rm -v $VDIR:/var/oms $DOCKER_IMAGE /var/oms/$DIR/build/docker-build-auoms.sh
+BUILD_UID=$(stat -c '%u' $BIND_MOUNT_DIR)
+BUILD_GID=$(stat -c '%g' $BIND_MOUNT_DIR)
+
+grep '^build' /etc/passwd >/dev/null
+if [ $BUILD_UID -ne 0 -a $? -ne 0 ]; then
+    groupadd -g $BUILD_GID build
+    useradd -u $BUILD_UID -g build -d /var/build -m -s /bin/bash build
+fi
+
+exec sudo -u build -i

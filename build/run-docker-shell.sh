@@ -27,4 +27,4 @@ ROOT=$(pwd)
 VDIR=$(dirname $ROOT)
 DIR=$(basename $ROOT)
 
-exec docker run --rm -v $VDIR:/var/oms $DOCKER_IMAGE /var/oms/$DIR/build/docker-build-auoms.sh
+exec docker run --rm -it -v $VDIR:/var/oms $DOCKER_IMAGE /var/oms/$DIR/build/docker-shell.sh
