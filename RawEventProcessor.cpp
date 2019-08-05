@@ -836,6 +836,8 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
         }
         return false;
     }
+
+    return true;
 }
 
 void RawEventProcessor::DoProcessInventory() {

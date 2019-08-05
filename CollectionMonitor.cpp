@@ -37,7 +37,7 @@
 void CollectionMonitor::run() {
     Logger::Info("CollectionMonitor started");
 
-    while(!_sleep(1000)) {
+    do {
         auto now = std::chrono::steady_clock::now();
 
         uint32_t audit_pid = -1;
@@ -60,7 +60,7 @@ void CollectionMonitor::run() {
         if (!_disable_collector_check && !is_auditd_present() && !is_alive && audit_pid == 0) {
             start_collector();
 
-            while (audit_pid <= 0 && !_sleep(100) && std::chrono::steady_clock::now() - now < std::chrono::seconds(10)) {
+            while (audit_pid <= 0 && !_sleep(500) && std::chrono::steady_clock::now() - now < std::chrono::seconds(10)) {
                 auto ret = NetlinkRetry([this,&audit_pid]() { return _netlink.AuditGetPid(audit_pid); });
                 if (ret != 0) {
                     // Treat NETLINK errors as unrecoverable.
@@ -89,7 +89,7 @@ void CollectionMonitor::run() {
             _audit_pid = audit_pid;
             send_audit_pid_report(audit_pid);
         }
-    }
+    } while(!_sleep(10000));
     Logger::Info("CollectionMonitor stopping");
 }
 

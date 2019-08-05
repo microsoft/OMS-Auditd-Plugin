@@ -40,6 +40,8 @@
 #include <syslog.h>
 #include <sys/resource.h>
 
+#include "env_config.h"
+
 void usage()
 {
     std::cerr <<
@@ -83,7 +85,7 @@ int main(int argc, char**argv) {
     setrlimit(RLIMIT_CORE, &limits);
 
 
-    std::string config_file = "/etc/opt/microsoft/auoms/auoms.conf";
+    std::string config_file = AUOMS_CONF;
 
     int opt;
     while ((opt = getopt(argc, argv, "c:")) != -1) {
@@ -107,14 +109,14 @@ int main(int argc, char**argv) {
         }
     }
 
-    std::string auditd_path = "/sbin/auditd";
-    std::string collector_path = "/opt/microsoft/auoms/bin/auomscollect";
+    std::string auditd_path = AUDITD_BIN;
+    std::string collector_path = AUOMSCOLLECT_EXE;
     std::string collector_config_path = "";
 
-    std::string outconf_dir = "/etc/opt/microsoft/auoms/outconf.d";
-    std::string rules_dir = "/etc/opt/microsoft/auoms/rules.d";
-    std::string data_dir = "/var/opt/microsoft/auoms/data";
-    std::string run_dir = "/var/run/auoms";
+    std::string outconf_dir = AUOMS_OUTCONF_DIR;
+    std::string rules_dir = AUOMS_RULES_DIR;
+    std::string data_dir = AUOMS_DATA_DIR;
+    std::string run_dir = AUOMS_RUN_DIR;
 
     if (config.HasKey("outconf_dir")) {
         outconf_dir = config.GetString("outconf_dir");

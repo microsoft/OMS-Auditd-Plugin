@@ -25,6 +25,8 @@
 #include "RunBase.h"
 #include "AuditRules.h"
 
+class ReplyRec;
+
 class Netlink: private RunBase {
 public:
     typedef std::function<bool(uint16_t type, uint16_t flags, const void* data, size_t len)> reply_fn_t;
@@ -92,14 +94,15 @@ private:
     };
 
     void flush_replies(bool is_exit);
+    void handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq, const void* payload_data, size_t payload_len);
 
     int _fd;
     uint32_t _sequence;
     reply_fn_t _default_msg_handler_fn;
     bool _quite;
     std::unordered_map<uint32_t, std::chrono::steady_clock::time_point> _known_seq;
-    std::unordered_map<uint32_t, ReplyRec> _replies;
-    std::array<uint8_t, 9*1024> _data;
+    std::unordered_map<uint32_t, std::unique_ptr<ReplyRec>> _replies;
+    std::array<uint8_t, 16*1024> _data;
 };
 
 int NetlinkRetry(std::function<int()> fn);

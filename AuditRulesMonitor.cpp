@@ -16,7 +16,7 @@ void AuditRulesMonitor::run() {
 
     check_audit_status();
 
-    while(!_sleep(1000)) {
+    while(!_sleep(15000)) {
         auto now = std::chrono::steady_clock::now();
 
         if (now - _last_auoms_file_check > std::chrono::seconds(60)) {
