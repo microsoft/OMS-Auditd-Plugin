@@ -53,7 +53,9 @@ void KernelInfo::load() noexcept {
             auto lines = ReadFile(config_path);
             _syscall = std::any_of(lines.begin(), lines.end(), [](const std::string& str) ->bool { return str == "CONFIG_AUDITSYSCALL=y"; });
         } catch (std::exception& ex) {
-            Logger::Error("Unable to read kernel config (%s): %s", config_path.c_str(), ex.what());
+            // If the /boot/config file is absent, or cannot be read, assume that CONFIG_AUDITSYSCALL=y.
+            // This is fairly safe since all the major distro kernels have this set to true by default.
+            _syscall = true;
         }
     } catch (std::exception& ex) {
         Logger::Error("Unexpected exception while trying to obtain Kernel info: %s", ex.what());

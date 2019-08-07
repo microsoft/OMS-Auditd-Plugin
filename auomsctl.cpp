@@ -37,17 +37,13 @@
 #include <sys/stat.h>
 #include <sstream>
 
+#include "env_config.h"
+
 #define AUOMS_SERVICE_NAME "auoms"
 #define AUDITD_SERVICE_NAME "auditd"
 #define AUOMS_COMM "auoms"
 #define AUOMSCOLLECT_COMM "auomscollect"
 #define AUDITD_COMM "auditd"
-#define AUDITD_BIN "/sbin/auditd"
-#define AUOMS_PLUGIN_FILE "/etc/audisp/plugins.d/auoms.conf"
-#define SYSTEMD_SERVICE_FILE "/opt/microsoft/auoms/auoms.service"
-#define SYSTEMCTL_PATH "/bin/systemctl"
-#define CHKCONFIG_PATH "/sbin/chkconfig"
-#define UPDATE_RC_PATH "/usr/sbin/update-rc.d"
 
 #define PROC_WAIT_TIME 10
 
@@ -367,7 +363,7 @@ void set_auditd_plugin_status(bool enabled) {
         lines.emplace_back("active = no");
     }
     lines.emplace_back("direction = out");
-    lines.emplace_back("path = /opt/microsoft/auoms/bin/auomscollect");
+    lines.emplace_back(std::string("path = ") + AUOMSCOLLECT_EXE);
     lines.emplace_back("type = always");
     lines.emplace_back("#args =");
     lines.emplace_back("format = string");
@@ -1047,8 +1043,8 @@ int monitor_auoms_events() {
         return 1;
     }
 
-    std::string sock_path = "/var/run/auoms/auomsctl.socket";
-    std::string config_path = "/etc/opt/microsoft/auoms/outconf.d/auomsctl.conf";
+    std::string sock_path = std::string(AUOMS_RUN_DIR) + "/auomsctl.socket";
+    std::string config_path = std::string(AUOMS_OUTCONF_DIR) + "/auomsctl.conf";
 
     UnixDomainListener listener(sock_path, 0666);
     if (!listener.Open()) {
@@ -1085,7 +1081,7 @@ int monitor_auoms_events() {
 }
 
 int set_rules() {
-    auto rules = ReadAuditRulesFromDir("/etc/opt/microsoft/auoms/rules.d", nullptr);
+    auto rules = ReadAuditRulesFromDir(AUOMS_RULES_DIR, nullptr);
     std::vector<AuditRule> desired_rules;
     for (auto& rule: rules) {
         // Only include the rule in the desired rules if it is supported on the host system
@@ -1156,7 +1152,7 @@ bool is_set_intersect(T a, T b) {
 }
 
 int load_rules() {
-    auto rules = ReadAuditRulesFromDir("/etc/opt/microsoft/auoms/rules.d", nullptr);
+    auto rules = ReadAuditRulesFromDir(AUOMS_RULES_DIR, nullptr);
     std::vector<AuditRule> desired_rules;
     for (auto& rule: rules) {
         // Only include the rule in the desired rules if it is supported on the host system

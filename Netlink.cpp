@@ -25,7 +25,6 @@
 #include <fcntl.h>
 #include <poll.h>
 
-
 int Netlink::Open(reply_fn_t default_msg_handler_fn) {
     std::unique_lock<std::mutex> _lock(_run_mutex);
 
@@ -93,11 +92,12 @@ int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t reply_
     addr.nl_groups = 0;
 
     std::future<int> future;
-    auto rep = _replies.emplace(nl->nlmsg_seq, ReplyRec(std::move(reply_fn)));
-    future = rep.first->second._promise.get_future();
-    _known_seq.emplace(nl->nlmsg_seq, rep.first->second._req_time);
+    auto rep = _replies.emplace(nl->nlmsg_seq, std::make_unique<ReplyRec>(std::move(reply_fn)));
+    future = rep.first->second->_promise.get_future();
+    _known_seq.emplace(nl->nlmsg_seq, rep.first->second->_req_time);
 
     _lock.unlock();
+
     int ret;
     do {
         ret = sendto(_fd, nl, nl->nlmsg_len, 0, (struct sockaddr *) &addr, sizeof(addr));
@@ -114,9 +114,9 @@ int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t reply_
     }
 
     _lock.unlock();
-    future.wait();
 
-    return future.get();
+    auto retval = future.get();
+    return retval;
 }
 
 int Netlink::AuditGet(audit_status& status) {
@@ -209,15 +209,15 @@ void Netlink::flush_replies(bool is_exit) {
 
     auto now = std::chrono::steady_clock::now();
     for (auto itr = _replies.begin(); itr != _replies.end();) {
-        if (is_exit || itr->second._req_time < now - std::chrono::milliseconds(200)) {
+        if (is_exit || itr->second->_req_time < now - std::chrono::milliseconds(5000)) {
             // Set promise value if it has not already been set
-            if (!itr->second._done) {
-                itr->second._done = true;
+            if (!itr->second->_done) {
+                itr->second->_done = true;
                 try {
                     if (is_exit) {
-                        itr->second._promise.set_value(-ECANCELED);
+                        itr->second->_promise.set_value(-ECANCELED);
                     } else {
-                        itr->second._promise.set_value(-ETIMEDOUT);
+                        itr->second->_promise.set_value(-ETIMEDOUT);
                     }
                 } catch (const std::exception &ex) {
                     Logger::Error("Unexpected exception while trying to set promise value for NETLINK reply: %s",
@@ -230,10 +230,10 @@ void Netlink::flush_replies(bool is_exit) {
         }
     }
 
-    // Hold onto _known_seq entries for a whole second.
+    // Hold onto _known_seq entries for 10 seconds.
     // This should avoid "Unexpected seq" log messages in the rare case where the req timed out before all reply messages could be received
     for (auto itr = _known_seq.begin(); itr != _known_seq.end();) {
-        if (is_exit || itr->second < now - std::chrono::seconds(1)) {
+        if (is_exit || itr->second < now - std::chrono::seconds(10)) {
             itr = _known_seq.erase(itr);
         } else {
             ++itr;
@@ -309,7 +309,6 @@ void Netlink::run() {
             continue;
         }
 
-
         auto nl = reinterpret_cast<nlmsghdr*>(_data.data());
 
         if (!NLMSG_OK(nl, len)) {
@@ -319,102 +318,110 @@ void Netlink::run() {
 
         size_t payload_len = len - static_cast<size_t>(reinterpret_cast<char*>(NLMSG_DATA(nl)) - reinterpret_cast<char*>(_data.data()));
 
-        reply_fn_t fn = _default_msg_handler_fn;
-        bool done = false;
-
-        if (nl->nlmsg_seq != 0) {
-            _lock.lock();
-            auto itr = _replies.find(nl->nlmsg_seq);
-            if (itr != _replies.end()) {
-                fn = itr->second._fn;
-                done = itr->second._done;
-            } else {
-                done = true;
-                if (_known_seq.count(nl->nlmsg_seq) == 0) {
-                    Logger::Warn("Received unexpected NETLINK packet (Type: %d, Flags: %X, Seq: %d, Size: %d",
-                                 nl->nlmsg_type, nl->nlmsg_flags, nl->nlmsg_seq, nl->nlmsg_len);
-                }
-            }
-            _lock.unlock();
-        } else {
-            if (_default_msg_handler_fn) {
-                fn = _default_msg_handler_fn;
-            } else {
-                done = true;
-                Logger::Warn(
-                        "Received NETLINK packet With Seq 0 and no default handler is defined (Type: %d, Flags: %X, Size: %d",
-                        nl->nlmsg_type, nl->nlmsg_flags, nl->nlmsg_len);
-            }
-        }
-
-        if (!done && fn && nl->nlmsg_type != NLMSG_ERROR && nl->nlmsg_type != NLMSG_DONE) {
-            try {
-                if (!fn(nl->nlmsg_type, nl->nlmsg_flags, NLMSG_DATA(nl), payload_len) && nl->nlmsg_seq > 0) {
-                    _lock.lock();
-                    auto itr = _replies.find(nl->nlmsg_seq);
-                    if (itr != _replies.end()) {
-                        itr->second._done = true;
-                        itr->second._promise.set_value(0);
-                    }
-                    _lock.unlock();
-                    continue;
-                }
-            } catch (const std::exception &ex) {
-                if (nl->nlmsg_seq > 0) {
-                    _lock.lock();
-                    auto itr = _replies.find(nl->nlmsg_seq);
-                    if (itr != _replies.end()) {
-                        try {
-                            itr->second._promise.set_exception(std::current_exception());
-                            itr->second._done = true;
-                        } catch (const std::exception &ex) {
-                            Logger::Error(
-                                    "Unexpected exception while trying to set exception in NETLINK msg reply promise: %s",
-                                    ex.what());
-                        }
-                        _replies.erase(itr);
-                    }
-                    _lock.unlock();
-                }
-                continue;
-            }
-        }
-
-        if (nl->nlmsg_seq != 0) {
-            if (nl->nlmsg_type == NLMSG_ERROR) {
-                auto err = reinterpret_cast<nlmsgerr *>(NLMSG_DATA(nl));
-                _lock.lock();
-                // If the request failed, or the request succedded but no response is expected then set the value to err->error
-                // If !fn then no response is expected and the return value is err->error (typically == 0)
-                if (err->error != 0 || !fn) {
-                    auto itr = _replies.find(nl->nlmsg_seq);
-                    if (itr != _replies.end()) {
-                        if (!itr->second._done) {
-                            itr->second._done = true;
-                            itr->second._promise.set_value(err->error);
-                        }
-                        _replies.erase(itr);
-                    }
-                }
-                _known_seq.erase(nl->nlmsg_seq);
-                _lock.unlock();
-            } else if ((nl->nlmsg_flags & NLM_F_MULTI) == 0 || nl->nlmsg_type == NLMSG_DONE) {
-                _lock.lock();
-                auto itr = _replies.find(nl->nlmsg_seq);
-                if (itr != _replies.end()) {
-                    if (!itr->second._done) {
-                        itr->second._promise.set_value(0);
-                        itr->second._done = true;
-                    }
-                    _replies.erase(itr);
-                }
-                _known_seq.erase(nl->nlmsg_seq);
-                _lock.unlock();
-            }
-        }
+        handle_msg(nl->nlmsg_type, nl->nlmsg_flags, nl->nlmsg_seq, NLMSG_DATA(nl), payload_len);
     }
 
     flush_replies(true);
+}
+
+void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq, const void* payload_data, size_t payload_len) {
+    reply_fn_t fn = _default_msg_handler_fn;
+    bool done = false;
+
+    if (msg_seq != 0) {
+        // The seq is non-zero so this message should be a reply to a request
+        // look for the reply_fn associates with this seq #
+        std::lock_guard<std::mutex> _lock(_run_mutex);
+        auto itr = _replies.find(msg_seq);
+        if (itr != _replies.end()) {
+            fn = itr->second->_fn;
+            done = itr->second->_done;
+        } else {
+            // No ReplyRec found for the seq #
+            done = true;
+            // Only print a warning if the seq # is not known
+            if (_known_seq.count(msg_seq) == 0) {
+                Logger::Warn("Received unexpected NETLINK packet (Type: %d, Flags: 0x%X, Seq: %d, Size: %ld",
+                             msg_type, msg_flags, msg_seq, payload_len);
+            }
+        }
+    } else {
+        if (_default_msg_handler_fn) {
+            fn = _default_msg_handler_fn;
+        } else {
+            done = true;
+            Logger::Warn(
+                    "Received NETLINK packet With Seq 0 and no default handler is defined (Type: %d, Flags: 0x%X, Size: %ld",
+                    msg_type, msg_flags, payload_len);
+        }
+    }
+
+    // If the request hasn't been marked done, has a valid reply_fn associated, and and the message is not of type NLMSG_ERRROR or NLMSG_DONE
+    // then call the reply_fn
+    if (!done && fn && msg_type != NLMSG_ERROR && msg_type != NLMSG_DONE) {
+        try {
+            if (!fn(msg_type, msg_flags, payload_data, payload_len) && msg_seq > 0) {
+                // The reply_fn returned false, so mark the request as complete.
+                std::lock_guard<std::mutex> _lock(_run_mutex);
+                auto itr = _replies.find(msg_seq);
+                if (itr != _replies.end()) {
+                    itr->second->_done = true;
+                    itr->second->_promise.set_value(0);
+                }
+                return;
+            }
+        } catch (const std::exception &ex) {
+            if (msg_seq > 0) {
+                // The reply_fn threw an exception, try to propagate the exception through the request promise
+                std::lock_guard<std::mutex> _lock(_run_mutex);
+                auto itr = _replies.find(msg_seq);
+                if (itr != _replies.end()) {
+                    try {
+                        itr->second->_promise.set_exception(std::current_exception());
+                        itr->second->_done = true;
+                    } catch (const std::exception &ex) {
+                        Logger::Error(
+                                "Unexpected exception while trying to set exception in NETLINK msg reply promise: %s",
+                                ex.what());
+                    }
+                    _replies.erase(itr);
+                }
+            }
+            return;
+        }
+    }
+
+    if (msg_seq != 0) {
+        if (msg_type == NLMSG_ERROR) {
+            auto err = reinterpret_cast<const nlmsgerr *>(payload_data);
+            std::lock_guard<std::mutex> _lock(_run_mutex);
+            // If the request failed, or the request succeeded but no response is expected then set the value to err->error
+            // If !fn then no response is expected and the return value is err->error (typically == 0)
+            if (err->error != 0 || !fn) {
+                auto itr = _replies.find(msg_seq);
+                if (itr != _replies.end()) {
+                    if (!itr->second->_done) {
+                        itr->second->_done = true;
+                        itr->second->_promise.set_value(err->error);
+                    }
+                    _replies.erase(itr);
+                }
+                _known_seq.erase(msg_seq);
+            }
+        } else if ((msg_flags & NLM_F_MULTI) == 0 || msg_type == NLMSG_DONE) {
+            //
+            std::lock_guard<std::mutex> _lock(_run_mutex);
+            auto itr = _replies.find(msg_seq);
+            if (itr != _replies.end()) {
+                if (!itr->second->_done) {
+                    itr->second->_promise.set_value(0);
+                    itr->second->_done = true;
+                }
+                _replies.erase(itr);
+            }
+            _known_seq.erase(msg_seq);
+        }
+    }
 }
 
 int NetlinkRetry(std::function<int()> fn) {

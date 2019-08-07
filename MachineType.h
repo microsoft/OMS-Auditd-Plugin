@@ -20,11 +20,13 @@
 enum class MachineType: int {
     UNKNOWN = -1,
     X86 = 0,
-    X86_64 = 1
+    X86_64 = 1,
+    ARM = 2,
+    ARM64 = 3,
 };
 
 inline bool Is64BitMachineType(MachineType mtype) {
-    return mtype == MachineType::X86_64;
+    return mtype == MachineType::X86_64 || mtype == MachineType::ARM64;
 }
 
 #endif //AUOMS_MACHINETYPE_H

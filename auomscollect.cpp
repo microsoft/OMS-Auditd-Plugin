@@ -43,6 +43,8 @@
 #include <sys/prctl.h>
 #include <sys/resource.h>
 
+#include "env_config.h"
+
 void usage()
 {
     std::cerr <<
@@ -147,7 +149,10 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
             if (record->Parse(static_cast<RecordType>(type), len)) {
                 accumulator.AddRecord(std::move(record));
             } else {
-                Logger::Warn("Received unparsable event data (type = %d, flags = 0x%X, size=%ld)", type, flags, len);
+                char cdata[len+1];
+                ::memcpy(cdata, data, len);
+                cdata[len] = 0;
+                Logger::Warn("Received unparsable event data (type = %d, flags = 0x%X, size=%ld):\n%s", type, flags, len, cdata);
             }
         }
         return false;
@@ -242,7 +247,7 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
         }
 
         auto now = std::chrono::steady_clock::now();
-        if (last_pid_check < now - std::chrono::seconds(1)) {
+        if (last_pid_check < now - std::chrono::seconds(10)) {
             last_pid_check = now;
             pid = 0;
             int ret;
@@ -279,7 +284,7 @@ int main(int argc, char**argv) {
     limits.rlim_max = RLIM_INFINITY;
     setrlimit(RLIMIT_CORE, &limits);
 
-    std::string config_file = "/etc/opt/microsoft/auoms/auomscollect.conf";
+    std::string config_file = AUOMSCOLLECT_CONF;
     int stop_delay = 0; // seconds
     bool netlink_mode = false;
 
@@ -311,8 +316,8 @@ int main(int argc, char**argv) {
         }
     }
 
-    std::string data_dir = "/var/opt/microsoft/auoms/data";
-    std::string run_dir = "/var/run/auoms";
+    std::string data_dir = AUOMS_DATA_DIR;
+    std::string run_dir = AUOMS_RUN_DIR;
 
     if (config.HasKey("data_dir")) {
         data_dir = config.GetString("data_dir");

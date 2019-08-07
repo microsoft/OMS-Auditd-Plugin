@@ -29,6 +29,7 @@ MachineType ArchNameToMachine(const std::string_view& arch);
 bool MachineToName(MachineType mach, std::string& str);
 uint32_t ArchNameToArch(const std::string_view& arch);
 MachineType ArchToMachine(uint32_t arch);
+uint32_t MachineToArch(MachineType mach);
 std::string ArchToName(uint32_t arch);
 
 bool SyscallToName(MachineType mtype, int syscall, std::string& str);

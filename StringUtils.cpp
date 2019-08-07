@@ -111,7 +111,7 @@ int unescape_raw_field(std::string& out, const char* in, size_t in_len) {
         return -1;
     }
     if (*in == '"') {
-        if (in[in_len-1] == '"') {
+        if (in_len >= 2 && in[in_len-1] == '"') {
             out.assign(&in[1], in_len-2);
             return 1;
         } else {

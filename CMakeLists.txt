@@ -32,6 +32,10 @@ endif()
 
 include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include)
 
+if (NOT DEFINED ENV_CONFIG_PATH)
+    set(ENV_CONFIG_PATH ${CMAKE_SOURCE_DIR}/build/env_config.h)
+endif()
+
 add_custom_command(
         OUTPUT ${CMAKE_SOURCE_DIR}/auoms_version.h
         COMMAND bash -c \"grep AUOMS_BUILDVERSION auoms.version | head -n 4 | cut -d'=' -f2 | tr '\\n' '.' | sed 's/^\\\([0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\\)\\.*/\#define AUOMS_VERSION \\"\\1\\"/' > auoms_version.h\"
@@ -39,7 +43,15 @@ add_custom_command(
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+add_custom_command(
+        OUTPUT ${CMAKE_SOURCE_DIR}/env_config.h
+        COMMAND ln -f -s ${ENV_CONFIG_PATH} ${CMAKE_SOURCE_DIR}/env_config.h
+        MAIN_DEPENDENCY ${ENV_CONFIG_PATH}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
 add_executable(auomscollect
+        env_config.h
         auomscollect.cpp
         IO.cpp
         Event.cpp
@@ -86,6 +98,7 @@ install(TARGETS
 )
 
 add_executable(auoms
+        env_config.h
         auoms.cpp
         auoms_version.h
         IO.cpp
@@ -151,6 +164,7 @@ install(TARGETS
 )
 
 add_executable(auomsctl
+        env_config.h
         auomsctl.cpp
         auoms_version.h
         Netlink.cpp
