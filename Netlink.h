@@ -87,6 +87,11 @@ private:
     class ReplyRec {
     public:
         explicit ReplyRec(reply_fn_t fn): _req_time(std::chrono::steady_clock::now()), _done(false), _fn(std::move(fn)) {}
+        ReplyRec(const ReplyRec& other) = delete;
+        ReplyRec(ReplyRec&& other) = delete;
+        ReplyRec& operator=(const ReplyRec& other) = delete;
+        ReplyRec& operator=(ReplyRec&& other) = delete;
+
         std::chrono::steady_clock::time_point _req_time;
         bool _done;
         reply_fn_t _fn;

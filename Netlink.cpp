@@ -126,7 +126,6 @@ int Netlink::AuditGet(audit_status& status) {
         if (type == AUDIT_GET) {
             std::memcpy(&status, data, std::min(len, sizeof(status)));
             received_response = true;
-            return false;
         }
         return true;
     });
@@ -258,7 +257,7 @@ void Netlink::run() {
     int fd = _fd;
 
     _lock.unlock();
-
+    std::chrono::steady_clock::time_point last_flush = std::chrono::steady_clock::now();
     while(!IsStopping()) {
         while(!IsStopping()) {
             long timeout = -1;
@@ -275,12 +274,18 @@ void Netlink::run() {
                 return;
             } else if (ret == 0) {
                 flush_replies(IsStopping());
+                last_flush = std::chrono::steady_clock::now();
                 if (IsStopping()) {
                     return;
                 }
             } else {
                 break;
             }
+        }
+
+        if (last_flush < std::chrono::steady_clock::now() - std::chrono::milliseconds(250)) {
+            flush_replies(IsStopping());
+            last_flush = std::chrono::steady_clock::now();
         }
 
         sockaddr_nl nladdr;
@@ -409,7 +414,6 @@ void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq
                 _known_seq.erase(msg_seq);
             }
         } else if ((msg_flags & NLM_F_MULTI) == 0 || msg_type == NLMSG_DONE) {
-            //
             std::lock_guard<std::mutex> _lock(_run_mutex);
             auto itr = _replies.find(msg_seq);
             if (itr != _replies.end()) {
