@@ -30,7 +30,7 @@ if(DEFINED DO_STATIC_LINK)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 endif()
 
-include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include)
+include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include /usr/include/libxml2)
 
 if (NOT DEFINED ENV_CONFIG_PATH)
     set(ENV_CONFIG_PATH ${CMAKE_SOURCE_DIR}/build/env_config.h)
