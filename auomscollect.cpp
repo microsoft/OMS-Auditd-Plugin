@@ -230,7 +230,7 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
 
     Signals::SetExitHandler([&_stop_gate]() { _stop_gate.Open(); });
 
-    auto last_pid_check = std::chrono::steady_clock::now();
+    auto _last_pid_check = std::chrono::steady_clock::now();
     while(!Signals::IsExit()) {
         if (_stop_gate.Wait(Gate::OPEN, 100)) {
             return false;
