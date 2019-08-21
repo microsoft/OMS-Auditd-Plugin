@@ -15,6 +15,7 @@
 */
 
 #include <climits>
+#include <iterator>
 #include "RawEventProcessor.h"
 
 #include "Queue.h"
@@ -31,6 +32,7 @@
 #define PROCESS_INVENTORY_EVENT_INTERVAL 3600
 
 void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
+
     Event event(data, data_len);
 
     auto ret = event.Validate();
@@ -41,7 +43,9 @@ void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
 
     auto rec = event.begin();
     auto rtype = static_cast<RecordType>(rec.RecordType());
-    if (rtype == RecordType::SYSCALL || rtype == RecordType::EXECVE || rtype == RecordType::CWD || rtype == RecordType::PATH || rtype == RecordType::SOCKADDR) {
+
+    if (rtype == RecordType::SYSCALL || rtype == RecordType::EXECVE || rtype == RecordType::CWD || rtype == RecordType::PATH ||
+                rtype == RecordType::SOCKADDR || rtype == RecordType::INTEGRITY_RULE) {
         if (!process_syscall_event(event)) {
             process_event(event);
         }
@@ -51,6 +55,7 @@ void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
 }
 
 void RawEventProcessor::process_event(const Event& event) {
+
     using namespace std::string_literals;
 
     static auto S_PID = "pid"s;
@@ -109,6 +114,7 @@ void RawEventProcessor::process_event(const Event& event) {
 }
 
 bool RawEventProcessor::process_syscall_event(const Event& event) {
+
     using namespace std::string_view_literals;
 
     static auto SV_ZERO = "0"sv;
@@ -118,6 +124,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     static auto SV_ARGC = "argc"sv;
     static auto SV_CWD = "cwd"sv;
     static auto SV_SADDR = "saddr"sv;
+    static auto SV_INTEGRITY_HASH = "hash"sv;
     static auto SV_NAME = "name"sv;
     static auto SV_NAMETYPE = "nametype"sv;
     static auto SV_MODE = "mode"sv;
@@ -145,6 +152,10 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     int num_fields = 0;
     int num_path = 0;
     int num_execve = 0;
+    int uid;
+    int gid;
+    std::string exe;
+    std::string syscall;
 
     auto rec_type = RecordType::AUOMS_SYSCALL_FRAGMENT;
     auto rec_type_name = auoms_syscall_fragment_name;
@@ -160,6 +171,8 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     EventRecordField argc_field;
     EventRecord sockaddr_rec;
     EventRecordField sockaddr_field;
+    EventRecord integrity_rec;
+    EventRecordField integrity_field;
     EventRecord dropped_rec;
     std::vector<EventRecord> other_recs;
 
@@ -193,6 +206,8 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                             if (fname == SV_SYSCALL) {
                                 syscall_field = f;
                             }
+                            num_fields += 1;
+                            break;
                         }
                         default:
                             num_fields += 1;
@@ -269,6 +284,20 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                     }
                 }
                 break;
+            case RecordType::INTEGRITY_RULE:
+                if (!integrity_rec) {
+                    for (int i = 0; i < rec.NumFields(); ++i) {
+                        auto field = rec.FieldAt(i);
+                        if (field.FieldName() == SV_INTEGRITY_HASH) {
+                            integrity_rec = rec;
+                            integrity_field = field;
+                            num_fields += 1;
+                            break;
+                        }
+                    }
+                }
+                break;
+
             case RecordType::AUOMS_DROPPED_RECORDS:
                 dropped_rec = rec;
                 break;
@@ -314,6 +343,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                 rec_type_name = auoms_execve_name;
             }
         }
+        _syscall = _tmp_val;
     }
 
     if (num_fields == 0) {
@@ -366,6 +396,29 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                         _pid = atoi(f.RawValuePtr());
                         _builder->SetEventPid(_pid);
                     }
+                    if (fname == SV_PPID) {
+                        _ppid = atoi(f.RawValuePtr());
+                    }
+                    add_field = true;
+                    break;
+                case 'u':
+                    if (fname == "uid") {
+                        uid = atoi(f.RawValuePtr());
+                    }
+                    add_field = true;
+                    break;
+                case 'g':
+                    if (fname == "gid") {
+                        gid = atoi(f.RawValuePtr());
+                    }
+                    add_field = true;
+                    break;
+                case 'e':
+                    if (fname == "exe") {
+                        exe = std::string(f.RawValuePtr());
+                    }
+                    add_field = true;
+                    break;
                 default:
                     add_field = true;
                     break;
@@ -527,7 +580,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     if (execve_recs.size() > 0) {
         _execve_converter.Convert(execve_recs);
 
-        ret = _builder->AddField(SV_CMDLINE, _execve_converter.Cmdline(), nullptr, field_type_t::UNCLASSIFIED);
+        ret = _builder->AddField(SV_CMDLINE, _execve_converter.Cmdline(), nullptr, field_type_t::UNESCAPED);
         if (ret != 1) {
             if (ret == Queue::CLOSED) {
                 throw std::runtime_error("Queue closed");
@@ -539,6 +592,13 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
 
     if (sockaddr_rec && sockaddr_field) {
         if (!process_field(sockaddr_rec, sockaddr_field, false)) {
+            cancel_event();
+            return true;
+        }
+    }
+
+    if (integrity_rec && integrity_field) {
+        if (!process_field(integrity_rec, integrity_field, false)) {
             cancel_event();
             return true;
         }
@@ -579,7 +639,27 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         return false;
     }
 
-    end_event();
+    bool filtered = false;
+    std::bitset<FILTER_BITSET_SIZE> globalFlagsMask = _filtersEngine->GetCommonFlagMask();
+    std::shared_ptr<ProcessTreeItem> p;
+    std::string cmdline;
+
+    if (execve_recs.size() > 0) {
+        cmdline = _execve_converter.Cmdline();
+        p = _processTree->AddProcess(_pid, _ppid, uid, gid, exe, cmdline);
+    } else if (!_syscall.empty()) {
+        p = _processTree->GetInfoForPid(_pid);
+    }
+
+    if (_filtersEngine->IsEventFiltered(_syscall, p, globalFlagsMask)) {
+        filtered = true;
+    }
+
+    if (!filtered) {
+        end_event();
+    } else {
+        cancel_event();
+    }
 
     return true;
 }
@@ -723,10 +803,10 @@ bool RawEventProcessor::add_gid_field(const std::string_view& name, int gid, fie
     return true;
 }
 
-bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t nsec) {
+bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t msec) {
     using namespace std::literals::string_view_literals;
 
-    auto ret = _builder->BeginEvent(sec, nsec, 0, 1);
+    auto ret = _builder->BeginEvent(sec, msec, 0, 1);
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
             throw std::runtime_error("Queue closed");
@@ -796,11 +876,11 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
         return false;
     }
 
-    if (!add_str_field("comm"sv, pinfo->comm(), field_type_t::UNCLASSIFIED)) {
+    if (!add_str_field("comm"sv, pinfo->comm(), field_type_t::UNESCAPED)) {
         return false;
     }
 
-    if (!add_str_field("exe"sv, pinfo->exe(), field_type_t::UNCLASSIFIED)) {
+    if (!add_str_field("exe"sv, pinfo->exe(), field_type_t::UNESCAPED)) {
         return false;
     }
 
@@ -812,7 +892,7 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
         cmdline_truncated = true;
     }
 
-    if (!add_str_field("cmdline"sv, _tmp_val, field_type_t::UNCLASSIFIED)) {
+    if (!add_str_field("cmdline"sv, _tmp_val, field_type_t::UNESCAPED)) {
         return false;
     }
 
@@ -841,24 +921,18 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
 }
 
 void RawEventProcessor::DoProcessInventory() {
+    return;
+
     struct timeval tv;
     gettimeofday(&tv, nullptr);
 
     uint64_t sec = static_cast<uint64_t>(tv.tv_sec);
     uint32_t msec = static_cast<uint32_t>(tv.tv_usec)/1000;
 
-    if (_last_proc_fetch+PROCESS_INVENTORY_FETCH_INTERVAL > sec) {
-        return;
-    }
-
     bool gen_events = false;
     if (_last_proc_event_gen+PROCESS_INVENTORY_EVENT_INTERVAL <= sec) {
         gen_events = true;
-    }
-
-    bool update_filter = _procFilter->IsFilterEnabled();
-
-    if (!update_filter && !gen_events) {
+    } else {
         return;
     }
 
@@ -868,24 +942,9 @@ void RawEventProcessor::DoProcessInventory() {
         return;
     }
 
-    std::vector<ProcInfo> procs;
-    procs.reserve(16*1024);
-
     while(pinfo->next()) {
-        if (update_filter) {
-            procs.emplace(procs.end(), pinfo.get());
-        }
-        if (gen_events) {
-            generate_proc_event(pinfo.get(), sec, msec);
-        }
+        generate_proc_event(pinfo.get(), sec, msec);
     }
 
-    if (update_filter) {
-        _procFilter->UpdateProcesses(procs);
-    }
-
-    _last_proc_fetch = sec;
-    if (gen_events) {
-        _last_proc_event_gen = sec;
-    }
+    _last_proc_event_gen = sec;
 }

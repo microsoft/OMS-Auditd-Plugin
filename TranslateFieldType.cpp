@@ -132,6 +132,7 @@ static StringTable<field_type_t> s_field_table(field_type_t::UNCLASSIFIED, {
         {"macproto", field_type_t::MACPROTO},
         {"invalid_context", field_type_t::ESCAPED},
         {"ioctlcmd", field_type_t::IOCTL_REQ},
+        {"SV_INTEGRITY_HASH", field_type_t::ESCAPED},
 });
 
 field_type_t FieldNameToType(const std::string_view& name) {

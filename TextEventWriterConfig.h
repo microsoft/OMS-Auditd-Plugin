@@ -13,14 +13,16 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_OMSEVENTTRANSFORMERCONFIG_H
-#define AUOMS_OMSEVENTTRANSFORMERCONFIG_H
+#ifndef AUOMS_OMSEVENTWRITERCONFIG_H
+#define AUOMS_OMSEVENTWRITERCONFIG_H
 
 #include "Config.h"
+#include "ProcFilter.h"
+#include "FiltersEngine.h"
 
-class OMSEventWriterConfig {
+class TextEventWriterConfig {
 public:
-    explicit OMSEventWriterConfig()
+    explicit TextEventWriterConfig()
     {
         TimestampFieldName = "Timestamp";
         SerialFieldName = "SerialNumber";
@@ -33,7 +35,7 @@ public:
         FilterFlagsMask = 0;
     }
 
-    bool LoadFromConfig(const Config& config);
+    void LoadFromConfig(std::string name, const Config& config, std::shared_ptr<UserDB> user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree);
 
     std::string TimestampFieldName;
     std::string SerialFieldName;
@@ -50,8 +52,12 @@ public:
     std::unordered_map<std::string, std::string> InterpFieldNameMap;
     std::unordered_set<std::string> FilterRecordTypeSet;
     std::unordered_set<std::string> FilterFieldNameSet;
-    uint32_t FilterFlagsMask;
+    std::bitset<FILTER_BITSET_SIZE> FilterFlagsMask;
+
+    std::shared_ptr<ProcFilter> proc_filter = NULL;
+    std::shared_ptr<FiltersEngine> _filtersEngine;
+    std::shared_ptr<ProcessTree> _processTree;
 };
 
 
-#endif //AUOMS_OMSEVENTTRANSFORMERCONFIG_H
+#endif //AUOMS_OMSEVENTWRITERCONFIG_H

@@ -25,33 +25,59 @@
 #include <algorithm>
 #include <unistd.h>
 #include <limits.h>
+#include <assert.h>
+#include <libxml/xmlmemory.h>
+#include <libxml/parser.h>
+#include <libxml/tree.h>
+
+using namespace std;
+
 
 #define RELOAD_INTERVAL 300 // 5 minutes
 
-const std::string CONFIG_PARAM_NAME = "process_flags";
+const std::string CONFIG_PARAM_NAME = "process_filters";
 
-/*****************************************************************************
- ** ProcessInfo
- *****************************************************************************/
+//
+// Helper macros used for parsing the Sysmon XML config
+//
+#define RULE_COMBINE_TYPE_FROM_STRING( a )\
+    (0 == xmlStrcasecmp( a, (xmlChar*)"or")) ? RuleCombineOR :\
+    (0 == xmlStrcasecmp( a, (xmlChar*)"and")) ? RuleCombineOR : RuleCombineTypeInvalid;
 
-ProcInfo::ProcInfo(ProcessInfo* proc)
+#define RULE_TYPE_FROM_STRING( a )\
+    (0 == xmlStrcasecmp( a, (xmlChar*)"include")) ? RuleTypeInclude :\
+    (0 == xmlStrcasecmp( a, (xmlChar*)"exclude")) ? RuleTypeExclude : RuleTypeInvalid;
+
+#define RULE_MATCH_TYPE_FROM_STRING( a )\
+    (0 == xmlStrcasecmp( a, (xmlChar*)"is"))    ? MatchEquals :\
+    (0 == xmlStrcasecmp( a, (xmlChar*)"isnot")) ? MatchUndefined :\
+    (0 == xmlStrcasecmp( a, (xmlChar*)"contains")) ? MatchUndefined :\
+    (0 == xmlStrcasecmp( a, (xmlChar*)"excludes")) ? MatchUndefined :\
+    (0 == xmlStrcasecmp( a, (xmlChar*)"begin with")) ? MatchStartsWith :\
+    (0 == xmlStrcasecmp( a, (xmlChar*)"end with")) ? MatchUndefined :\
+    (0 == xmlStrcasecmp( a, (xmlChar*)"regex")) ? MatchRegex : MatchUndefined;
+
+#define IS_EVENTFILTER_NODE( a )\
+    (0 == xmlStrcasecmp( a->name, (xmlChar*)"eventfiltering"))
+
+#define IS_RULEGROUP_NODE( a )\
+    (0 == xmlStrcasecmp( a->name, (xmlChar*)"rulegroup"))
+
+typedef enum
 {
-    exe = proc->exe();
-    pid = proc->pid();
-    ppid = proc->ppid();
-    uid = proc->uid();
-    proc->get_arg1(arg1);
-}
+    RuleTypeInvalid=0,
+    RuleTypeInclude = 1,
+    RuleTypeExclude = 2,
+    RuleTypeDefault = 2
+} RuleType, *PRuleType;
 
-inline bool ProcInfo::operator==(const ProcInfo& x) const
-{
-    return (pid == x.pid) && (ppid == x.ppid) && (exe == x.exe);
-}
+typedef enum {
+    RuleCombineTypeInvalid=0,
+	RuleCombineOR = 1,
+	RuleCombineAND = 2,
+	RuleCombineDefault = 2
+}  RuleCombineType, *PRuleCombimlneType;
 
-inline bool ProcInfo::operator!=(const ProcInfo& x) const
-{
-    return !(*this==x);
-}
 
 
 /*****************************************************************************
@@ -59,83 +85,15 @@ inline bool ProcInfo::operator!=(const ProcInfo& x) const
  *****************************************************************************/
 
 // -------- helper functions -----------------------------
-int ProcFilter::is_dir(std::string path)
-{
-    struct stat stat_buf;
-    stat(path.c_str(), &stat_buf);
-    int is_directory = S_ISDIR(stat_buf.st_mode);
-    return (is_directory ? 1: 0);
-}
-
 bool ProcFilter::is_number(const std::string& s)
 {
     return !s.empty() &&
            std::find_if(s.begin(), s.end(), [](char c) { return !std::isdigit(c); }) == s.end();
 }
 
-std::string ProcFilter::do_readlink(std::string const& path) {
-    char buff[PATH_MAX];
-    ssize_t len = ::readlink(path.c_str(), buff, sizeof(buff)-1);
-    if (len != -1) {
-      buff[len] = '\0';
-      return std::string(buff);
-    }
-    Logger::Warn("Failed to read exe link '%s': %s", path.c_str(), std::strerror(errno));
-    return std::string();
-}
-
-uint32_t ProcFilter::is_root_filter_proc(const ProcInfo& proc) {
-    std::string user_name = _user_db->GetUserName(proc.uid);
-    for (auto ent : _filters)
-    {
-        if (proc.exe.compare(0, ent._exe.length(), ent._exe) == 0) {
-            if (!ent._user.empty() && user_name != ent._user) {
-                continue;
-            }
-            if (!ent._arg1.empty() && proc.arg1.compare(0, ent._arg1.length(), ent._arg1) != 0) {
-                continue;
-            }
-            return ent._flags;
-        }
-    }
-    return 0;
-}
-
+bool operator==(const cmdlineFilter& a, const cmdlineFilter& b) {                                                                                    return ((a._matchType == b._matchType) && (a._matchValue == b._matchValue));                                                                 }
 
 // --------- end helper functions -------------------------
-
-void ProcFilter::compile_filter_pids(std::vector<ProcInfo>& allProcs)
-{
-    std::unordered_multimap<int, int> procs;
-    std::vector<std::pair<int,uint32_t>> search_pids;
-    std::vector<std::pair<int,uint32_t>> tmp_pids;
-    // add root blocking processes
-    for (const ProcInfo& proc : allProcs)
-    {
-        auto flags = is_root_filter_proc(proc);
-        if (flags != 0) {
-            _filter_pids.insert(std::pair<int,uint32_t>(proc.pid, flags));
-            search_pids.push_back(std::pair<int,uint32_t>(proc.pid, flags));
-        }
-        procs.insert(std::pair<int, int>(proc.ppid, proc.pid));
-    }
-
-    // Starting with initial root set of procs to filter
-    // Look for children and add them to the filter set
-    while(!search_pids.empty()) {
-        for (auto ent : search_pids) {
-            for (auto procPair : procs) {
-                if (procPair.first == ent.first) {
-                    _filter_pids.insert(std::pair<int, uint32_t>(procPair.second, ent.second));
-                    tmp_pids.push_back(std::pair<int, uint32_t>(procPair.second, ent.second));
-                }
-
-            }
-        }
-        search_pids = tmp_pids;
-        tmp_pids.clear();
-    }
-}
 
 bool ProcFilter::ParseConfig(const Config& config) {
     if (config.HasKey(CONFIG_PARAM_NAME)) {
@@ -146,65 +104,206 @@ bool ProcFilter::ParseConfig(const Config& config) {
         int idx = 0;
         for (auto it = doc.Begin(); it != doc.End(); ++it, idx++) {
             if (it->IsObject()) {
-                std::string exe;
-                std::string arg1;
-                uint32_t flags = 0;
+                uint32_t match_mask = 0;
+                int depth = 0;
+                int uid = -1;
+                int gid = -1;
                 std::string user;
-                auto mi = it->FindMember("exe_prefix");
-                if (mi != it->MemberEnd()) {
-                    if (mi->value.IsString()) {
-                        exe = std::string(mi->value.GetString(), mi->value.GetStringLength());
-                    } else {
-                        Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
-                        _filters.clear();
-                        return false;
-                    }
-                } else {
-                    Logger::Error("Invalid entry (%s) at (%d) in config for '%s' is missing", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
-                    _filters.clear();
-                    return false;
-                }
-                mi = it->FindMember("arg1_prefix");
-                if (mi != it->MemberEnd()) {
-                    if (mi->value.IsString()) {
-                        arg1 = std::string(mi->value.GetString(), mi->value.GetStringLength());
-                    } else {
-                        Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
-                        _filters.clear();
-                        return false;
-                    }
-                }
-                mi = it->FindMember("flags");
+                std::string group;
+                std::vector<std::string> syscalls;
+                std::string exeMatchValue;
+                std::vector<cmdlineFilter> cmdlineFilters;
+
+                rapidjson::Value::ConstMemberIterator mi;
+
+                mi = it->FindMember("depth");
                 if (mi != it->MemberEnd()) {
                     if (mi->value.IsInt()) {
                         int i = mi->value.GetInt();
-                        if (i <= 0 || i > 0xFFFF) {
+                        if (i < -1) {
                             Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
                             _filters.clear();
                             return false;
                         }
-                        flags = static_cast<uint32_t>(i) << 16;
+                        depth = i;
                     } else {
                         Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
                         _filters.clear();
                         return false;
                     }
-                } else {
-                    Logger::Error("Entry (%s) at (%d) in config for '%s' is missing", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
-                    _filters.clear();
-                    return false;
                 }
+
                 mi = it->FindMember("user");
                 if (mi != it->MemberEnd()) {
                     if (mi->value.IsString()) {
                         user = std::string(mi->value.GetString(), mi->value.GetStringLength());
+                        if (is_number(user)) {
+                            uid = std::stoi(user);
+                        } else {
+                            uid = _user_db->UserNameToUid(user);
+                        }
+                        if (uid == -1) {
+                            Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                            _filters.clear();
+                            return false;
+                        }
+                        match_mask |= PFS_MATCH_UID;
                     } else {
                         Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
                         _filters.clear();
                         return false;
                     }
                 }
-                _filters.emplace(_filters.end(), exe, arg1, flags, user);
+
+                mi = it->FindMember("group");
+                if (mi != it->MemberEnd()) {
+                    if (mi->value.IsString()) {
+                        group = std::string(mi->value.GetString(), mi->value.GetStringLength());
+                        if (is_number(group)) {
+                            gid = std::stoi(group);
+                        } else {
+                            gid = _user_db->GroupNameToGid(group);
+                        }
+                        if (gid == -1) {
+                            Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                            _filters.clear();
+                            return false;
+                        }
+                        match_mask |= PFS_MATCH_GID;
+                    } else {
+                        Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                        _filters.clear();
+                        return false;
+                    }
+                }
+
+                mi = it->FindMember("syscalls");
+                if (mi != it->MemberEnd()) {
+                    if (mi->value.IsArray()) {
+                        if (!syscalls.empty()) {
+                            syscalls.clear();
+                        }
+                        bool includesExclude = false;
+                        for (auto it2 = mi->value.Begin(); it2 != mi->value.End(); ++it2) {
+                            syscalls.emplace_back(std::string(it2->GetString(), it2->GetStringLength()));
+                            if (it2->GetString()[0] == '!') {
+                                includesExclude = true;
+                            }
+                        }
+                        if (includesExclude) {
+                            syscalls.emplace_back(std::string("*"));
+                        }
+                    } else {
+                        Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                        _filters.clear();
+                        return false;
+                    }
+                }
+
+                mi = it->FindMember("exeMatchType");
+                if (mi != it->MemberEnd()) {
+                    if (mi->value.IsString()) {
+                        if (!strcmp(mi->value.GetString(), "MatchEquals")) {
+                            match_mask |= PFS_MATCH_EXE_EQUALS;
+                        } else if (!strcmp(mi->value.GetString(), "MatchStartsWith")) {
+                            match_mask |= PFS_MATCH_EXE_STARTSWITH;
+                        } else if (!strcmp(mi->value.GetString(), "MatchContains")) {
+                            match_mask |= PFS_MATCH_EXE_CONTAINS;
+                        } else if (!strcmp(mi->value.GetString(), "MatchRegex")) {
+                            match_mask |= PFS_MATCH_EXE_REGEX;
+                        } else {
+                            Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                            _filters.clear();
+                            return false;
+                        }
+                    } else {
+                        Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                        _filters.clear();
+                        return false;
+                    }
+                }
+
+                mi = it->FindMember("exeMatchValue");
+                if (mi != it->MemberEnd()) {
+                    if (mi->value.IsString()) {
+                        exeMatchValue = std::string(mi->value.GetString(), mi->value.GetStringLength());
+                    } else {
+                        Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                        _filters.clear();
+                        return false;
+                    }
+                }
+
+                mi = it->FindMember("cmdlineFilters");
+                if (mi != it->MemberEnd()) {
+                    if (mi->value.IsArray()) {
+                        if (!cmdlineFilters.empty()) {
+                            cmdlineFilters.clear();
+                        }
+                        for (auto it2 = mi->value.Begin(); it2 != mi->value.End(); ++it2) {
+                            if (it2->IsObject()) {
+                                cmdlineFilter cf;
+                                rapidjson::Value::ConstMemberIterator mi2;
+                                mi2 = it2->FindMember("matchType");
+                                if (mi2 != it2->MemberEnd()) {
+                                    if (mi2->value.IsString()) {
+                                        if (!strcmp(mi2->value.GetString(), "MatchEquals")) {
+                                            cf._matchType = MatchEquals;
+                                        } else if (!strcmp(mi2->value.GetString(), "MatchStartsWith")) {
+                                            cf._matchType = MatchStartsWith;
+                                        } else if (!strcmp(mi2->value.GetString(), "MatchContains")) {
+                                            cf._matchType = MatchContains;
+                                        } else if (!strcmp(mi2->value.GetString(), "MatchRegex")) {
+                                            cf._matchType = MatchRegex;
+                                        } else {
+                                            Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                                            _filters.clear();
+                                            return false;
+                                        }
+                                    } else {
+                                        Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                                        _filters.clear();
+                                        return false;
+                                    }
+                                } else {
+                                    Logger::Error("Invalid entry (%s) at (%d) in config for '%s' is missing", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                                    _filters.clear();
+                                    return false;
+                                }
+
+                                mi2 = it2->FindMember("matchValue");
+                                if (mi2 != it2->MemberEnd()) {
+                                    if (mi2->value.IsString()) {
+                                        cf._matchValue = std::string(mi2->value.GetString(), mi2->value.GetStringLength());
+                                    } else {
+                                        Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                                        _filters.clear();
+                                        return false;
+                                    }
+                                } else {
+                                    Logger::Error("Invalid entry (%s) at (%d) in config for '%s' is missing", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                                    _filters.clear();
+                                    return false;
+                                }
+
+                                cmdlineFilters.emplace_back(cf);
+                            } else {
+                                Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                                _filters.clear();
+                                return false;
+                            }
+                        }
+                    } else {
+                        Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
+                        _filters.clear();
+                        return false;
+                    }
+                }
+
+                if (syscalls.empty()) {
+                    syscalls.emplace_back("*");
+                }
+                _filters.emplace_back(match_mask, depth, uid, gid, syscalls, exeMatchValue, cmdlineFilters);
             } else {
                 Logger::Error("Invalid entry (%d) in config for '%s'", idx, CONFIG_PARAM_NAME.c_str());
                 _filters.clear();
@@ -215,84 +314,186 @@ bool ProcFilter::ParseConfig(const Config& config) {
     return true;
 }
 
-void ProcFilter::UpdateProcesses(std::vector<ProcInfo>& procs) {
-    if (_filters.empty()) {
-        return;
-    }
-    _previous_filter_pids.clear();
-    _previous_filter_pids = _filter_pids;
-    _filter_pids.clear();
-    compile_filter_pids(procs);
-}
 
-ProcFilter::ProcFilter(const std::shared_ptr<UserDB>& user_db)
+
+bool ProcFilter::ParseSysmonConfig(std::string& xmlfile) 
 {
-    _user_db = user_db;
-}
+    xmlDocPtr doc = NULL;
+    xmlNodePtr rulesPtr = NULL;
+    bool rc = false;
 
-bool ProcFilter::IsFilterEnabled() {
-    return !_filters.empty();
-}
+   // If we omit this, the parse will interpret the whitespace at the end of each line as an element called 'text'
+   xmlKeepBlanksDefault(0);
 
-uint32_t ProcFilter::GetFilterFlags(int pid, int ppid)
-{
-    auto it = _filter_pids.find(pid);
-    if (it != _filter_pids.end()) {
-        return it->second;
+
+    doc = xmlParseFile(xmlfile.c_str());
+    if (NULL == doc) {
+
+        Logger::Error("Failed to parse xml file\n");
+        return rc;
     }
 
-    it = _filter_pids.find(ppid);
-    if (it != _filter_pids.end()) {
-        return it->second;
-    }
+    // TODO: Validate against schema
 
-    it = _previous_filter_pids.find(pid);
-    if (it != _previous_filter_pids.end()) {
-        return it->second;
-    }
 
-    it = _previous_filter_pids.find(ppid);
-    if (it != _previous_filter_pids.end()) {
-        return it->second;
-    }
+    // Get the root element node
+    xmlNodePtr root = xmlDocGetRootElement(doc);
+    if (NULL == root || NULL == root->name || xmlStrcasecmp(root->name, (xmlChar*)"sysmon")) {
 
-    return 0;
-}
+        Logger::Error("Invalid root node\n");
 
-void ProcFilter::AddProcess(int pid, int ppid)
-{
-
-    // Do nothing if there are no filters
-    if (_filters.empty()) 
-    {
-        return;
-    }
-
-    // This new processes's pid might still be present in the list if the pid was used by a previous process.
-    // So, remove it from the list. If this new process needs to be filtered it will get re-added during the
-    // parent pid check, or during the root filter prod check.
-    _filter_pids.erase(pid);
-
-    // Look for the parent pid in set
-    auto it = _filter_pids.find(ppid);
-    if (it != _filter_pids.end()) {
-        _filter_pids.insert(std::pair<int, uint32_t>(pid, it->second));
-        return;
     } else {
-        auto pit = _previous_filter_pids.find(ppid);
-        if (pit != _previous_filter_pids.end()) {
-            _filter_pids.insert(std::pair<int, uint32_t>(pid, pit->second));
-            return;
-        }
-    }
 
-    // Parent wasn't found, check to see if it is a root filter proc
-    auto pinfo = ProcessInfo::Open(pid);
-    if (pinfo) {
-        ProcInfo proc(pinfo.get());
-        auto flags = is_root_filter_proc(proc);
-        if (flags != 0) {
-            _filter_pids.insert(std::pair<int, uint32_t>(pid, flags));
+        xmlNodePtr cur = NULL;
+        for (cur = root->children; NULL != cur; cur=cur->next) {
+
+            assert(NULL != cur->name);
+
+            // We will walk the top level entries first then process the rule tree so use a cursor 
+            // for the root of the rule node. 
+            if (IS_EVENTFILTER_NODE(cur)) {
+
+                rulesPtr = cur;
+                continue;
+            }
+
+            /* TODO: Enable features and set hashing algorithm */
         }
-    }
+
+        // Finished processing the root level nodes so now tackle the rules
+        // These may or may not be nested inside a rulegroup
+        if (NULL != rulesPtr) {
+
+           // Assume sucess unless we hit a bad rule
+           rc = true;
+
+           // groupRelation attribute is optional. Set the default if not-used
+           RuleCombineType combineType = RuleCombineDefault;
+
+            cur = rulesPtr->children;
+
+            while (NULL != cur) {
+
+                // If this is a rulegroup node then check if the combineType has been overriden
+                if (IS_RULEGROUP_NODE (cur)) {
+
+                    xmlChar* groupRelation = xmlGetProp(cur, (xmlChar*)"groupRelation");
+             
+                    if (NULL != groupRelation) {
+                       
+                        combineType  = RULE_COMBINE_TYPE_FROM_STRING(groupRelation);
+                        if (RuleCombineTypeInvalid == combineType) {
+
+                            Logger::Error("Invalid combine type %s\n", groupRelation);
+                            rc = false;
+                            xmlFree(groupRelation);
+                            break;
+                        }
+
+                       xmlFree(groupRelation);
+                    }
+
+                    // rules are nested inside the rulegroup so drop down the hierachy
+                    cur = cur->children;
+                    continue;
+                }
+
+                // Process the rule metadata for this event. RuleType (include or exclude) is optional
+                RuleType ruleType = RuleTypeDefault;
+
+                if (xmlHasProp(cur, (xmlChar*)"onmatch")) {
+
+                    xmlChar *type = xmlGetProp(cur, (xmlChar*)"onmatch");
+                    assert (NULL != type); 
+
+                    ruleType = RULE_TYPE_FROM_STRING(type);
+                    if (RuleTypeInvalid == ruleType) {
+
+                        Logger::Error("Invalid rule type %s\n", type);
+                        rc = false;
+                        xmlFree(type);
+                        break;
+                    }
+
+                    xmlFree(type);
+                }
+
+               // Now process the rules themselves..
+               xmlNodePtr currentRule = NULL;
+               StringMatchType matchType = MatchUndefined;
+                
+                for (currentRule = cur->children; NULL != currentRule; currentRule=currentRule->next) {
+                    
+                    xmlChar *condition = xmlGetProp(currentRule, (xmlChar*)"condition");
+                    if (NULL == condition) {
+
+                       Logger::Error("Failed to parse rule condition. Rule will be ignored\n");
+
+                    } else {
+
+                        StringMatchType matchType = RULE_MATCH_TYPE_FROM_STRING(condition);
+                        if (MatchUndefined == matchType) {
+
+                            Logger::Error("Invalid match condition %s\n", condition);
+                            rc = false;
+                            xmlFree(condition);
+                            break;
+                        }
+
+                        xmlChar* value = xmlNodeGetContent(currentRule);
+
+                        vector<string> syscalls;
+                        string emptyString = "";
+                        std::vector<cmdlineFilter> cmdlineFilters;
+
+                        uint32_t match_mask;
+                        switch(matchType) {
+                            case MatchEquals:
+                                match_mask |= PFS_MATCH_EXE_EQUALS;
+                                break;
+                            case MatchStartsWith:
+                                match_mask |= PFS_MATCH_EXE_STARTSWITH;
+                                break;
+                            case MatchRegex:
+                                match_mask |= PFS_MATCH_EXE_REGEX;
+                                break;
+                        }
+                  
+/*
+                          _filters.emplace_back(-1,                             // depth
+                                                emptyString,                    // User
+                                                emptyString,                    // group
+                                                syscalls,                       // syscall vector
+                                                matchType,                      // image matchType {Equals, StartsWith etc}
+                                                string((const char*)value),     // image match string
+                                                matchType,                      // args match type
+                                                string((const char*)value));    // args match string
+*/
+
+                          _filters.emplace_back(match_mask,                     // match mask
+                                                -1,                             // depth
+                                                -1,                             // User
+                                                -1,                             // group
+                                                syscalls,                       // syscall vector
+                                                string((const char*)value),     // image match string
+                                                cmdlineFilters);                 // cmdline filters
+
+                        xmlFree(value);
+                        xmlFree(condition);
+                    }
+                }
+
+                cur = cur->next;
+            }
+        }
+    } 
+
+    xmlFreeDoc(doc);
+    xmlCleanupParser();
+
+    return rc;
 }
+
+
+
+

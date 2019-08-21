@@ -16,7 +16,6 @@
 #ifndef AUOMS_OMSEVENTTRANSFORMER_H
 #define AUOMS_OMSEVENTTRANSFORMER_H
 
-#include "OMSEventWriterConfig.h"
 #include "TextEventWriter.h"
 
 #include <string>
@@ -28,36 +27,24 @@
 
 class OMSEventWriter: public TextEventWriter {
 public:
-    OMSEventWriter(OMSEventWriterConfig config):
-    _config(config), _buffer(0, 1024*1024), _writer(_buffer)
+    OMSEventWriter(TextEventWriterConfig config): TextEventWriter(config),
+    _buffer(0, 1024*1024), _writer(_buffer)
     {}
 
-    virtual ssize_t WriteEvent(const Event& event, IWriter* writer);
+    ssize_t WriteEvent(const Event& event, IWriter* writer);
+
+protected:
+    void write_int32_field(const std::string& name, int32_t value);
+    void write_int64_field(const std::string& name, int64_t value);
+    void write_raw_field(const std::string& name, const char* value_data, size_t value_size);
+
+    bool begin_event(const Event& event);
+    void end_event(const Event& event);
+
+    bool begin_record(const EventRecord& record, const std::string& record_type_name);
+    void end_record(const EventRecord& record);
 
 private:
-    ssize_t write_event(IWriter* writer);
-    void reset();
-    void begin_array();
-    void end_array();
-    void begin_object();
-    void end_object();
-    void add_int32_field(const std::string& name, int32_t value);
-    void add_int64_field(const std::string& name, int64_t value);
-    void add_double(double value);
-    void add_string(const std::string& value);
-    void add_string_field(const std::string& name, const std::string& value);
-    void add_string_field(const std::string& name, const char* value_data, size_t value_size);
-
-    void process_record(const EventRecord& rec, int record_type, const std::string& record_name);
-    void process_field(const EventRecordField& field);
-
-    OMSEventWriterConfig _config;
-    std::string _field_name;
-    std::string _raw_name;
-    std::string _interp_name;
-    std::string _escaped_value;
-    std::string _interp_value;
-
     rapidjson::StringBuffer _buffer;
     rapidjson::Writer<rapidjson::StringBuffer> _writer;
 };

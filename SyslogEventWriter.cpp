@@ -13,30 +13,39 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
+#include "SyslogEventWriter.h"
 
-#ifndef AUOMS_JSONEVENTWRITER_H
-#define AUOMS_JSONEVENTWRITER_H
+#include "Logger.h"
+#include "StringUtils.h"
 
-#include "TextEventWriter.h"
+#include <string>
+#include <vector>
+#include <sstream>
+#include <iomanip>
 
-#include <array>
+void SyslogEventWriter::write_string_field(const std::string& name, const std::string& value)
+{
+    _buffer << ' ' << name << '=' << '"' << value << '"';
+}
 
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
+void SyslogEventWriter::write_raw_field(const std::string& name, const char* value_data, size_t value_size)
+{
+    _buffer << ' ' << name << '=';
+    _buffer.write(value_data, value_size);
+}
 
+bool SyslogEventWriter::begin_event(const Event& event) {
+    _event = &event;
+    return true;
+}
 
-class JSONEventWriter: public TextEventWriter {
-public:
-    JSONEventWriter(TextEventWriterConfig config) : TextEventWriter(config)
-    {}
-    virtual ssize_t WriteEvent(const Event& event, IWriter* writer);
+bool SyslogEventWriter::begin_record(const EventRecord& record, const std::string& record_type_name) {
+    _buffer.str(std::string());
+    _buffer << "type=" << record_type_name;
+    _buffer << " audit(" << _event->Seconds() << '.' << std::setw(3) << std::setfill('0') <<_event->Milliseconds() << std::setw(0) << ':' << _event->Serial() << "):";
+    return true;
+}
 
-private:
-    void write_raw_field(const std::string& name, const char* value_data, size_t value_size) {}
-    std::array<char, 1024> _header;
-    rapidjson::StringBuffer _buffer;
-    rapidjson::Writer<rapidjson::StringBuffer> _writer;
-};
-
-
-#endif //AUOMS_JSONEVENTWRITER_H
+void SyslogEventWriter::end_record(const EventRecord& record) {
+    syslog(LOG_USER | LOG_INFO, "%s", _buffer.str().c_str());
+}

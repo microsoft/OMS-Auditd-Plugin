@@ -311,7 +311,7 @@ int EventBuilder::EndEvent() {
     }
 
     if (_record_idx != EVENT_NUM_RECORDS(_data)) {
-        throw std::runtime_error("EventRecord ended prematurely: Expected " + std::to_string(EVENT_NUM_RECORDS(_data)) + " records, only " + std::to_string(_record_idx) + " where added");
+        throw std::runtime_error("EventRecord ended prematurely: Expected " + std::to_string(EVENT_NUM_RECORDS(_data)) + " records, only " + std::to_string(_record_idx) + " were added");
     }
 
     SET_EVENT_SIZE(_data, static_cast<uint32_t>(_size));

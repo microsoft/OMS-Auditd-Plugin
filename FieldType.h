@@ -47,7 +47,8 @@ enum class field_type_t: int {
     NETACTION,
     MACPROTO,
     IOCTL_REQ,
-    ESCAPED_KEY
+    ESCAPED_KEY,
+    UNESCAPED
 };
 
 #endif //AUOMS_FIELDTYPE_H

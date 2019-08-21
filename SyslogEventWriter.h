@@ -13,30 +13,40 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-
-#ifndef AUOMS_JSONEVENTWRITER_H
-#define AUOMS_JSONEVENTWRITER_H
+#ifndef AUOMS_SYSLOGEVENTWRITER_H
+#define AUOMS_SYSLOGEVENTWRITER_H
 
 #include "TextEventWriter.h"
 
-#include <array>
+#include <string>
+#include <sstream>
+#include <memory>
+#include <syslog.h>
 
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
-
-
-class JSONEventWriter: public TextEventWriter {
+class SyslogEventWriter: public TextEventWriter {
 public:
-    JSONEventWriter(TextEventWriterConfig config) : TextEventWriter(config)
-    {}
-    virtual ssize_t WriteEvent(const Event& event, IWriter* writer);
+    SyslogEventWriter(TextEventWriterConfig config) : TextEventWriter(config)
+    {
+	   openlog("sysmon", LOG_NOWAIT, LOG_USER);
+    }
+
+    ~SyslogEventWriter()
+    {
+	    closelog();
+    }
 
 private:
-    void write_raw_field(const std::string& name, const char* value_data, size_t value_size) {}
-    std::array<char, 1024> _header;
-    rapidjson::StringBuffer _buffer;
-    rapidjson::Writer<rapidjson::StringBuffer> _writer;
+    void write_string_field(const std::string& name, const std::string& value);
+    void write_raw_field(const std::string& name, const char* value_data, size_t value_size);
+
+    bool begin_event(const Event& event);
+
+    bool begin_record(const EventRecord& record, const std::string& record_type_name);
+    void end_record(const EventRecord& record);
+
+    const Event* _event;
+    std::ostringstream _buffer;
 };
 
 
-#endif //AUOMS_JSONEVENTWRITER_H
+#endif //AUOMS_SYSLOGEVENTWRITER_H

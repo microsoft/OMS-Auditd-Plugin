@@ -19,13 +19,14 @@
 
 #include "Event.h"
 #include "UserDB.h"
-#include "ProcFilter.h"
+#include "ProcessTree.h"
 #include "ExecveConverter.h"
 
 class RawEventProcessor {
 public:
-    RawEventProcessor(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<UserDB>& user_db, const std::shared_ptr<ProcFilter>& proc_filter):
-    _builder(builder), _user_db(user_db), _state_ptr(nullptr), _procFilter(proc_filter), _event_flags(0), _pid(0), _ppid(0), _last_proc_fetch(0), _last_proc_event_gen(0) {};
+    RawEventProcessor(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<UserDB>& user_db, const std::shared_ptr<ProcessTree>& processTree, const std::shared_ptr<FiltersEngine> filtersEngine):
+    _builder(builder), _user_db(user_db), _state_ptr(nullptr), _processTree(processTree), _filtersEngine(filtersEngine),
+        _event_flags(0), _pid(0), _ppid(0), _uid(-1), _last_proc_fetch(0), _last_proc_event_gen(0) {};
 
     void ProcessData(const void* data, size_t data_len);
     void DoProcessInventory();
@@ -45,10 +46,16 @@ private:
     std::shared_ptr<EventBuilder> _builder;
     std::shared_ptr<UserDB> _user_db;
     void* _state_ptr;
-    std::shared_ptr<ProcFilter> _procFilter;
+    std::shared_ptr<ProcessTree> _processTree;
+    std::shared_ptr<FiltersEngine> _filtersEngine;
     uint32_t _event_flags;
     pid_t _pid;
     pid_t _ppid;
+    int _uid;
+    int _gid;
+    std::string _exe;
+    std::string _args;
+    std::string _syscall;
     std::string _field_name;
     std::string _unescaped_val;
     std::string _tmp_val;
