@@ -183,15 +183,9 @@ void TextEventWriterConfig::LoadFromConfig(std::string name, const Config& confi
     }
 
     // Load filter rules. TODO move to TextEventWriter
-    std::string sysmonConfig="";
     proc_filter = std::make_shared<ProcFilter>(user_db);
 
-    if (config.HasKey("sysmon_config")) {
-        sysmonConfig = config.GetString("sysmon_config");
-        good = proc_filter->ParseSysmonConfig( sysmonConfig);
-    } else {
-        good = proc_filter->ParseConfig(config);
-    }
+    good = proc_filter->ParseConfig(config);
 
     if (!good) {
         Logger::Error("Invalid 'process_filters' value");

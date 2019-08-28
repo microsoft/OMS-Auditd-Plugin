@@ -16,7 +16,7 @@
 #ifndef AUOMS_PROC_FILTER_H
 #define AUOMS_PROC_FILTER_H
 
-#include<sys/time.h>
+#include <sys/time.h>
 #include <string>
 #include <memory>
 #include <set>
@@ -109,7 +109,6 @@ public:
     ~ProcFilter() = default;
 
     bool ParseConfig(const Config& config);
-    bool ParseSysmonConfig(std::string& xmlFile);
     std::vector<ProcFilterSpec> _filters;
 
 private:

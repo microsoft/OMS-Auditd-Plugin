@@ -27,7 +27,7 @@ class SyslogEventWriter: public TextEventWriter {
 public:
     SyslogEventWriter(TextEventWriterConfig config) : TextEventWriter(config)
     {
-	   openlog("sysmon", LOG_NOWAIT, LOG_USER);
+	   openlog("auoms", LOG_NOWAIT, LOG_USER);
     }
 
     ~SyslogEventWriter()

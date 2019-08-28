@@ -30,7 +30,7 @@ if(DEFINED DO_STATIC_LINK)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 endif()
 
-include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include /usr/include/libxml2)
+include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include)
 
 if (NOT DEFINED ENV_CONFIG_PATH)
     set(ENV_CONFIG_PATH ${CMAKE_SOURCE_DIR}/build/env_config.h)
@@ -94,7 +94,6 @@ target_link_libraries(auomscollect
         dl
         pthread
         rt
-        xml2
 )
 
 install(TARGETS
@@ -164,7 +163,6 @@ target_link_libraries(auoms
         dl
         pthread
         rt
-        xml2
 )
 
 install(TARGETS
@@ -351,7 +349,6 @@ target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
         dl
         pthread
         rt
-        xml2
 )
 
 add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=EventProcessorTests.log --report_sink=EventProcessorTests.report)
@@ -397,7 +394,6 @@ add_executable(OMSEventWriterTests
 
 target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}
         pthread
-        xml2
 )
 
 add_test(OMSEventWriter ${CMAKE_BINARY_DIR}/OMSEventWriterTests --log_sink=OMSEventWriterTests.log --report_sink=OMSEventWriterTests.report)
