@@ -183,13 +183,12 @@ void ProcessTree::AddPid(int pid, int ppid)
     if (_processes.count(pid) == 0) {
         std::shared_ptr<ProcessTreeItem> process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_pnotify, pid, ppid);
         if (ppid && _processes.count(ppid) > 0) {
-            process->_parent = _processes[ppid];
             process->_uid = _processes[ppid]->_uid;
             process->_gid = _processes[ppid]->_gid;
             process->_exe = _processes[ppid]->_exe;
             process->_cmdline = _processes[ppid]->_cmdline;
             process->_exec_propagation = _processes[ppid]->_exec_propagation;
-            _processes[ppid]->_children.emplace_back(process);
+            _processes[ppid]->_children.emplace_back(pid);
             process->_ancestors = _processes[ppid]->_ancestors;
             struct Ancestor anc = {ppid, _processes[ppid]->_exe};
             process->_ancestors.emplace_back(anc);
@@ -236,43 +235,51 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(int pid, int ppid, int 
     if (_processes.count(pid) > 0) {
         process = _processes[pid];
         process->_source = ProcessTreeSource_execve;
-        process->_ppid = ppid;
         process->_uid = uid;
         process->_gid = gid;
         process->_exe = exe;
-        if (_processes.count(ppid) > 0) {
-            process->_parent = _processes[ppid];
-            _processes[ppid]->_children.emplace_back(process);
-            process->_ancestors = _processes[ppid]->_ancestors;
-            struct Ancestor anc = {ppid, _processes[ppid]->_exe};
-            process->_ancestors.emplace_back(anc);
+        if (ppid != process->_ppid) {
+            if (_processes.count(process->_ppid) > 0) {
+                auto oldparent = _processes[process->_ppid];
+                auto e = std::find(oldparent->_children.begin(), oldparent->_children.end(), pid);
+                if (e != oldparent->_children.end()) {
+                    oldparent->_children.erase(e);
+                }
+            }
+            if (_processes.count(ppid) > 0) {
+                _processes[ppid]->_children.emplace_back(pid);
+                process->_ancestors = _processes[ppid]->_ancestors;
+                struct Ancestor anc = {ppid, _processes[ppid]->_exe};
+                process->_ancestors.emplace_back(anc);
+            }
+            process->_ppid = ppid;
         }
         process->_cmdline = cmdline;
         if (process->_exec_propagation > 0) {
             process->_exec_propagation = process->_exec_propagation - 1;
         }
-        for (auto p : process->_children) {
-            if (p->_exec_propagation > 0) {
-                p->_source = ProcessTreeSource_execve;
-                p->_exe = exe;
-                p->_cmdline = cmdline;
-                p->_uid = uid;
-                p->_gid = gid;
-                p->_ancestors = process->_ancestors;
-                struct Ancestor anc = {pid, exe};
-                p->_ancestors.emplace_back(anc);
+        for (auto c : process->_children) {
+            if (_processes.count(c) > 0) {
+                auto p = _processes[c];
                 if (p->_exec_propagation > 0) {
+                    p->_source = ProcessTreeSource_execve;
+                    p->_exe = exe;
+                    p->_cmdline = cmdline;
+                    p->_uid = uid;
+                    p->_gid = gid;
+                    p->_ancestors = process->_ancestors;
+                    struct Ancestor anc = {pid, exe};
+                    p->_ancestors.emplace_back(anc);
                     p->_exec_propagation = p->_exec_propagation - 1;
+                    ApplyFlags(p);
                 }
-                ApplyFlags(p);
             }
         }
         ApplyFlags(process);
     } else {
         process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_execve, pid, ppid, uid, gid, exe, cmdline);
         if (_processes.count(ppid) > 0) {
-            process->_parent = _processes[ppid];
-            _processes[ppid]->_children.emplace_back(process);
+            _processes[ppid]->_children.emplace_back(pid);
             process->_ancestors = _processes[ppid]->_ancestors;
             struct Ancestor anc = {ppid, _processes[ppid]->_exe};
             process->_ancestors.emplace_back(anc);
@@ -303,10 +310,6 @@ void ProcessTree::Clean()
         if (element->second->_exited) {
             std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - element->second->_exit_time;
             if (elapsed_seconds.count() > CLEAN_PROCESS_TIMEOUT) {
-                // remove refs to this process
-                for (auto child : element->second->_children) {
-                    child->_parent = nullptr;
-                }
                 // remove this process
                 element = _processes.erase(element);
                 // back round the loop without iterating (as the erase() gave us the next item)
@@ -323,16 +326,16 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
         return _processes[pid];
     } else {
         // process doesn't currently exist, or we only have rudimentary information for it, so add it
-        if (_processes.count(pid) > 0) {
-            std::shared_ptr<ProcessTreeItem> p = _processes[pid];
-        }
+        std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
         auto process = ReadProcEntry(pid);
         if (process != nullptr) {
-            std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
-            _processes[pid] = process;
             if (_processes.count(process->_ppid) > 0) {
-                _processes[pid]->_parent = _processes[process->_ppid];
+                _processes[process->_ppid]->_children.emplace_back(pid);
+                process->_ancestors = _processes[process->_ppid]->_ancestors;
+                struct Ancestor anc = {process->_ppid, _processes[process->_ppid]->_exe};
+                process->_ancestors.emplace_back(anc);
             }
+            _processes[pid] = process;
             ApplyFlags(process);
         }
         return process;
@@ -393,17 +396,25 @@ void ProcessTree::PopulateTree()
     for (auto p : _processes) {
         auto process = p.second;
         if (_processes.count(process->_ppid) > 0) {
-            process->_parent = _processes[process->_ppid];
-            process->_parent->_children.emplace_back(process);
+            _processes[process->_ppid]->_children.emplace_back(process->_pid);
         }
     }
 
     for (auto p : _processes) {
-        auto process = p.second;
-        auto parent = process->_parent;
+        std::shared_ptr<ProcessTreeItem> process, parent;
+        process = p.second;
+        if (_processes.count(process->_ppid) > 0) {
+            parent = _processes[process->_ppid];
+        } else {
+            parent = nullptr;
+        }
         while (parent) {
             process->_ancestors.insert(process->_ancestors.begin(), {parent->_pid, parent->_exe});
-            parent = parent->_parent;
+            if (_processes.count(parent->_ppid) > 0) {
+                parent = _processes[parent->_ppid];
+            } else {
+                parent = nullptr;
+            }
         }
     }
 
@@ -432,24 +443,21 @@ std::string ProcessTree::ReadParam(const std::string& file, const std::string& p
     std::string line;
     std::string value;
 
-    try {
-        f.open(file);
-        while (!f.eof()) {
-            std::getline(f, line);
-            if (!line.compare(0, param.size() + 1, param + ":")) {
-                f.close();
-                value = line.substr(param.size() + 1);
-                size_t first = value.find_first_not_of(" \t");
-                if ( first == std::string::npos) {
-                    return value;
-                } else {
-                    return value.substr(first);
-                }
+    f.open(file);
+    while (f.good() && f.is_open() && !f.eof()) {
+        std::getline(f, line);
+        if (!line.compare(0, param.size() + 1, param + ":")) {
+            f.close();
+            value = line.substr(param.size() + 1);
+            size_t first = value.find_first_not_of(" \t");
+            if ( first == std::string::npos) {
+                return value;
+            } else {
+                return value.substr(first);
             }
         }
-        f.close();
-    } catch (...) {
     }
+    f.close();
     return value;
 }
 
@@ -494,17 +502,20 @@ void ProcessTree::ShowTree()
 {
     for (auto p : _processes) {
         ShowProcess(p.second);
-        for (auto p2 : p.second->_children) {
-            printf("    ");
-            ShowProcess(p2);
+        for (auto c : p.second->_children) {
+            if (_processes.count(c) > 0) {
+                auto p2 = _processes[c];
+                printf("    => ");
+                ShowProcess(p2);
+            }
         }
     }
 }
 
 void ProcessTree::ShowProcess(std::shared_ptr<ProcessTreeItem> p)
 {
-    if (p->_parent) {
-        printf("%6d (%6d) [%d:%d] exe:'%s' cmdline:'%s' prop:%d (%s)\n", p->_pid, p->_ppid, p->_uid, p->_gid, p->_exe.c_str(), p->_cmdline.c_str(), p->_exec_propagation, p->_parent->_exe.c_str());
+    if (_processes.count(p->_ppid) > 0) {
+        printf("%6d (%6d) [%d:%d] exe:'%s' cmdline:'%s' prop:%d (%s)\n", p->_pid, p->_ppid, p->_uid, p->_gid, p->_exe.c_str(), p->_cmdline.c_str(), p->_exec_propagation, _processes[p->_ppid]->_exe.c_str());
     } else {
         printf("%6d (%6d) [%d:%d] exe:'%s' cmdline:'%s' prop:%d\n", p->_pid, p->_ppid, p->_uid, p->_gid, p->_exe.c_str(), p->_cmdline.c_str(), p->_exec_propagation);
     }

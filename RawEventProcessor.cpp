@@ -28,7 +28,6 @@
 // This value mirrors what is defined for AUDIT_KEY_SEPARATOR in libaudit.h
 #define KEY_SEP 0x01
 
-#define PROCESS_INVENTORY_FETCH_INTERVAL 300
 #define PROCESS_INVENTORY_EVENT_INTERVAL 3600
 
 void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
@@ -921,18 +920,13 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
 }
 
 void RawEventProcessor::DoProcessInventory() {
-    return;
-
     struct timeval tv;
     gettimeofday(&tv, nullptr);
 
     uint64_t sec = static_cast<uint64_t>(tv.tv_sec);
     uint32_t msec = static_cast<uint32_t>(tv.tv_usec)/1000;
 
-    bool gen_events = false;
-    if (_last_proc_event_gen+PROCESS_INVENTORY_EVENT_INTERVAL <= sec) {
-        gen_events = true;
-    } else {
+    if (_last_proc_event_gen+PROCESS_INVENTORY_EVENT_INTERVAL > sec) {
         return;
     }
 

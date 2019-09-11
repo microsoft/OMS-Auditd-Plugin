@@ -49,10 +49,9 @@ struct Ancestor {
 class ProcessTreeItem {
 public:
     ProcessTreeItem(enum ProcessTreeSource source, int pid, int ppid=0):
-        _source(source), _pid(pid), _parent(nullptr), _ppid(ppid), _uid(-1), _gid(-1), _flags(0),
-        _exec_propagation(0), _exited(false) {}
+        _source(source), _pid(pid), _ppid(ppid), _uid(-1), _gid(-1), _flags(0), _exec_propagation(0), _exited(false) {}
     ProcessTreeItem(enum ProcessTreeSource source, int pid, int ppid, int uid, int gid, const std::string& exe, const std::string& cmdline):
-        _source(source), _pid(pid), _parent(nullptr), _ppid(ppid), _uid(uid), _gid(gid), _exe(exe), _cmdline(cmdline),
+        _source(source), _pid(pid), _ppid(ppid), _uid(uid), _gid(gid), _exe(exe), _cmdline(cmdline),
         _flags(0), _exec_propagation(0), _exited(false) {}
 
     enum ProcessTreeSource _source;
@@ -60,8 +59,7 @@ public:
     int _ppid;
     int _uid;
     int _gid;
-    std::shared_ptr<ProcessTreeItem> _parent;
-    std::vector<std::shared_ptr<ProcessTreeItem>> _children;
+    std::vector<int> _children;
     std::vector<struct Ancestor> _ancestors;
     unsigned int _exec_propagation;
     std::string _exe;

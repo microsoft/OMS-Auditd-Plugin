@@ -106,10 +106,13 @@ bool TextEventWriter::write_event(const Event& event)
         }
     }
 
-    std::shared_ptr<ProcessTreeItem> p = _config._processTree->GetInfoForPid(event.Pid());
+    std::shared_ptr<ProcessTreeItem> p = nullptr;
+
+    if (!syscall.empty()) {
+        p = _config._processTree->GetInfoForPid(event.Pid());
+    }
 
     if (syscall.empty() || !_config._filtersEngine->IsEventFiltered(syscall, p, _config.FilterFlagsMask)) {
-
 
         if (!begin_event(event))
             return false;
