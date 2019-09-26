@@ -64,8 +64,8 @@ struct ProcFilterSpec {
 
     uint32_t _match_mask;
     int _depth;
-    int _uid;
-    int _gid;
+    uint32_t _uid;
+    uint32_t _gid;
     std::vector<std::string> _syscalls;
     std::string _exeMatchValue;
     std::regex _exeRegex;

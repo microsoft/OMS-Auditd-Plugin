@@ -110,44 +110,36 @@ void ProcessNotify::run()
 void ProcessTree::AddPnForkQueue(int pid, int ppid)
 {
     struct ProcessQueueItem p = {ProcessQueueFork, ProcessTreeSource_pnotify, pid, ppid};
-    std::unique_lock<std::mutex> queue_push_lock(_queue_push_mutex);
+    std::unique_lock<std::mutex> queue_lock(_queue_mutex);
     _PnQueue.push(p);
-    queue_push_lock.unlock();
-    std::unique_lock<std::mutex> queue_pop_lock(_queue_pop_mutex);
-    _queue_data_ready = true;
     _queue_data.notify_one();
 }
 
 void ProcessTree::AddPnExecQueue(int pid)
 {
     struct ProcessQueueItem p = {ProcessQueueExec, ProcessTreeSource_pnotify, pid};
-    std::unique_lock<std::mutex> queue_push_lock(_queue_push_mutex);
+    std::unique_lock<std::mutex> queue_lock(_queue_mutex);
     _PnQueue.push(p);
-    queue_push_lock.unlock();
-    std::unique_lock<std::mutex> queue_pop_lock(_queue_pop_mutex);
-    _queue_data_ready = true;
     _queue_data.notify_one();
 }
 
 void ProcessTree::AddPnExitQueue(int pid)
 {
     struct ProcessQueueItem p = {ProcessQueueExit, ProcessTreeSource_pnotify, pid};
-    std::unique_lock<std::mutex> queue_push_lock(_queue_push_mutex);
+    std::unique_lock<std::mutex> queue_lock(_queue_mutex);
     _PnQueue.push(p);
-    queue_push_lock.unlock();
-    std::unique_lock<std::mutex> queue_pop_lock(_queue_pop_mutex);
-    _queue_data_ready = true;
     _queue_data.notify_one();
 }
 
 void ProcessTree::run()
 {
-    std::unique_lock<std::mutex> queue_pop_lock(_queue_pop_mutex);
+    std::unique_lock<std::mutex> queue_lock(_queue_mutex);
     while (!IsStopping()) {
-        _queue_data.wait(queue_pop_lock, [&]{return _queue_data_ready;});
+        _queue_data.wait(queue_lock, [&]{return !_PnQueue.empty();});
         while (!_PnQueue.empty()) {
             struct ProcessQueueItem p = _PnQueue.front();
             _PnQueue.pop();
+            queue_lock.unlock();
             switch (p.type) {
                 case ProcessQueueFork:
                     AddPid(p.pid, p.ppid);
@@ -161,7 +153,9 @@ void ProcessTree::run()
                 default:
                     Logger::Error("Invalid ProcessQueueType");
             }
+            queue_lock.lock();
         }
+        queue_lock.unlock();
 
         // Check if it's time for routine pruning of stale pids
         std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - _last_clean_time;
@@ -169,7 +163,7 @@ void ProcessTree::run()
             Clean();
             _last_clean_time = std::chrono::system_clock::now();
         }
-        _queue_data_ready = false;
+        queue_lock.lock();
     }
 }
 
@@ -183,14 +177,15 @@ void ProcessTree::AddPid(int pid, int ppid)
     if (_processes.count(pid) == 0) {
         std::shared_ptr<ProcessTreeItem> process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_pnotify, pid, ppid);
         if (ppid && _processes.count(ppid) > 0) {
-            process->_uid = _processes[ppid]->_uid;
-            process->_gid = _processes[ppid]->_gid;
-            process->_exe = _processes[ppid]->_exe;
-            process->_cmdline = _processes[ppid]->_cmdline;
-            process->_exec_propagation = _processes[ppid]->_exec_propagation;
-            _processes[ppid]->_children.emplace_back(pid);
-            process->_ancestors = _processes[ppid]->_ancestors;
-            struct Ancestor anc = {ppid, _processes[ppid]->_exe};
+            auto parent = _processes[ppid];
+            process->_uid = parent->_uid;
+            process->_gid = parent->_gid;
+            process->_exe = parent->_exe;
+            process->_cmdline = parent->_cmdline;
+            process->_exec_propagation = parent->_exec_propagation;
+            parent->_children.emplace_back(pid);
+            process->_ancestors = parent->_ancestors;
+            struct Ancestor anc = {ppid, parent->_exe};
             process->_ancestors.emplace_back(anc);
             ApplyFlags(process);
         } else {
@@ -211,7 +206,7 @@ void ProcessTree::AddPid(int pid)
     std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
     if (_processes.count(pid) > 0) {
         if (_processes[pid]->_source == ProcessTreeSource_pnotify) {
-            _processes[pid]->_exec_propagation = _processes[pid]->_exec_propagation + 1;
+            _processes[pid]->_exec_propagation += 1;
         }
     } else {
         std::shared_ptr<ProcessTreeItem> process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_pnotify, pid);

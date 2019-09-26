@@ -318,7 +318,6 @@ int main(int argc, char**argv) {
     });
 
     processTree->PopulateTree();
-//    processTree->ShowTree();
     processTree->Start();
     auto processNotify = std::make_shared<ProcessNotify>(processTree);
     processNotify->Start();

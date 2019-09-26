@@ -33,6 +33,7 @@ using namespace std;
 #define RELOAD_INTERVAL 300 // 5 minutes
 
 const std::string CONFIG_PARAM_NAME = "process_filters";
+const uint32_t INVALID_ID = static_cast<uint32_t>(-1);
 
 
 /*****************************************************************************
@@ -61,8 +62,8 @@ bool ProcFilter::ParseConfig(const Config& config) {
             if (it->IsObject()) {
                 uint32_t match_mask = 0;
                 int depth = 0;
-                int uid = -1;
-                int gid = -1;
+                uint32_t uid = INVALID_ID;
+                uint32_t gid = INVALID_ID;
                 std::string user;
                 std::string group;
                 std::vector<std::string> syscalls;
@@ -93,11 +94,11 @@ bool ProcFilter::ParseConfig(const Config& config) {
                     if (mi->value.IsString()) {
                         user = std::string(mi->value.GetString(), mi->value.GetStringLength());
                         if (is_number(user)) {
-                            uid = std::stoi(user);
+                            uid = (uint32_t)std::stol(user);
                         } else {
-                            uid = _user_db->UserNameToUid(user);
+                            uid = (uint32_t)_user_db->UserNameToUid(user);
                         }
-                        if (uid == -1) {
+                        if (uid == INVALID_ID) {
                             Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
                             _filters.clear();
                             return false;
@@ -115,11 +116,11 @@ bool ProcFilter::ParseConfig(const Config& config) {
                     if (mi->value.IsString()) {
                         group = std::string(mi->value.GetString(), mi->value.GetStringLength());
                         if (is_number(group)) {
-                            gid = std::stoi(group);
+                            gid = (uint32_t)std::stol(group);
                         } else {
-                            gid = _user_db->GroupNameToGid(group);
+                            gid = (uint32_t)_user_db->GroupNameToGid(group);
                         }
-                        if (gid == -1) {
+                        if (gid == INVALID_ID) {
                             Logger::Error("Invalid entry (%s) at (%d) in config for '%s'", mi->name.GetString(), idx, CONFIG_PARAM_NAME.c_str());
                             _filters.clear();
                             return false;
@@ -139,13 +140,19 @@ bool ProcFilter::ParseConfig(const Config& config) {
                             syscalls.clear();
                         }
                         bool includesExclude = false;
+                        bool includesInclude = false;
                         for (auto it2 = mi->value.Begin(); it2 != mi->value.End(); ++it2) {
                             syscalls.emplace_back(std::string(it2->GetString(), it2->GetStringLength()));
                             if (it2->GetString()[0] == '!') {
                                 includesExclude = true;
+                            } else {
+                                includesInclude = true;
                             }
                         }
-                        if (includesExclude) {
+                        // If all the syscalls are excludes (!syscall) then there is an implicit inclusion
+                        // of all other syscalls.
+                        // If there is a mixture of includes and excludes then includes are the default.
+                        if (includesExclude && !includesInclude) {
                             syscalls.emplace_back(std::string("*"));
                         }
                     } else {

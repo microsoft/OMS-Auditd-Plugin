@@ -132,12 +132,10 @@ private:
     std::shared_ptr<FiltersEngine> _filtersEngine;
     std::unordered_map<int, std::shared_ptr<ProcessTreeItem>> _processes;
     bool _queue_data_ready;
-    std::mutex _queue_pop_mutex;
-    std::mutex _queue_push_mutex;
+    std::mutex _queue_mutex;
     std::mutex _process_write_mutex;
     std::condition_variable _queue_data;
     std::queue<struct ProcessQueueItem> _PnQueue;
-    std::queue<struct ProcessQueueItem> _AuQueue;
     std::chrono::system_clock::time_point _last_clean_time;
 };
 

@@ -166,7 +166,6 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
 
 void TextEventWriterConfig::LoadFromConfig(std::string name, const Config& config, std::shared_ptr<UserDB> user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree)
 {
-    bool good = true;
     _filtersEngine = filtersEngine;
     _processTree = processTree;
 
@@ -174,20 +173,16 @@ void TextEventWriterConfig::LoadFromConfig(std::string name, const Config& confi
         try {
             if (!cs.second(cs.first, *this, config)) {
                 Logger::Error("Invalid config value for '%s'", cs.first.c_str());
-                good = false;
             }
         } catch (std::exception& ex) {
             Logger::Error("Invalid config value for '%s'", cs.first.c_str());
-            good = false;
         }
     }
 
     // Load filter rules. TODO move to TextEventWriter
     proc_filter = std::make_shared<ProcFilter>(user_db);
 
-    good = proc_filter->ParseConfig(config);
-
-    if (!good) {
+    if (!proc_filter->ParseConfig(config)) {
         Logger::Error("Invalid 'process_filters' value");
         exit(1);
     }
