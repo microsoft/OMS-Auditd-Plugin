@@ -16,6 +16,7 @@
 #include "FiltersEngine.h"
 
 #include "Logger.h"
+#include "StringUtils.h"
 
 #include <string>
 #include <iostream>
@@ -90,7 +91,7 @@ bool FiltersEngine::ProcessMatchFilter(std::shared_ptr<ProcessTreeItem> process,
     }
 
     if (pfs._match_mask & PFS_MATCH_EXE_STARTSWITH) {
-        if (process->_exe.substr(0, pfs._exeMatchValue.length()) != pfs._exeMatchValue) {
+        if (!starts_with(process->_exe, pfs._exeMatchValue)) {
             return false;
         }
     }
@@ -112,7 +113,7 @@ bool FiltersEngine::ProcessMatchFilter(std::shared_ptr<ProcessTreeItem> process,
                 return false;
             }
         } else if (cf._matchType == MatchStartsWith) {
-            if (process->_cmdline.substr(0, cf._matchValue.length()) != cf._matchValue) {
+            if (!starts_with(process->_cmdline, cf._matchValue)) {
                 return false;
             }
         } else if (cf._matchType == MatchContains) {

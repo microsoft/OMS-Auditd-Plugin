@@ -639,18 +639,17 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     }
 
     bool filtered = false;
-    std::bitset<FILTER_BITSET_SIZE> globalFlagsMask = _filtersEngine->GetCommonFlagMask();
     std::shared_ptr<ProcessTreeItem> p;
     std::string cmdline;
 
     if (execve_recs.size() > 0) {
         cmdline = _execve_converter.Cmdline();
-        p = _processTree->AddProcess(_pid, _ppid, uid, gid, exe, cmdline);
+        p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, cmdline);
     } else if (!_syscall.empty()) {
         p = _processTree->GetInfoForPid(_pid);
     }
 
-    if (_filtersEngine->IsEventFiltered(_syscall, p, globalFlagsMask)) {
+    if (_filtersEngine->IsEventFiltered(_syscall, p, _globalFlagsMask)) {
         filtered = true;
     }
 

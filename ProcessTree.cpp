@@ -218,7 +218,7 @@ void ProcessTree::AddPid(int pid)
 /* Process event from AuditD (execve)
    Make a new entry (deleting any existing entry).
 */
-std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(int pid, int ppid, int uid, int gid, std::string exe, const std::string &cmdline)
+std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource source, int pid, int ppid, int uid, int gid, std::string exe, const std::string &cmdline)
 {
     std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
     std::shared_ptr<ProcessTreeItem> process;
@@ -229,7 +229,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(int pid, int ppid, int 
 
     if (_processes.count(pid) > 0) {
         process = _processes[pid];
-        process->_source = ProcessTreeSource_execve;
+        process->_source = source;
         process->_uid = uid;
         process->_gid = gid;
         process->_exe = exe;
@@ -257,7 +257,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(int pid, int ppid, int 
             if (_processes.count(c) > 0) {
                 auto p = _processes[c];
                 if (p->_exec_propagation > 0) {
-                    p->_source = ProcessTreeSource_execve;
+                    p->_source = source;
                     p->_exe = exe;
                     p->_cmdline = cmdline;
                     p->_uid = uid;
@@ -366,27 +366,30 @@ void ProcessTree::ApplyFlags(std::shared_ptr<ProcessTreeItem> process)
 
 void ProcessTree::PopulateTree()
 { 
-    struct dirent *de;
     int pid;
+    int ppid;
+    int uid;
+    int gid;
+    std::string exe;
+    std::string cmdline;
 
-    DIR *dr = opendir("/proc"); 
-  
-    if (dr == NULL)
-    { 
+    auto pinfo = ProcessInfo::Open();
+    if (!pinfo) {
         return;
-    } 
-  
-    while ((de = readdir(dr)) != NULL)  {
-        if (is_number(de->d_name)) {
-            pid = atoi(de->d_name);
-            auto process = ReadProcEntry(pid);
-            if (process != nullptr) {
-                _processes[pid] = process;
-            }
-        }
     }
 
-    closedir(dr);     
+    while (pinfo->next()) {
+
+        pid = pinfo->pid();
+        ppid = pinfo->ppid();
+        uid = pinfo->uid();
+        gid = pinfo->gid();
+        exe = pinfo->exe();
+        pinfo->format_cmdline(cmdline);
+
+        auto process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_procfs, pid, ppid, uid, gid, exe, cmdline);
+        _processes[pid] = process;
+    }
 
     for (auto p : _processes) {
         auto process = p.second;
@@ -418,78 +421,22 @@ void ProcessTree::PopulateTree()
     }
 } 
 
-std::string ProcessTree::ReadFirstLine(const std::string& file)
-{
-    std::ifstream f;
-    std::string line;
-
-    try {
-        f.open(file);
-        std::getline(f, line);
-        f.close();
-    } catch (...) {
-    }
-    return line;
-}
-
-std::string ProcessTree::ReadParam(const std::string& file, const std::string& param)
-{
-    std::ifstream f;
-    std::string line;
-    std::string value;
-
-    f.open(file);
-    while (f.good() && f.is_open() && !f.eof()) {
-        std::getline(f, line);
-        if (!line.compare(0, param.size() + 1, param + ":")) {
-            f.close();
-            value = line.substr(param.size() + 1);
-            size_t first = value.find_first_not_of(" \t");
-            if ( first == std::string::npos) {
-                return value;
-            } else {
-                return value.substr(first);
-            }
-        }
-    }
-    f.close();
-    return value;
-}
-
 std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
 {
     std::shared_ptr<ProcessTreeItem> process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_procfs, pid);
-    std::string prefix = std::string("/proc/") + std::to_string(pid) + "/";
 
-    // Check if the pid dir exists
-    DIR *dir = opendir(prefix.c_str());
-    if (!dir) {
+    auto pinfo = ProcessInfo::Open(pid);
+    if (!pinfo) {
         return nullptr;
     }
 
-    try {
-        std::string uidline = ReadParam(prefix + "status", "Uid");
-        process->_uid = (int)std::stol(uidline.substr(0, uidline.find('\x09')));
-        std::string gidline = ReadParam(prefix + "status", "Gid");
-        process->_gid = (int)std::stol(gidline.substr(0, gidline.find('\x09')));
-        process->_ppid = std::stoi(ReadParam(prefix + "status", "PPid"));
-        char exepath[PATH_MAX];
-        std::string exefpath = prefix + "exe";
-        if (realpath(exefpath.c_str(), exepath)) {
-            process->_exe = std::string(exepath);
-        }
+    process->_uid = pinfo->uid();
+    process->_gid = pinfo->gid();
+    process->_ppid = pinfo->ppid();
+    process->_exe = pinfo->exe();
+    pinfo->format_cmdline(process->_cmdline);
 
-        std::string cmdline = ReadFirstLine(prefix + "cmdline");
-        std::replace(cmdline.begin(), cmdline.end(), '\x00', ' ');
-        while (cmdline.back() == ' ') {
-            cmdline = cmdline.substr(0, cmdline.length() - 1);
-        }
-        process->_cmdline = cmdline;
-
-        return process;
-    } catch (...) {
-        return nullptr;
-    }
+    return process;
 }
 
 

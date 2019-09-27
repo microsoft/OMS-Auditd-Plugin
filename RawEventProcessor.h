@@ -26,7 +26,10 @@ class RawEventProcessor {
 public:
     RawEventProcessor(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<UserDB>& user_db, const std::shared_ptr<ProcessTree>& processTree, const std::shared_ptr<FiltersEngine> filtersEngine):
     _builder(builder), _user_db(user_db), _state_ptr(nullptr), _processTree(processTree), _filtersEngine(filtersEngine),
-        _event_flags(0), _pid(0), _ppid(0), _uid(-1), _last_proc_event_gen(0) {};
+        _event_flags(0), _pid(0), _ppid(0), _uid(-1), _last_proc_event_gen(0)
+    {
+        _globalFlagsMask = _filtersEngine->GetCommonFlagMask();
+    }
 
     void ProcessData(const void* data, size_t data_len);
     void DoProcessInventory();
@@ -66,7 +69,7 @@ private:
     std::string _path_ogid;
     uint64_t _last_proc_event_gen;
     ExecveConverter _execve_converter;
-
+    std::bitset<FILTER_BITSET_SIZE> _globalFlagsMask;
 };
 
 

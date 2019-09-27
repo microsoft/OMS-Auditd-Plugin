@@ -83,6 +83,7 @@ add_executable(auomscollect
         ProcFilter.cpp
         FiltersEngine.cpp
         ProcessTree.cpp
+        ProcessInfo.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -390,6 +391,7 @@ add_executable(OMSEventWriterTests
         FiltersEngine.cpp
         RunBase.cpp
         ProcessTree.cpp
+        ProcessInfo.cpp
 )
 
 target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}

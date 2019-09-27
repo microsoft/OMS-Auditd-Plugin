@@ -108,7 +108,7 @@ public:
     void AddPnForkQueue(int pid, int ppid);
     void AddPnExecQueue(int pid);
     void AddPnExitQueue(int pid);
-    std::shared_ptr<ProcessTreeItem> AddProcess(int pid, int ppid, int uid, int gid, std::string exe, const std::string& cmdline);
+    std::shared_ptr<ProcessTreeItem> AddProcess(enum ProcessTreeSource source, int pid, int ppid, int uid, int gid, std::string exe, const std::string& cmdline);
     void Clean();
     std::shared_ptr<ProcessTreeItem> GetInfoForPid(int pid);
     void PopulateTree();
