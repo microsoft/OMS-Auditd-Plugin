@@ -31,12 +31,12 @@ std::bitset<FILTER_BITSET_SIZE> FiltersEngine::AddFilter(ProcFilterSpec& pfs, st
 {
     std::bitset<FILTER_BITSET_SIZE> ret;
 
-    if (_filtersBitPosition.count(pfs) > 0) {
-        struct FiltersInfo info = _filtersBitPosition[pfs];
+    auto it = _filtersBitPosition.find(pfs);
+    if (it != _filtersBitPosition.end()) {
+        struct FiltersInfo& info = it->second;
         ret[info.bitPosition] = 1;
         if (info.outputs.count(outputName) == 0) {
             info.outputs.emplace(outputName);
-            _filtersBitPosition[pfs] = info;
         }
     } else {
         struct FiltersInfo info;
@@ -44,7 +44,23 @@ std::bitset<FILTER_BITSET_SIZE> FiltersEngine::AddFilter(ProcFilterSpec& pfs, st
         info.outputs.emplace(outputName);
         _filtersBitPosition[pfs] = info;
         ret[_nextBitPosition] = 1;
-        _bitPositionSyscalls[_nextBitPosition] = pfs._syscalls;
+
+        // Insert the syscalls *in order* into an unordered_map that maps each one to a bool.
+        // A true value indicates an exclusion syscall (no !) and a false value indicates an
+        // inclusion syscall (!syscall).  If the syscall is already in the unordered_map then
+        // ignore the repetitions; e.g. take the first value for each syscall only.
+        std::unordered_map<std::string, bool>& syscalls = _bitPositionSyscalls[_nextBitPosition];
+        for (auto s : pfs._syscalls) {
+            if (s[0] != '!') {
+                if (syscalls.count(s) == 0) {
+                    syscalls[s] = true;
+                }
+            } else {
+                if (syscalls.count(s.substr(1)) == 0) {
+                    syscalls[s] = false;
+                }
+            }
+        }
         _nextBitPosition++;
     }
 
@@ -158,20 +174,17 @@ std::bitset<FILTER_BITSET_SIZE> FiltersEngine::GetCommonFlagMask()
     return flags;
 }
 
-bool FiltersEngine::syscallIsFiltered(std::string& syscall, std::vector<std::string>& syscalls)
+bool FiltersEngine::syscallIsFiltered(std::string& syscall, std::unordered_map<std::string, bool>& syscalls)
 {
-    for (auto s : syscalls) {
-        if (s == "*") {
+    auto it = syscalls.find(syscall);
+    if (it != syscalls.end()) {
+        return it->second;
+    } else {
+        if (syscalls.count("*") > 0) {
             return true;
-        } else if (s == syscall) {
-            return true;
-        } else if (s == "!" + syscall) {
-            return false;
         }
     }
-    return false;
 }
-
 
 bool FiltersEngine::IsEventFiltered(std::string& syscall, std::shared_ptr<ProcessTreeItem> p, std::bitset<FILTER_BITSET_SIZE>& filterFlagsMask)
 {
@@ -188,7 +201,7 @@ bool FiltersEngine::IsEventFiltered(std::string& syscall, std::shared_ptr<Proces
     // Find syscalls filtered for process
     for (unsigned int i=0; i<_nextBitPosition; i++) {
         if (matched_flags[i]) {
-            std::vector<std::string>& syscalls = _bitPositionSyscalls[i];
+            std::unordered_map<std::string, bool>& syscalls = _bitPositionSyscalls[i];
             if (syscallIsFiltered(syscall, syscalls)) {
                 filtered = true;
                 break;

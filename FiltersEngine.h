@@ -50,13 +50,13 @@ public:
 
 private:
     bool ProcessMatchFilter(std::shared_ptr<ProcessTreeItem> process, ProcFilterSpec& pfs, unsigned int height);
-    bool syscallIsFiltered(std::string& syscall, std::vector<std::string>& syscalls);
+    bool syscallIsFiltered(std::string& syscall, std::unordered_map<std::string, bool>& syscalls);
 
     unsigned int _nextBitPosition;
     unsigned int _numberOfOutputs;
     std::unordered_set<std::string> _outputs;
     std::unordered_map<ProcFilterSpec, FiltersInfo, ProcFilterSpecHash, ProcFilterSpecCompare> _filtersBitPosition;
-    std::unordered_map<unsigned int, std::vector<std::string>> _bitPositionSyscalls;
+    std::unordered_map<unsigned int, std::unordered_map<std::string, bool>> _bitPositionSyscalls;
 };
 
 #endif //AUOMS_FILTERS_ENGINE_H
