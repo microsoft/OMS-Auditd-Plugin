@@ -1,0 +1,142 @@
+/*
+    microsoft-oms-auditd-plugin
+
+    Copyright (c) Microsoft Corporation
+
+    All rights reserved.
+
+    MIT License
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the ""Software""), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+
+#ifndef AUOMS_PROCESSTREE_H
+#define AUOMS_PROCESSTREE_H
+
+#include "RunBase.h"
+#include "UserDB.h"
+#include "ProcessDefines.h"
+#include "FiltersEngine.h"
+
+#include <string>
+#include <unordered_map>
+#include <queue>
+#include <chrono>
+#include <algorithm>
+#include <fstream>
+#include <iostream>
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <linux/netlink.h>
+#include <linux/connector.h>
+#include <linux/cn_proc.h>
+#include <bits/stdc++.h>
+
+enum ProcessTreeSource { ProcessTreeSource_execve, ProcessTreeSource_pnotify, ProcessTreeSource_procfs };
+
+class FiltersEngine;
+
+struct Ancestor {
+    int pid;
+    std::string exe;
+};
+
+class ProcessTreeItem {
+public:
+    ProcessTreeItem(enum ProcessTreeSource source, int pid, int ppid=0):
+        _source(source), _pid(pid), _ppid(ppid), _uid(-1), _gid(-1), _flags(0), _exec_propagation(0), _exited(false) {}
+    ProcessTreeItem(enum ProcessTreeSource source, int pid, int ppid, int uid, int gid, const std::string& exe, const std::string& cmdline):
+        _source(source), _pid(pid), _ppid(ppid), _uid(uid), _gid(gid), _exe(exe), _cmdline(cmdline),
+        _flags(0), _exec_propagation(0), _exited(false) {}
+
+    enum ProcessTreeSource _source;
+    int _pid;
+    int _ppid;
+    int _uid;
+    int _gid;
+    std::vector<int> _children;
+    std::vector<struct Ancestor> _ancestors;
+    unsigned int _exec_propagation;
+    std::string _exe;
+    std::string _cmdline;
+    std::bitset<FILTER_BITSET_SIZE> _flags;
+    bool _exited;
+    std::chrono::system_clock::time_point _exit_time;
+};
+
+class ProcessTree;
+
+// Class that monitors pnotify events and writes them to ProcessTree queues
+class ProcessNotify: public RunBase {
+public:
+    ProcessNotify(std::shared_ptr<ProcessTree> processTree): _processTree(processTree) {
+        InitProcSocket();
+    }
+
+protected:
+    void run() override;
+
+private:
+    void InitProcSocket();
+
+    std::shared_ptr<ProcessTree> _processTree;
+    int _proc_socket;
+};
+
+enum ProcessQueueType { ProcessQueueFork, ProcessQueueExec, ProcessQueueExit };
+
+struct ProcessQueueItem {
+    enum ProcessQueueType type;
+    enum ProcessTreeSource source;
+    int pid;
+    int ppid;
+};
+
+// Class that manages the process tree
+class ProcessTree: public RunBase {
+public:
+    ProcessTree(const std::shared_ptr<UserDB>& user_db, std::shared_ptr<FiltersEngine> filtersEngine): _user_db(user_db), _filtersEngine(filtersEngine), _queue_data_ready(false)
+    {
+        _last_clean_time = std::chrono::system_clock::now();
+    }
+
+    void AddPnForkQueue(int pid, int ppid);
+    void AddPnExecQueue(int pid);
+    void AddPnExitQueue(int pid);
+    std::shared_ptr<ProcessTreeItem> AddProcess(enum ProcessTreeSource source, int pid, int ppid, int uid, int gid, std::string exe, const std::string& cmdline);
+    void Clean();
+    std::shared_ptr<ProcessTreeItem> GetInfoForPid(int pid);
+    void PopulateTree();
+    void ShowTree();
+    void ShowProcess(std::shared_ptr<ProcessTreeItem> p);
+
+protected:
+    void run() override;
+
+private:
+    void AddPid(int pid, int ppid);
+    void AddPid(int pid);
+    void RemovePid(int pid);
+    std::string ReadFirstLine(const std::string& file);
+    std::string ReadParam(const std::string& file, const std::string& param);
+    std::shared_ptr<ProcessTreeItem> ReadProcEntry(int pid);
+    bool is_number(char *s);
+    void ApplyFlags(std::shared_ptr<ProcessTreeItem> process);
+
+    std::shared_ptr<UserDB> _user_db;
+    std::shared_ptr<FiltersEngine> _filtersEngine;
+    std::unordered_map<int, std::shared_ptr<ProcessTreeItem>> _processes;
+    bool _queue_data_ready;
+    std::mutex _queue_mutex;
+    std::mutex _process_write_mutex;
+    std::condition_variable _queue_data;
+    std::queue<struct ProcessQueueItem> _PnQueue;
+    std::chrono::system_clock::time_point _last_clean_time;
+};
+
+#endif //AUOMS_PROCESSTREE_H

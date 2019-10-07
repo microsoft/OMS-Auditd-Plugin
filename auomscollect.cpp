@@ -29,6 +29,7 @@
 #include "Defer.h"
 #include "Gate.h"
 #include "FileUtils.h"
+#include "FiltersEngine.h"
 
 #include <iostream>
 #include <fstream>
@@ -152,7 +153,7 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
                 char cdata[len+1];
                 ::memcpy(cdata, data, len);
                 cdata[len] = 0;
-                Logger::Warn("Received unparsable event data (type = %d, flags = 0x%X, size=%ld):\n%s", type, flags, len, cdata);
+                Logger::Warn("Received unparsable event data (type = %d, flags = 0x%X, size=%ld:\n%s)", type, flags, len, cdata);
             }
         }
         return false;
@@ -191,7 +192,6 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
     do {
         if (retry_count > 5) {
             Logger::Error("Failed to set audit pid: Max retried exceeded");
-            return false;
         }
         ret = netlink.AuditSetPid(our_pid);
         if (ret == -ETIMEDOUT) {
@@ -223,14 +223,14 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
             ret = NetlinkRetry([&netlink]() { return netlink.AuditSetEnabled(1); });
             if (ret != 0) {
                 Logger::Error("Failed to enable auditing: %s", std::strerror(-ret));
-                return;
+                return false;
             }
         }
     });
 
     Signals::SetExitHandler([&_stop_gate]() { _stop_gate.Open(); });
 
-    auto last_pid_check = std::chrono::steady_clock::now();
+    auto _last_pid_check = std::chrono::steady_clock::now();
     while(!Signals::IsExit()) {
         if (_stop_gate.Wait(Gate::OPEN, 100)) {
             return false;
@@ -240,15 +240,13 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
             accumulator.Flush(200);
         } catch (const std::exception &ex) {
             Logger::Error("Unexpected exception while flushing input: %s", ex.what());
-            return false;
         } catch (...) {
             Logger::Error("Unexpected exception while flushing input");
-            return false;
         }
 
         auto now = std::chrono::steady_clock::now();
-        if (last_pid_check < now - std::chrono::seconds(10)) {
-            last_pid_check = now;
+        if (_last_pid_check < now - std::chrono::seconds(10)) {
+            _last_pid_check = now;
             pid = 0;
             int ret;
             ret = NetlinkRetry([&netlink,&pid]() { return netlink.AuditGetPid(pid); });
@@ -274,7 +272,6 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
             }
         }
     }
-    return false;
 }
 
 int main(int argc, char**argv) {
@@ -303,6 +300,18 @@ int main(int argc, char**argv) {
             default:
                 usage();
         }
+    }
+
+    auto user_db = std::make_shared<UserDB>();
+
+    try {
+        user_db->Start();
+    } catch (const std::exception& ex) {
+        Logger::Error("Unexpected exception during user_db startup: %s", ex.what());
+        exit(1);
+    } catch (...) {
+        Logger::Error("Unexpected exception during user_db startup");
+        exit(1);
     }
 
     Config config;
@@ -392,13 +401,16 @@ int main(int argc, char**argv) {
 
     RawEventAccumulator accumulator (builder);
 
+    auto filtersEngine = std::make_shared<FiltersEngine>();
+
     auto output_config = std::make_unique<Config>(std::unordered_map<std::string, std::string>({
         {"output_format","raw"},
         {"output_socket", socket_path},
         {"enable_ack_mode", "true"},
         {"ack_queue_size", "10"}
     }));
-    Output output("output", cursor_path, queue);
+    auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
+    Output output("output", cursor_path, queue, user_db, filtersEngine, processTree);
     output.Load(output_config);
 
     std::thread autosave_thread([&]() {
@@ -416,7 +428,6 @@ int main(int argc, char**argv) {
 
     // Start signal handling thread
     Signals::Start();
-
     output.Start();
 
     if (netlink_mode) {

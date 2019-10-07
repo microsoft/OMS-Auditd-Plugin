@@ -84,26 +84,31 @@ std::unique_ptr<Config> Outputs::read_and_validate_config(const std::string& nam
         format = config->GetString("output_format");
     }
 
-    if (!config->HasKey("output_socket")) {
-        Logger::Error("Output(%s): Missing required parameter: output_socket", name.c_str());
-        return nullptr;
-    }
+    // Skip the socket check for the syslog event writer. This writes directly to Syslog so no output socket is required
+    if (format.compare("syslog")) {
+        if (!config->HasKey("output_socket")) {
+            Logger::Error("Output(%s): Missing required parameter: output_socket", name.c_str());
+            return nullptr;
+        }
+    
 
-    auto socket_path = config->GetString("output_socket");
-    bool socket_path_valid = false;
-    for (auto dir: _allowed_socket_dirs) {
-        if (socket_path.length() > dir.length() && socket_path.substr(0, dir.length()) == dir) {
-            socket_path_valid = true;
-            break;
+        auto socket_path = config->GetString("output_socket");
+        bool socket_path_valid = false;
+        for (auto dir: _allowed_socket_dirs) {
+            if (socket_path.length() > dir.length() && socket_path.substr(0, dir.length()) == dir) {
+                socket_path_valid = true;
+                break;
+            }
+        }
+    
+
+        if (!socket_path_valid) {
+            Logger::Error("Output(%s): Invalid output_socket parameter value: '%s'", name.c_str(), socket_path.c_str());
+            return nullptr;
         }
     }
-
-    if (!socket_path_valid) {
-        Logger::Error("Output(%s): Invalid output_socket parameter value: '%s'", name.c_str(), socket_path.c_str());
-        return nullptr;
-    }
-
-    if (format != "oms" && format != "json" && format != "msgpack" && format != "raw") {
+    
+    if (format != "oms" && format != "json" && format != "msgpack" && format != "raw" && format != "syslog") {
         Logger::Error("Output(%s): Invalid output_format parameter value: '%s'", name.c_str(), format.c_str());
         return nullptr;
     }
@@ -152,6 +157,7 @@ void Outputs::do_conf_sync() {
 
     struct dirent* dent;
     while((dent = readdir(dir)) != nullptr) {
+
         std::string name(&dent->d_name[0]);
         if (name.length() > 5) {
             auto prefix_len = name.length() - 5;
@@ -194,7 +200,7 @@ void Outputs::do_conf_sync() {
             }
         } else {
             auto cursor_file = _cursor_dir + "/" + ent.first + ".cursor";
-            auto o = std::make_shared<Output>(ent.first, cursor_file, _queue);
+            auto o = std::make_shared<Output>(ent.first, cursor_file, _queue, _user_db, _filtersEngine, _processTree);
             it = _outputs.insert(std::make_pair(ent.first, o)).first;
             load = true;
         }

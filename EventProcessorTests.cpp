@@ -260,8 +260,10 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     auto actual_builder = std::make_shared<EventBuilder>(actual_allocator);
 
     auto proc_filter = std::make_shared<ProcFilter>(user_db);
+    auto filtersEngine = std::make_shared<FiltersEngine>();
+    auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
 
-    auto raw_proc = std::make_shared<RawEventProcessor>(actual_builder, user_db, proc_filter);
+    auto raw_proc = std::make_shared<RawEventProcessor>(actual_builder, user_db, processTree, filtersEngine);
 
     auto actual_raw_queue = new RawEventQueue(raw_proc);
     auto actual_raw_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_raw_queue);

@@ -29,6 +29,8 @@
 #include "AuditRulesMonitor.h"
 #include "OperationalStatus.h"
 #include "FileUtils.h"
+#include "FiltersEngine.h"
+#include "ProcessTree.h"
 
 #include <iostream>
 #include <fstream>
@@ -86,12 +88,16 @@ int main(int argc, char**argv) {
 
 
     std::string config_file = AUOMS_CONF;
+    bool netlink_only = false;
 
     int opt;
-    while ((opt = getopt(argc, argv, "c:")) != -1) {
+    while ((opt = getopt(argc, argv, "nc:")) != -1) {
         switch (opt) {
             case 'c':
                 config_file = optarg;
+                break;
+            case 'n':
+                netlink_only = true;
                 break;
             default:
                 usage();
@@ -136,6 +142,10 @@ int main(int argc, char**argv) {
 
     if (config.HasKey("auditd_path")) {
         auditd_path = config.GetString("auditd_path");
+    }
+
+    if (netlink_only) {
+        auditd_path = "/does/not/exist";
     }
 
     if (config.HasKey("collector_path")) {
@@ -227,7 +237,6 @@ int main(int argc, char**argv) {
         Logger::Error("Failed to initialize inputs");
         exit(1);
     }
-    inputs.Start();
 
     Netlink netlink;
     netlink.Open(nullptr);
@@ -239,13 +248,7 @@ int main(int argc, char**argv) {
     AuditRulesMonitor rules_monitor(netlink, rules_dir, operational_status);
     rules_monitor.Start();
 
-    Outputs outputs(queue, outconf_dir, cursor_dir, allowed_socket_dirs);
-
     auto user_db = std::make_shared<UserDB>();
-
-    auto event_queue = std::make_shared<EventQueue>(queue);
-    auto builder = std::make_shared<EventBuilder>(event_queue);
-
     try {
         user_db->Start();
     } catch (const std::exception& ex) {
@@ -256,13 +259,10 @@ int main(int argc, char**argv) {
         exit(1);
     }
 
-    auto proc_filter = std::make_shared<ProcFilter>(user_db);
-    if (!proc_filter->ParseConfig(config)) {
-        Logger::Error("Invalid 'process_filters' value");
-        exit(1);
-    }
+    auto filtersEngine = std::make_shared<FiltersEngine>();
 
-    RawEventProcessor rep(builder, user_db, proc_filter);
+    auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
+    Outputs outputs(queue, outconf_dir, cursor_dir, allowed_socket_dirs, user_db, filtersEngine, processTree);
 
     std::thread autosave_thread([&]() {
         Signals::InitThread();
@@ -316,6 +316,17 @@ int main(int argc, char**argv) {
         Logger::Info("Stopping inputs");
         inputs.Stop();
     });
+
+    processTree->PopulateTree();
+    processTree->Start();
+    auto processNotify = std::make_shared<ProcessNotify>(processTree);
+    processNotify->Start();
+
+    auto event_queue = std::make_shared<EventQueue>(queue);
+    auto builder = std::make_shared<EventBuilder>(event_queue);
+
+    RawEventProcessor rep(builder, user_db, processTree, filtersEngine);
+    inputs.Start();
 
     try {
         Logger::Info("Starting input loop");

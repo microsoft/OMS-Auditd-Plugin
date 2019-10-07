@@ -14,29 +14,17 @@
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef AUOMS_JSONEVENTWRITER_H
-#define AUOMS_JSONEVENTWRITER_H
+#ifndef AUOMS_PROCESSDEFINES_H
+#define AUOMS_PROCESSDEFINES_H
 
-#include "TextEventWriter.h"
+#define FILTER_BITSET_SIZE 256
 
-#include <array>
+#define PFS_MATCH_UID               0x01
+#define PFS_MATCH_GID               0x02
+#define PFS_MATCH_EXE_EQUALS        0x04
+#define PFS_MATCH_EXE_STARTSWITH    0x08
+#define PFS_MATCH_EXE_CONTAINS      0x10
+#define PFS_MATCH_EXE_REGEX         0x20
 
-#include <rapidjson/stringbuffer.h>
-#include <rapidjson/writer.h>
+#endif
 
-
-class JSONEventWriter: public TextEventWriter {
-public:
-    JSONEventWriter(TextEventWriterConfig config) : TextEventWriter(config)
-    {}
-    virtual ssize_t WriteEvent(const Event& event, IWriter* writer);
-
-private:
-    void write_raw_field(const std::string& name, const char* value_data, size_t value_size) {}
-    std::array<char, 1024> _header;
-    rapidjson::StringBuffer _buffer;
-    rapidjson::Writer<rapidjson::StringBuffer> _writer;
-};
-
-
-#endif //AUOMS_JSONEVENTWRITER_H

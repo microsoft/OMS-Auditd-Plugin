@@ -22,6 +22,7 @@
 #include "JSONEventWriter.h"
 #include "MsgPackEventWriter.h"
 #include "RawEventWriter.h"
+#include "SyslogEventWriter.h"
 
 extern "C" {
 #include <unistd.h>
@@ -241,26 +242,30 @@ bool Output::Load(std::unique_ptr<Config>& config) {
         format = _config->GetString("output_format");
     }
 
-    if (!_config->HasKey("output_socket")) {
-        Logger::Error("Output(%s): Missing required parameter: output_socket", _name.c_str());
-        return false;
+    // For syslog skip the socket check as this writes directly to Syslog
+    std::string socket_path = "";
+
+    if (format.compare("syslog")) {
+        if (!_config->HasKey("output_socket")) {
+            Logger::Error("Output(%s): Missing required parameter: output_socket", _name.c_str());
+            return false;
+        } 
+        socket_path = _config->GetString("output_socket");
     }
 
-    auto socket_path = _config->GetString("output_socket");
+    TextEventWriterConfig writer_config;
+    writer_config.LoadFromConfig(_name, *_config, _user_db, _filtersEngine, _processTree);
 
     if (format == "oms") {
-        OMSEventWriterConfig oms_config;
-        if (!oms_config.LoadFromConfig(*_config)) {
-            return false;
-        }
-
-        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new OMSEventWriter(oms_config)));
+        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new OMSEventWriter(writer_config)));
     } else if (format == "json") {
-        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new JSONEventWriter()));
+        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new JSONEventWriter(writer_config)));
     } else if (format == "msgpack") {
         _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new MsgPackEventWriter()));
     } else if (format == "raw") {
         _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new RawEventWriter()));
+    } else if (format == "syslog") {
+        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new SyslogEventWriter(writer_config)));
     } else {
         Logger::Error("Output(%s): Invalid output_format parameter value: '%s'", _name.c_str(), format.c_str());
         return false;
@@ -346,7 +351,7 @@ bool Output::check_open()
     return false;
 }
 
-bool Output::handle_events() {
+bool Output::handle_events(bool checkOpen) {
     std::array<uint8_t, Queue::MAX_ITEM_SIZE> data;
 
     _cursor = _cursor_writer->GetCursor();
@@ -357,14 +362,14 @@ bool Output::handle_events() {
         _ack_reader->Start();
     }
 
-    while(!IsStopping() && _writer->IsOpen()) {
+    while(!IsStopping() && (!checkOpen || _writer->IsOpen())) {
         QueueCursor cursor;
         size_t size = data.size();
 
         int ret;
         do {
             ret = _queue->Get(_cursor, data.data(), &size, &cursor, 100);
-        } while(ret == Queue::TIMEOUT && _writer->IsOpen());
+        } while(ret == Queue::TIMEOUT && (!checkOpen || _writer->IsOpen()));
 
         if (ret == Queue::BUFFER_TOO_SMALL) {
             Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
@@ -372,7 +377,7 @@ bool Output::handle_events() {
             break;
         }
 
-        if (ret == Queue::OK && _writer->IsOpen() && !IsStopping()) {
+        if (ret == Queue::OK && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
             Event event(data.data(), size);
             auto ret = _event_writer->WriteEvent(event, _writer.get());
             if (ret != IWriter::OK) {
@@ -441,11 +446,17 @@ void Output::run() {
         return;
     }
 
+    bool checkOpen = true;
+
     _cursor = _cursor_writer->GetCursor();
+     if (!_config->HasKey("output_socket")) {
+           checkOpen = false;
+    }
+
 
     while(!IsStopping()) {
-        while (check_open()) {
-            if (!handle_events()) {
+        while (!checkOpen || check_open()) {
+            if (!handle_events(checkOpen)) {
                 return;
             }
         }

@@ -69,7 +69,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
         e.Write(builder);
     }
 
-    OMSEventWriterConfig config;
+    TextEventWriterConfig config;
     config.FieldNameOverrideMap = std::unordered_map<std::string, std::string> {
             {"1327", "PROCTITLE"},
     };

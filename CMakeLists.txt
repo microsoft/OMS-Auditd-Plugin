@@ -55,11 +55,12 @@ add_executable(auomscollect
         auomscollect.cpp
         IO.cpp
         Event.cpp
-        OMSEventWriterConfig.cpp
+        TextEventWriterConfig.cpp
+        TextEventWriter.cpp
         OMSEventWriter.cpp
         JSONEventWriter.cpp
         MsgPackEventWriter.cpp
-        TextEventWriter.cpp
+        SyslogEventWriter.cpp
         Signals.cpp
         Queue.cpp
         UnixDomainWriter.cpp
@@ -79,6 +80,10 @@ add_executable(auomscollect
         TranslateRecordType.cpp
         FileUtils.cpp
         Retry.h
+        ProcFilter.cpp
+        FiltersEngine.cpp
+        ProcessTree.cpp
+        ProcessInfo.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -103,10 +108,11 @@ add_executable(auoms
         auoms_version.h
         IO.cpp
         Event.cpp
-        OMSEventWriterConfig.cpp
+        TextEventWriterConfig.cpp
         OMSEventWriter.cpp
         JSONEventWriter.cpp
         MsgPackEventWriter.cpp
+        SyslogEventWriter.cpp
         TextEventWriter.cpp
         RawEventProcessor.cpp
         Signals.cpp
@@ -123,6 +129,8 @@ add_executable(auoms
         Output.cpp
         ProcessInfo.cpp
         ProcFilter.cpp
+        ProcessTree.cpp
+        FiltersEngine.cpp
         StringUtils.cpp
         Interpret.cpp
         CollectionMonitor.cpp
@@ -322,6 +330,8 @@ add_executable(EventProcessorTests
         RunBase.cpp
         ProcessInfo.cpp
         ProcFilter.cpp
+        ProcessTree.cpp
+        FiltersEngine.cpp
         StringUtils.cpp
         TempDir.cpp
         TestEventData.cpp
@@ -368,15 +378,24 @@ add_test(ExecveConverter ${CMAKE_BINARY_DIR}/ExecveConverterTests --log_sink=Exe
 add_executable(OMSEventWriterTests
         OMSEventWriterTests.cpp
         OMSEventWriter.cpp
-        OMSEventWriterConfig.cpp
+        TextEventWriterConfig.cpp
         Event.cpp
         TextEventWriter.cpp
         Logger.cpp
         Config.cpp
         StringUtils.cpp
         TestEventData.cpp
+        ProcFilter.cpp
+        Signals.cpp
+        UserDB.cpp
+        FiltersEngine.cpp
+        RunBase.cpp
+        ProcessTree.cpp
+        ProcessInfo.cpp
 )
 
-target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES})
+target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}
+        pthread
+)
 
 add_test(OMSEventWriter ${CMAKE_BINARY_DIR}/OMSEventWriterTests --log_sink=OMSEventWriterTests.log --report_sink=OMSEventWriterTests.report)

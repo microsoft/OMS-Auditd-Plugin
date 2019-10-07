@@ -18,10 +18,35 @@
 #define AUOMS_TEXTEVENTWRITER_H
 
 #include "IEventWriter.h"
+#include "TextEventWriterConfig.h"
+
+#include <string>
 
 class TextEventWriter: public IEventWriter {
 public:
-    virtual ssize_t ReadAck(EventId& event_id, IReader* reader);
+    TextEventWriter(TextEventWriterConfig config) : _config(config)
+    {}
+    ssize_t ReadAck(EventId& event_id, IReader* reader);
+    ssize_t WriteEvent(const Event& event, IWriter* writer);
+
+protected:
+
+    TextEventWriterConfig _config;
+
+    virtual void write_raw_field(const std::string& name, const char* value_data, size_t value_size) = 0;
+    virtual void write_int32_field(const std::string& name, int32_t value);
+    virtual void write_int64_field(const std::string& name, int64_t value);
+    virtual void write_string_field(const std::string& name, const std::string& value);
+
+    virtual bool begin_event(const Event& event) {return true;}
+    virtual void end_event(const Event& event) {}
+
+    virtual bool begin_record(const EventRecord &record, const std::string& record_name) {return true;}
+    virtual void end_record(const EventRecord &record) {}
+
+    virtual bool write_field(const EventRecordField& field);
+    virtual bool write_record(const EventRecord& rec);
+    virtual bool write_event(const Event& event);
 };
 
 

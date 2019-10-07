@@ -128,8 +128,9 @@ public:
     static constexpr int MAX_SLEEP_PERIOD = 60;
     static constexpr int DEFAULT_ACK_QUEUE_SIZE = 1000;
 
-    Output(const std::string& name, const std::string& cursor_path, std::shared_ptr<Queue>& queue):
-            _name(name), _cursor_path(cursor_path), _queue(queue), _ack_mode(false)
+    Output(const std::string& name, const std::string& cursor_path, std::shared_ptr<Queue>& queue, std::shared_ptr<UserDB> user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree):
+            _name(name), _cursor_path(cursor_path), _queue(queue), _user_db(user_db), _filtersEngine(filtersEngine),
+            _processTree(processTree), _ack_mode(false)
     {
         _cursor_writer = std::make_shared<CursorWriter>(name, cursor_path);
         _ack_reader = std::unique_ptr<AckReader>(new AckReader(name));
@@ -154,13 +155,16 @@ protected:
     bool check_open();
 
     // Return true if writer closed and Output should reconnect, false if Output should stop.
-    bool handle_events();
+    bool handle_events(bool checkOpen=true);
 
     std::mutex _mutex;
     std::string _name;
     std::string _cursor_path;
     std::string _socket_path;
     std::shared_ptr<Queue> _queue;
+    std::shared_ptr<UserDB> _user_db;
+    std::shared_ptr<FiltersEngine> _filtersEngine;
+    std::shared_ptr<ProcessTree> _processTree;
     bool _ack_mode;
     std::unique_ptr<Config> _config;
     QueueCursor _cursor;
@@ -170,6 +174,7 @@ protected:
     std::shared_ptr<AckQueue> _ack_queue;
     std::unique_ptr<AckReader> _ack_reader;
     std::shared_ptr<CursorWriter> _cursor_writer;
+    std::bitset<FILTER_BITSET_SIZE> _filter_flags;
 };
 
 
