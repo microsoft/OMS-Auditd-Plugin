@@ -226,6 +226,24 @@ void AckReader::run() {
  *
  ****************************************************************************/
 
+std::shared_ptr<IEventWriter> RawOnlyEventWriterFactory::CreateEventWriter(const std::string& name, const Config& config) {
+    std::string format = "raw";
+
+    if (config.HasKey("output_format")) {
+        format = config.GetString("output_format");
+    }
+
+    if (format == "raw") {
+        return std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new RawEventWriter()));
+    } else {
+        return nullptr;
+    }
+}
+
+/****************************************************************************
+ *
+ ****************************************************************************/
+
 bool Output::IsConfigDifferent(const Config& config) {
     return *_config != config;
 }
@@ -253,22 +271,15 @@ bool Output::Load(std::unique_ptr<Config>& config) {
         socket_path = _config->GetString("output_socket");
     }
 
-    TextEventWriterConfig writer_config;
-    writer_config.LoadFromConfig(_name, *_config, _user_db, _filtersEngine, _processTree);
-
-    if (format == "oms") {
-        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new OMSEventWriter(writer_config)));
-    } else if (format == "json") {
-        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new JSONEventWriter(writer_config)));
-    } else if (format == "msgpack") {
-        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new MsgPackEventWriter()));
-    } else if (format == "raw") {
-        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new RawEventWriter()));
-    } else if (format == "syslog") {
-        _event_writer = std::unique_ptr<IEventWriter>(static_cast<IEventWriter*>(new SyslogEventWriter(writer_config)));
-    } else {
-        Logger::Error("Output(%s): Invalid output_format parameter value: '%s'", _name.c_str(), format.c_str());
+    _event_writer = _writer_factory->CreateEventWriter(_name, *_config);
+    if (!_event_writer) {
         return false;
+    }
+
+    if (_filter_factory) {
+        _event_filter = _filter_factory->CreateEventFilter(_name, *_config);
+    } else {
+        _event_filter.reset();
     }
 
     if (socket_path != _socket_path || !_writer) {
@@ -371,20 +382,36 @@ bool Output::handle_events(bool checkOpen) {
             ret = _queue->Get(_cursor, data.data(), &size, &cursor, 100);
         } while(ret == Queue::TIMEOUT && (!checkOpen || _writer->IsOpen()));
 
+        if (ret == Queue::INTERRUPTED) {
+            continue;
+        }
+
         if (ret == Queue::BUFFER_TOO_SMALL) {
             Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
             _queue->Reset();
-            break;
+            continue;
+        }
+
+        auto vs = Event::GetVersionAndSize(data.data());
+        if (vs.second != size) {
+            Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
+            _queue->Reset();
+            continue;
         }
 
         if (ret == Queue::OK && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
             Event event(data.data(), size);
-            auto ret = _event_writer->WriteEvent(event, _writer.get());
-            if (ret != IWriter::OK) {
-                break;
+            bool filtered = _event_filter && _event_filter->IsEventFiltered(event);
+            if (!filtered) {
+                auto ret = _event_writer->WriteEvent(event, _writer.get());
+                if (ret == IEventWriter::NOOP) {
+                    filtered = true;
+                } else if (ret != IWriter::OK) {
+                    break;
+                }
             }
             _cursor = cursor;
-            if (_ack_mode) {
+            if (_ack_mode && !filtered) {
                 _ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()), _cursor);
             } else {
                 _cursor_writer->UpdateCursor(cursor);

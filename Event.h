@@ -241,6 +241,11 @@ private:
 
 class Event {
 public:
+    static inline std::pair<uint32_t, uint32_t> GetVersionAndSize(const void* data) {
+        auto hdr = *reinterpret_cast<const uint32_t*>(data);
+        return std::make_pair(hdr >> 24, hdr & 0x00FFFFFF);
+    }
+
     Event(const void* data, size_t size) {
         _data = reinterpret_cast<const uint8_t*>(data);
         _size = size;

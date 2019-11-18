@@ -97,5 +97,20 @@ private:
     uint64_t _serial;
 };
 
+namespace std
+{
+    template<> struct hash<EventId>
+    {
+        typedef EventId argument_type;
+        typedef std::size_t result_type;
+        result_type operator()(argument_type const& id) const noexcept
+        {
+            result_type const h1 ( std::hash<uint64_t>{}(id.Seconds()) );
+            result_type const h2 ( std::hash<uint64_t>{}(id.Serial()) );
+            result_type const h3 ( std::hash<uint32_t>{}(id.Milliseconds()) );
+            return h1 ^ ((h2 ^ (h3 << 1)) << 1);
+        }
+    };
+}
 
 #endif //AUOMS_EVENTID_H

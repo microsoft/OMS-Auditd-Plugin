@@ -24,7 +24,7 @@
 
 class InputBuffer {
 public:
-    static constexpr size_t MAX_DATA_SIZE = 128*1024;
+    static constexpr size_t MAX_DATA_SIZE = 256*1024;
 
     InputBuffer(): _data(std::make_unique<std::array<char,MAX_DATA_SIZE>>()), _data_size(0), _has_writer(false), _close(false) {}
 
@@ -60,7 +60,7 @@ public:
         _cond.notify_all();
     }
 
-    bool HandleData(std::function<void(void*,size_t)> fn) {
+    bool HandleData(const std::function<void(void*,size_t)>& fn) {
         std::unique_lock<std::mutex> lock(_mutex);
         _cond.wait(lock, [this]() { return _close || _data_size != 0; });
         if (_data_size > 0) {

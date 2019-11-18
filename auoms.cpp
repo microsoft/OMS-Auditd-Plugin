@@ -31,6 +31,10 @@
 #include "FileUtils.h"
 #include "FiltersEngine.h"
 #include "ProcessTree.h"
+#include "Metrics.h"
+#include "SyscallMetrics.h"
+#include "SystemMetrics.h"
+#include "ProcMetrics.h"
 
 #include <iostream>
 #include <fstream>
@@ -232,6 +236,18 @@ int main(int argc, char**argv) {
     }
     operational_status->Start();
 
+    auto metrics = std::make_shared<Metrics>(queue);
+    metrics->Start();
+
+    auto syscall_metrics = std::make_shared<SyscallMetrics>(metrics);
+    syscall_metrics->Start();
+
+    auto system_metrics = std::make_shared<SystemMetrics>(metrics);
+    system_metrics->Start();
+
+    auto proc_metrics = std::make_shared<ProcMetrics>("auoms", metrics);
+    proc_metrics->Start();
+
     Inputs inputs(input_socket_path, operational_status);
     if (!inputs.Initialize()) {
         Logger::Error("Failed to initialize inputs");
@@ -312,11 +328,6 @@ int main(int argc, char**argv) {
     // Start signal handling thread
     Signals::Start();
 
-    Signals::SetExitHandler([&inputs]() {
-        Logger::Info("Stopping inputs");
-        inputs.Stop();
-    });
-
     processTree->PopulateTree();
     processTree->Start();
     auto processNotify = std::make_shared<ProcessNotify>(processTree);
@@ -325,8 +336,13 @@ int main(int argc, char**argv) {
     auto event_queue = std::make_shared<EventQueue>(queue);
     auto builder = std::make_shared<EventBuilder>(event_queue);
 
-    RawEventProcessor rep(builder, user_db, processTree, filtersEngine);
+    RawEventProcessor rep(builder, user_db, processTree, filtersEngine, metrics);
     inputs.Start();
+
+    Signals::SetExitHandler([&inputs]() {
+        Logger::Info("Stopping inputs");
+        inputs.Stop();
+    });
 
     try {
         Logger::Info("Starting input loop");
@@ -348,8 +364,14 @@ int main(int argc, char**argv) {
     Logger::Info("Exiting");
 
     try {
-        rules_monitor.Stop();
         collection_monitor.Stop();
+        processNotify->Stop();
+        processTree->Stop();
+        proc_metrics->Stop();
+        system_metrics->Stop();
+        syscall_metrics->Stop();
+        metrics->Stop();
+        rules_monitor.Stop();
         inputs.Stop();
         outputs.Stop(false); // Trigger outputs shutdown but don't block
         user_db->Stop(); // Stop user db monitoring

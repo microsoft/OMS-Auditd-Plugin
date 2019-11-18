@@ -23,8 +23,8 @@
 
 class RunBase {
 public:
-    RunBase(): _start(false), _stop(true), _joining(true), _joined(true), _stopped(true) {}
-    virtual ~RunBase() {}
+    RunBase(): _start(false), _stop(true), _joining(true), _joined(true), _stopped(true), _thread_id(0) {}
+    virtual ~RunBase();
 
     void Start();
     void Stop();

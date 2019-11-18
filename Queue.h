@@ -87,16 +87,6 @@ public:
     // Return 1 on success, return -1 if queue is closed.
     int Put(void* ptr, size_t size);
 
-    // Delete items until enough space is available
-    // Return 1 on success, return -1 if queue is closed.
-    int Allocate(void** ptr, size_t size);
-
-    // Return 1 on success, return -1 if queue is closed.
-    int Commit();
-
-    // Return 1 on success, return -1 if queue is closed.
-    int Rollback();
-
     // Return 1 on success, 0 on Timeout, -1 if queue closed, -2 if buffer is too small
     // On input size must be the buffer size, on output size will be the actual size of the item
     // If size is smaller than the item

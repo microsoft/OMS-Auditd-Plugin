@@ -55,12 +55,6 @@ add_executable(auomscollect
         auomscollect.cpp
         IO.cpp
         Event.cpp
-        TextEventWriterConfig.cpp
-        TextEventWriter.cpp
-        OMSEventWriter.cpp
-        JSONEventWriter.cpp
-        MsgPackEventWriter.cpp
-        SyslogEventWriter.cpp
         Signals.cpp
         Queue.cpp
         UnixDomainWriter.cpp
@@ -80,10 +74,9 @@ add_executable(auomscollect
         TranslateRecordType.cpp
         FileUtils.cpp
         Retry.h
-        ProcFilter.cpp
-        FiltersEngine.cpp
-        ProcessTree.cpp
-        ProcessInfo.cpp
+        Metrics.cpp
+        ProcMetrics.cpp
+        Cache.h
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -131,6 +124,7 @@ add_executable(auoms
         ProcFilter.cpp
         ProcessTree.cpp
         FiltersEngine.cpp
+        EventFilter.cpp
         StringUtils.cpp
         Interpret.cpp
         CollectionMonitor.cpp
@@ -152,6 +146,10 @@ add_executable(auoms
         ExecUtil.cpp
         StringTable.h
         ExecveConverter.cpp
+        Metrics.cpp
+        SyscallMetrics.cpp
+        ProcMetrics.cpp
+        SystemMetrics.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -342,6 +340,8 @@ add_executable(EventProcessorTests
         TranslateArch.cpp
         Interpret.cpp
         ExecveConverter.cpp
+        Metrics.cpp
+        Cache.h
 )
 
 target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
@@ -363,6 +363,8 @@ add_executable(ExecveConverterTests
         Logger.cpp
         StringUtils.cpp
         TranslateRecordType.cpp
+        RunBase.cpp
+        Metrics.cpp
 )
 
 target_link_libraries(ExecveConverterTests ${Boost_LIBRARIES}
@@ -388,10 +390,8 @@ add_executable(OMSEventWriterTests
         ProcFilter.cpp
         Signals.cpp
         UserDB.cpp
-        FiltersEngine.cpp
         RunBase.cpp
-        ProcessTree.cpp
-        ProcessInfo.cpp
+        ExecveConverter.cpp
 )
 
 target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}

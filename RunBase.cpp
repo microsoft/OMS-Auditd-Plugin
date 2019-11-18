@@ -21,6 +21,10 @@
 
 #include <signal.h>
 
+RunBase::~RunBase() {
+//    Stop();
+}
+
 void* RunBase::thread_entry(void* ptr) {
     static_cast<RunBase*>(ptr)->thread_run();
     return nullptr;

@@ -50,6 +50,9 @@ public:
     inline std::string comm() { return _comm; }
     inline std::string exe() { return _exe; }
 
+    inline uint64_t utime() { return _utime; }
+    inline uint64_t stime() { return _stime; }
+
     std::string starttime();
 
     inline bool is_cmdline_truncated() { return _cmdline_truncated; }
@@ -70,6 +73,8 @@ private:
     int _pid;
     int _ppid;
     int _ses;
+    uint64_t _utime;
+    uint64_t _stime;
     uint64_t _starttime;
     int _uid;
     int _gid;
@@ -83,6 +88,7 @@ private:
     std::string _exe;
     std::vector<uint8_t> _stat;
     std::vector<uint8_t> _status;
+    std::vector<uint8_t> _statm;
     std::vector<uint8_t> _cmdline;
     std::string _starttime_str;
     bool _cmdline_truncated;

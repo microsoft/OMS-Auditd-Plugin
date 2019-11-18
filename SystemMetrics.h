@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,41 +13,36 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_SIGNALS_H
-#define AUOMS_SIGNALS_H
 
-#include <atomic>
-#include <functional>
-#include <mutex>
+#ifndef AUOMS_SYSTEMMETRICS_H
+#define AUOMS_SYSTEMMETRICS_H
 
-#include <pthread.h>
+#include "RunBase.h"
+#include "Metrics.h"
 
-class Signals {
+class SystemMetrics: public RunBase {
 public:
-    static void Init();
-    static void InitThread();
-    static void Start();
-    static bool IsExit();
-    static void Terminate();
+    SystemMetrics(const std::shared_ptr<Metrics> metrics): _metrics(metrics), _cpu_user(0), _cpu_user_nice(0), _cpu_system(0), _cpu_idle(0) {}
 
-    static void SetHupHandler(std::function<void()>&& fn) {
-        std::lock_guard<std::mutex> _lock(_mutex);
-        _hup_fn = std::move(fn);
-    }
-    static void SetExitHandler(std::function<void()>&& fn) {
-        std::lock_guard<std::mutex> _lock(_mutex);
-        _exit_fn = std::move(fn);
-    }
+protected:
+    void run() override;
 
 private:
-    static void run();
+    bool collect_metrics();
 
-    static std::atomic<bool> _exit;
-    static std::mutex _mutex;
-    static std::function<void()> _hup_fn;
-    static std::function<void()> _exit_fn;
-    static pthread_t _main_id;
+
+    std::shared_ptr<Metrics> _metrics;
+
+    uint64_t _cpu_user;
+    uint64_t _cpu_user_nice;
+    uint64_t _cpu_system;
+    uint64_t _cpu_idle;
+
+    std::shared_ptr<Metric> _total_mem_metric;
+    std::shared_ptr<Metric> _free_mem_metric;
+    std::shared_ptr<Metric> _num_cpu_metric;
+    std::shared_ptr<Metric> _cpu_pct_metric;
 };
 
 
-#endif //AUOMS_SIGNALS_H
+#endif //AUOMS_SYSTEMMETRICS_H

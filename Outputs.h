@@ -28,11 +28,33 @@
 #include <memory>
 #include <vector>
 
+class OutputsEventWriterFactory: public IEventWriterFactory {
+public:
+    OutputsEventWriterFactory() {}
+
+    virtual std::shared_ptr<IEventWriter> CreateEventWriter(const std::string& name, const Config& config) override;
+};
+
+class OutputsEventFilterFactory: public IEventFilterFactory {
+public:
+    OutputsEventFilterFactory(std::shared_ptr<UserDB> user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree):
+            _user_db(user_db), _filtersEngine(filtersEngine), _processTree(processTree)
+    {}
+
+    virtual std::shared_ptr<IEventFilter> CreateEventFilter(const std::string& name, const Config& config) override;
+private:
+    std::shared_ptr<UserDB> _user_db;
+    std::shared_ptr<FiltersEngine> _filtersEngine;
+    std::shared_ptr<ProcessTree> _processTree;
+};
+
 class Outputs: public RunBase {
 public:
     Outputs(std::shared_ptr<Queue>& queue, const std::string& conf_dir, const std::string& cursor_dir, const std::vector<std::string>& allowed_socket_dirs, std::shared_ptr<UserDB>& user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree):
-            _queue(queue), _conf_dir(conf_dir), _cursor_dir(cursor_dir), _allowed_socket_dirs(allowed_socket_dirs),
-            _user_db(user_db), _filtersEngine(filtersEngine), _processTree(processTree), _do_reload(false) {}
+            _queue(queue), _conf_dir(conf_dir), _cursor_dir(cursor_dir), _allowed_socket_dirs(allowed_socket_dirs), _do_reload(false) {
+        _writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new OutputsEventWriterFactory()));
+        _filter_factory = std::shared_ptr<IEventFilterFactory>(static_cast<IEventFilterFactory*>(new OutputsEventFilterFactory(user_db, filtersEngine, processTree)));
+    }
 
     void Reload(const std::vector<std::string>& allowed_socket_dirs);
 
@@ -49,9 +71,8 @@ private:
     std::string _conf_dir;
     std::string _cursor_dir;
     std::vector<std::string> _allowed_socket_dirs;
-    std::shared_ptr<UserDB> _user_db;
-    std::shared_ptr<FiltersEngine> _filtersEngine;
-    std::shared_ptr<ProcessTree> _processTree;
+    std::shared_ptr<IEventWriterFactory> _writer_factory;
+    std::shared_ptr<IEventFilterFactory> _filter_factory;
     bool _do_reload;
     std::mutex _mutex;
     std::condition_variable _cond;

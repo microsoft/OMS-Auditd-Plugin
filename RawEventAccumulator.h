@@ -18,9 +18,9 @@
 #define AUOMS_EVENTACCUMULATOR_H
 
 #include "RawEventRecord.h"
+#include "Metrics.h"
+#include "Cache.h"
 
-#include <map>
-#include <unordered_map>
 #include <mutex>
 
 class RawEvent {
@@ -31,7 +31,9 @@ public:
     static constexpr size_t NUM_EXECVE_RH_PRESERVE = 3;
 
     RawEvent() = delete;
-    explicit RawEvent(EventId event_id): _event_id(event_id), _num_execve_records(0), _num_dropped_records(0), _size(0), _execve_size(0) {}
+    explicit RawEvent(EventId event_id): _event_id(event_id), _num_execve_records(0), _num_dropped_records(0), _syscall_rec_idx(-1), _size(0), _execve_size(0) {}
+
+    inline EventId GetEventId() { return _event_id; }
 
     // Returns true if the event is now complete;
     bool AddRecord(std::unique_ptr<RawEventRecord> record);
@@ -45,13 +47,18 @@ private:
     std::unordered_map<RecordType, int> _drop_count;
     int _num_execve_records;
     int _num_dropped_records;
+    int _syscall_rec_idx;
     size_t _size;
     size_t _execve_size;
 };
 
 class RawEventAccumulator {
 public:
-    explicit RawEventAccumulator(const std::shared_ptr<EventBuilder>& builder): _builder(builder) {}
+    explicit RawEventAccumulator(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<Metrics>& metrics): _builder(builder), _metrics(metrics) {
+        _bytes_metric = _metrics->AddMetric("raw_data", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _record_metric = _metrics->AddMetric("raw_data", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _event_metric = _metrics->AddMetric("raw_data", "events", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    }
 
     int AddRecord(std::unique_ptr<RawEventRecord> record);
     void Flush(long milliseconds);
@@ -59,7 +66,11 @@ public:
 private:
     std::mutex _mutex;
     std::shared_ptr<EventBuilder> _builder;
-    std::map<EventId, std::unique_ptr<RawEvent>> _events;
+    std::shared_ptr<Metrics> _metrics;
+    std::shared_ptr<Metric> _bytes_metric;
+    std::shared_ptr<Metric> _record_metric;
+    std::shared_ptr<Metric> _event_metric;
+    Cache<EventId, std::shared_ptr<RawEvent>> _events;
 };
 
 

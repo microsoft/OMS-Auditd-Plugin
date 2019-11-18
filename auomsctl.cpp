@@ -866,7 +866,7 @@ int tap_audit() {
     };
 
     Logger::Info("Connecting to AUDIT NETLINK socket");
-    auto ret = netlink.Open(handler);
+    auto ret = netlink.Open(std::move(handler));
     if (ret != 0) {
         Logger::Error("Failed to open AUDIT NETLINK connection: %s", std::strerror(-ret));
         return 1;
@@ -1085,7 +1085,7 @@ int set_rules() {
     std::vector<AuditRule> desired_rules;
     for (auto& rule: rules) {
         // Only include the rule in the desired rules if it is supported on the host system
-        if (rule.IsSupported()) {
+        if (rule.IsLoadable()) {
             rule.AddKey(AUOMS_RULE_KEY);
             desired_rules.emplace_back(rule);
         }
@@ -1156,7 +1156,7 @@ int load_rules() {
     std::vector<AuditRule> desired_rules;
     for (auto& rule: rules) {
         // Only include the rule in the desired rules if it is supported on the host system
-        if (rule.IsSupported()) {
+        if (rule.IsLoadable()) {
             rule.AddKey(AUOMS_RULE_KEY);
             desired_rules.emplace_back(rule);
         }

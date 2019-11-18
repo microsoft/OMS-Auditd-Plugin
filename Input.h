@@ -24,7 +24,7 @@
 
 class Input: public RunBase {
 public:
-    Input(std::unique_ptr<IOBase> conn, std::shared_ptr<InputBuffer> buffer, std::function<void()> stop_fn)
+    Input(std::unique_ptr<IOBase> conn, std::shared_ptr<InputBuffer> buffer, std::function<void()>&& stop_fn)
     : _conn(std::move(conn)), _fd(_conn->GetFd()), _buffer(std::move(buffer)), _stop_fn(std::move(stop_fn)) {}
 
 protected:

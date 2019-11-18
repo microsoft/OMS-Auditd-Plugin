@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,41 +13,35 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_SIGNALS_H
-#define AUOMS_SIGNALS_H
 
-#include <atomic>
-#include <functional>
-#include <mutex>
+#ifndef AUOMS_SYSCALLMETRICS_H
+#define AUOMS_SYSCALLMETRICS_H
 
-#include <pthread.h>
+#include "RunBase.h"
+#include "Metrics.h"
 
-class Signals {
+#include <regex>
+
+class SyscallMetrics: public RunBase {
 public:
-    static void Init();
-    static void InitThread();
-    static void Start();
-    static bool IsExit();
-    static void Terminate();
+    SyscallMetrics(const std::shared_ptr<Metrics> metrics):
+        _metrics(metrics), _hist_line_re(_hist_line_match_re, std::regex::ECMAScript|std::regex::optimize) {}
 
-    static void SetHupHandler(std::function<void()>&& fn) {
-        std::lock_guard<std::mutex> _lock(_mutex);
-        _hup_fn = std::move(fn);
-    }
-    static void SetExitHandler(std::function<void()>&& fn) {
-        std::lock_guard<std::mutex> _lock(_mutex);
-        _exit_fn = std::move(fn);
-    }
+protected:
+    void run() override;
 
 private:
-    static void run();
+    static const std::string _hist_line_match_re;
 
-    static std::atomic<bool> _exit;
-    static std::mutex _mutex;
-    static std::function<void()> _hup_fn;
-    static std::function<void()> _exit_fn;
-    static pthread_t _main_id;
+    bool init();
+    int parse_hist_line(const std::string line, uint32_t *id, std::string *name, uint64_t *count);
+    bool collect_metrics();
+    void cleanup();
+
+    std::shared_ptr<Metrics> _metrics;
+    std::regex _hist_line_re;
+    std::unordered_map<uint32_t, std::shared_ptr<Metric>> _syscall_metrics;
 };
 
 
-#endif //AUOMS_SIGNALS_H
+#endif //AUOMS_SYSCALLMETRICS_H

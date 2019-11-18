@@ -24,7 +24,7 @@
 #include <unistd.h>
 
 template<typename T, class Rep, class Period>
-std::pair<T, bool> Retry(int max_retries, const std::chrono::duration<Rep, Period>& initial_sleep_duration, bool exponential, std::function<T()> fn, std::function<bool(T)> predicate) {
+std::pair<T, bool> Retry(int max_retries, const std::chrono::duration<Rep, Period>& initial_sleep_duration, bool exponential, const std::function<T()>& fn, const std::function<bool(T)>& predicate) {
     std::chrono::duration<Rep, Period> sleep_duration = initial_sleep_duration;
     int count = 0;
     T val = fn();

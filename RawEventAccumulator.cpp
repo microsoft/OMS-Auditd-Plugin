@@ -26,11 +26,6 @@ bool RawEvent::AddRecord(std::unique_ptr<RawEventRecord> record) {
         return true;
     }
 
-    // Ignore the PROCTITLE record because we convert the EXECVE records into cmdline field.
-    if (rtype == RecordType::PROCTITLE) {
-        return false;
-    }
-
     if (rtype == RecordType::EXECVE) {
         _num_execve_records++;
         if (_num_execve_records == 1) {
@@ -62,6 +57,9 @@ bool RawEvent::AddRecord(std::unique_ptr<RawEventRecord> record) {
     } else {
         _size += record->GetSize();
         _records.emplace_back(std::move(record));
+        if (rtype == RecordType::SYSCALL && _syscall_rec_idx < 0) {
+            _syscall_rec_idx = _records.size()-1;
+        }
     }
 
     if (rtype < RecordType::FIRST_EVENT ||
@@ -85,7 +83,20 @@ int RawEvent::AddEvent(EventBuilder& builder) {
     if (ret != 1) {
         return ret;
     }
+
+    if (_syscall_rec_idx > -1) {
+        ret = _records[_syscall_rec_idx]->AddRecord(builder);
+        if (ret != 1) {
+            builder.CancelEvent();
+            return ret;
+        }
+        _records[_syscall_rec_idx].reset(nullptr);
+    }
+
     for (std::unique_ptr<RawEventRecord>& rec: _records) {
+        if (!rec) {
+            continue;
+        }
         ret = rec->AddRecord(builder);
         if (ret != 1) {
             builder.CancelEvent();
@@ -126,20 +137,26 @@ int RawEvent::AddEvent(EventBuilder& builder) {
 int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
     std::lock_guard<std::mutex> lock(_mutex);
 
+    _bytes_metric->Add(static_cast<double>(record->GetSize()));
+    _record_metric->Add(1.0);
+
     auto event_id = record->GetEventId();
-    auto itr = _events.find(event_id);
-    if (itr != _events.end()) {
-        if (itr->second->AddRecord(std::move(record))) {
-            auto ret = itr->second->AddEvent(*_builder);
-            _events.erase(itr);
-            return ret;
-        }
-    } else {
-        auto event = std::make_unique<RawEvent>(record->GetEventId());
+    int ret = 0;
+    auto found = _events.on(event_id, [this,&record,&ret](const std::chrono::steady_clock::time_point& last_touched, std::shared_ptr<RawEvent>& event) {
         if (event->AddRecord(std::move(record))) {
+            ret = event->AddEvent(*_builder);
+            return CacheEntryOP::REMOVE;
+        } else {
+            return CacheEntryOP::TOUCH;
+        }
+    });
+    if (!found) {
+        auto event = std::make_shared<RawEvent>(record->GetEventId());
+        if (event->AddRecord(std::move(record))) {
+            _event_metric->Add(1.0);
             return event->AddEvent(*_builder);
         } else {
-            _events.emplace(std::make_pair(event_id, std::move(event)));
+            _events.add(event_id, event);
         }
     }
     return 1;
@@ -147,36 +164,22 @@ int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
 
 void RawEventAccumulator::Flush(long milliseconds) {
     if (milliseconds > 0) {
-        struct timeval tv;
-        gettimeofday(&tv, nullptr);
-
-        auto sec = static_cast<uint64_t>(tv.tv_sec);
-        uint32_t msec = static_cast<uint32_t>(tv.tv_usec) / 1000;
-
-        if (msec < milliseconds) {
-        } else {
-            sec -= 1;
-            msec += 1000;
-        }
-        msec -= milliseconds;
-
-        EventId oldest(sec, msec, 0);
-
+        auto now = std::chrono::steady_clock::now();
         std::lock_guard<std::mutex> lock(_mutex);
 
-        // Flush any events older than oldest;
-        while (!_events.empty()) {
-            auto itr = _events.begin();
-            if (itr->first > oldest) {
-                return;
+        _events.for_all_oldest_first([this,now,milliseconds](const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
+            if (std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()-last_touched.time_since_epoch()) > std::chrono::milliseconds(milliseconds)) {
+                event->AddEvent(*_builder);
+                _event_metric->Add(1.0);
+                return CacheEntryOP::REMOVE;
             }
-            itr->second->AddEvent(*_builder);
-            _events.erase(itr);
-        }
+            return CacheEntryOP::STOP;
+        });
     } else {
-        for (auto& e: _events) {
-            e.second->AddEvent(*_builder);
-        }
-        _events.clear();
+        _events.for_all_oldest_first([this](const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
+            event->AddEvent(*_builder);
+            _event_metric->Add(1.0);
+            return CacheEntryOP::REMOVE;
+        });
     }
 }

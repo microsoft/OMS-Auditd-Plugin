@@ -141,7 +141,7 @@ ssize_t IOBase::WaitWritable(long timeout) {
     }
 }
 
-ssize_t IOBase::Read(void *buf, size_t size, std::function<bool()> fn)
+ssize_t IOBase::Read(void *buf, size_t size, const std::function<bool()>& fn)
 {
     int fd = _fd.load();
     if (_fd < 0 || _rclosed.load()) {
@@ -161,7 +161,7 @@ ssize_t IOBase::Read(void *buf, size_t size, std::function<bool()> fn)
     return nr;
 }
 
-ssize_t IOBase::Read(void *buf, size_t size, long timeout, std::function<bool()> fn)
+ssize_t IOBase::Read(void *buf, size_t size, long timeout, const std::function<bool()>& fn)
 {
     int ret = 0;
     do {
@@ -176,7 +176,7 @@ ssize_t IOBase::Read(void *buf, size_t size, long timeout, std::function<bool()>
     return Read(buf, size, fn);
 }
 
-ssize_t IOBase::ReadAll(void *buf, size_t size, std::function<bool()> fn)
+ssize_t IOBase::ReadAll(void *buf, size_t size, const std::function<bool()>& fn)
 {
     size_t nleft = size;
     do {
@@ -204,7 +204,40 @@ ssize_t IOBase::ReadAll(void *buf, size_t size, std::function<bool()> fn)
     return OK;
 }
 
-ssize_t IOBase::WriteAll(const void * buf, size_t size, long timeout, std::function<bool()> fn)
+ssize_t IOBase::DiscardAll(size_t size, const std::function<bool()>& fn)
+{
+    uint8_t buffer[4096];
+    size_t nleft = size;
+    do {
+        int fd = _fd.load();
+        if (_fd < 0 || _rclosed.load()) {
+            return CLOSED;
+        }
+        errno = 0;
+        size_t n = nleft;
+        if (nleft < sizeof(buffer)) {
+            n = sizeof(buffer);
+        }
+        ssize_t nr = read(fd, buffer, n);
+        if (nr < 0) {
+            if (errno != EINTR) {
+                return FAILED;
+            } else if (fn && fn()) {
+                return INTERRUPTED;
+            } else {
+                continue;
+            }
+        } else if (nr == 0) {
+            return CLOSED;
+        } else {
+            nleft -= nr;
+        }
+    } while (nleft > 0);
+
+    return OK;
+}
+
+ssize_t IOBase::WriteAll(const void * buf, size_t size, long timeout, const std::function<bool()>& fn)
 {
     size_t nleft = size;
     do {

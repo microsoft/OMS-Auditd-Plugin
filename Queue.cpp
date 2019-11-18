@@ -436,12 +436,26 @@ void Queue::Reset() {
 
     _head = 0;
     _tail = 0;
-    _next_id = 1;
-    _int_id = 0;
+    _int_id++;
 
-    save_locked(lock);
+    FileHeader after;
+
+    after.magic = HEADER_MAGIC;
+    after.version = VERSION;
+    after.size = _file_size;
+    after.next_id = _next_id;
+    after.tail = _tail;
+    after.head = _head;
+
+    _pwrite(_fd, &after, sizeof(FileHeader), 0);
+
+    memset(_ptr, 0, _data_size);
 
     _saved_size = 0;
+
+    _pwrite(_fd, _ptr+FILE_DATA_OFFSET, _data_size, FILE_DATA_OFFSET);
+
+    _cond.notify_all();
 }
 
 void Queue::Autosave(uint64_t min_save, int max_delay)
@@ -542,20 +556,6 @@ int Queue::allocate_locked(std::unique_lock<std::mutex>& lock, void** ptr, size_
     return 1;
 }
 
-int Queue::Allocate(void** ptr, size_t size)
-{
-    if (size > MAX_ITEM_SIZE) {
-        return BUFFER_TOO_SMALL;
-    }
-    std::unique_lock<std::mutex> lock(_lock);
-
-    if (_closed) {
-        return CLOSED;
-    }
-
-    return allocate_locked(lock, ptr, size);
-}
-
 int Queue::commit_locked()
 {
     BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+_head);
@@ -573,32 +573,6 @@ int Queue::commit_locked()
     hdr->state = HEAD;
 
     _cond.notify_all();
-
-    return 1;
-}
-
-int Queue::Commit() {
-    std::unique_lock<std::mutex> lock(_lock);
-
-    if (_closed) {
-        return CLOSED;
-    }
-
-    return commit_locked();
-}
-
-int Queue::Rollback()
-{
-    std::unique_lock<std::mutex> lock(_lock);
-
-    if (_closed) {
-        return CLOSED;
-    }
-
-    BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+_head);
-    hdr->size = 0;
-    hdr->id = 0;
-    hdr->state = HEAD;
 
     return 1;
 }

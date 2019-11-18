@@ -35,19 +35,6 @@ extern "C" {
 #include <stdlib.h>
 };
 
-const std::string passwd_file_text = R"passwd(
-root:x:0:0:root:/root:/bin/bash
-nobody:x:65534:65534:nobody:/nonexistent:/usr/sbin/nologin
-user:x:1000:1000:User,,,:/home/user:/bin/bash
-)passwd";
-
-const std::string group_file_text = R"group(
-root:x:0:
-adm:x:4:user
-nogroup:x:65534:
-user:x:1000:
-)group";
-
 void write_file(const std::string& path, const std::string& text) {
     std::ofstream out;
     out.exceptions(std::ofstream::failbit|std::ofstream::badbit|std::ofstream::eofbit);
@@ -254,16 +241,21 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
 
     auto expected_queue = new TestEventQueue();
     auto actual_queue = new TestEventQueue();
+    auto metrics_queue = new TestEventQueue();
     auto expected_allocator = std::shared_ptr<IEventBuilderAllocator>(expected_queue);
     auto actual_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_queue);
+    auto metrics_allocator = std::shared_ptr<IEventBuilderAllocator>(metrics_queue);
     auto expected_builder = std::make_shared<EventBuilder>(expected_allocator);
     auto actual_builder = std::make_shared<EventBuilder>(actual_allocator);
+    auto metrics_builder = std::make_shared<EventBuilder>(metrics_allocator);
 
     auto proc_filter = std::make_shared<ProcFilter>(user_db);
     auto filtersEngine = std::make_shared<FiltersEngine>();
     auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
 
-    auto raw_proc = std::make_shared<RawEventProcessor>(actual_builder, user_db, processTree, filtersEngine);
+    auto metrics = std::make_shared<Metrics>(metrics_builder);
+
+    auto raw_proc = std::make_shared<RawEventProcessor>(actual_builder, user_db, processTree, filtersEngine, metrics);
 
     auto actual_raw_queue = new RawEventQueue(raw_proc);
     auto actual_raw_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_raw_queue);
@@ -273,7 +265,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
         e.Write(expected_builder);
     }
 
-    RawEventAccumulator accumulator(actual_raw_builder);
+    RawEventAccumulator accumulator(actual_raw_builder, metrics);
 
     for (auto raw_event : raw_test_events) {
         std::string event_txt = raw_event;

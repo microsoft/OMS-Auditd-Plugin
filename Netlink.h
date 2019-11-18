@@ -31,7 +31,7 @@ class Netlink: private RunBase {
 public:
     typedef std::function<bool(uint16_t type, uint16_t flags, const void* data, size_t len)> reply_fn_t;
 
-    Netlink(): _fd(-1), _sequence(1),_default_msg_handler_fn(nullptr), _quite(false), _known_seq(), _replies(), _data() {}
+    Netlink(): _fd(-1), _sequence(1), _default_msg_handler_fn(), _quite(false), _known_seq(), _replies(), _data() {}
 
     void SetQuite() { _quite = true; }
 
@@ -44,10 +44,10 @@ public:
      * If request fails for another reason will return -errno
      */
 
-    int Open(reply_fn_t default_msg_handler_fn);
+    int Open(reply_fn_t&& default_msg_handler_fn);
     void Close();
 
-    int Send(uint16_t type, const void* data, size_t len, reply_fn_t reply_fn);
+    int Send(uint16_t type, const void* data, size_t len, reply_fn_t&& reply_fn);
 
     // Will return -ENOMSG if no AUDIT_GET message received
     int AuditGet(audit_status& status);
@@ -86,7 +86,7 @@ private:
 
     class ReplyRec {
     public:
-        explicit ReplyRec(reply_fn_t fn): _req_time(std::chrono::steady_clock::now()), _done(false), _fn(std::move(fn)) {}
+        explicit ReplyRec(reply_fn_t&& fn): _req_time(std::chrono::steady_clock::now()), _done(false), _fn(std::move(fn)), _promise() {}
         ReplyRec(const ReplyRec& other) = delete;
         ReplyRec(ReplyRec&& other) = delete;
         ReplyRec& operator=(const ReplyRec& other) = delete;
@@ -110,6 +110,6 @@ private:
     std::array<uint8_t, 16*1024> _data;
 };
 
-int NetlinkRetry(std::function<int()> fn);
+int NetlinkRetry(const std::function<int()>& fn);
 
 #endif //AUOMS_NETLINK_H

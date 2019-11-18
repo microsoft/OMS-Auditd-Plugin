@@ -32,6 +32,20 @@ bool IsDir(const std::string& path) {
     return false;
 }
 
+std::string Dirname(const std::string& path) {
+    std::string dir = path;
+    while(dir.back() == '/') {
+        dir.resize(dir.size()-1);
+    }
+
+    auto idx = dir.rfind('/');
+    if (idx != std::string::npos && idx != 0) {
+        return dir.substr(0, idx);
+    }
+
+    return dir;
+}
+
 std::vector<std::string> GetDirList(const std::string& dir) {
     std::vector<std::string> files;
     std::array<char, 4096> buffer;

@@ -18,7 +18,7 @@
 #include "StdinReader.h"
 #include "Logger.h"
 
-ssize_t StdinReader::ReadLine(char* buf, size_t buf_len, long timeout, std::function<bool()> fn) {
+ssize_t StdinReader::ReadLine(char* buf, size_t buf_len, long timeout, const std::function<bool()>& fn) {
     while (!have_line()) {
         auto ret = get_data(timeout, fn);
         if (ret != IO::OK) {
@@ -62,7 +62,7 @@ bool StdinReader::have_line() {
     return false;
 }
 
-ssize_t StdinReader::get_data(long timeout, std::function<bool()> fn) {
+ssize_t StdinReader::get_data(long timeout, const std::function<bool()>& fn) {
     if (_size == _data.size()) {
         if (_start_idx > 0) {
             memmove(&_data[0], &_data[_start_idx], _size - _start_idx);
