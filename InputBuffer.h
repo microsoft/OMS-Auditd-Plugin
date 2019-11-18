@@ -24,7 +24,7 @@
 
 class InputBuffer {
 public:
-    static constexpr size_t MAX_DATA_SIZE = 128*1024;
+    static constexpr size_t MAX_DATA_SIZE = 256*1024;
 
     InputBuffer(): _data(std::make_unique<std::array<char,MAX_DATA_SIZE>>()), _data_size(0), _has_writer(false), _close(false) {}
 

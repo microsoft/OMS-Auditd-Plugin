@@ -81,7 +81,7 @@ BOOST_AUTO_TEST_CASE( queue_put_empty ) {
                 BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
             }
             BOOST_REQUIRE_EQUAL(data_out.size(), size);
-            BOOST_REQUIRE_EQUAL(data_out[0], item_id_out);
+            BOOST_REQUIRE_EQUAL(static_cast<uint8_t>(data_out[0]), static_cast<uint8_t>(item_id_out));
         }
 
         queue.Close(false);
@@ -101,7 +101,7 @@ BOOST_AUTO_TEST_CASE( queue_put_empty ) {
                 BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
             }
             BOOST_REQUIRE_EQUAL(data_out.size(), size);
-            BOOST_REQUIRE_EQUAL(data_out[0], item_id_out);
+            BOOST_REQUIRE_EQUAL(static_cast<uint8_t>(data_out[0]), static_cast<uint8_t>(item_id_out));
         }
     }
 }
@@ -144,7 +144,7 @@ BOOST_AUTO_TEST_CASE( queue_put_wrap ) {
                 BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
             }
             BOOST_REQUIRE_EQUAL(data_out.size(), size);
-            BOOST_REQUIRE_EQUAL(data_out[0], item_id_out);
+            BOOST_REQUIRE_EQUAL(static_cast<uint8_t>(data_out[0]), static_cast<uint8_t>(item_id_out));
         }
 
         queue.Close(false);
@@ -164,97 +164,14 @@ BOOST_AUTO_TEST_CASE( queue_put_wrap ) {
                 BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
             }
             BOOST_REQUIRE_EQUAL(data_out.size(), size);
-            BOOST_REQUIRE_EQUAL(data_out[0], item_id_out);
+            BOOST_REQUIRE_EQUAL(static_cast<uint8_t>(data_out[0]), static_cast<uint8_t>(item_id_out));
         }
     }
 }
 
-BOOST_AUTO_TEST_CASE( queue_close_before_commit ) {
+
+BOOST_AUTO_TEST_CASE( queue_reset ) {
     TempFile file("/tmp/QueueTests.");
-
-    int maxItemBeforeWrap = ((Queue::MIN_QUEUE_SIZE-FILE_HEADER_SIZE-ITEM_HEADER_SIZE) / (ITEM_HEADER_SIZE+1024));
-
-    {
-        Queue queue(file.Path(), Queue::MIN_QUEUE_SIZE);
-
-        queue.Open();
-
-        std::array<char, 1024> data_in;
-        data_in.fill('\0');
-
-        int item_id_in = 0;
-        int item_id_out = 0;
-
-        for (int i = 0; i < maxItemBeforeWrap-1; i++, item_id_in++) {
-            data_in[0] = static_cast<char>(item_id_in);
-            auto ret = queue.Put(data_in.data(), data_in.size());
-            if (ret != 1) {
-                BOOST_FAIL("Queue::Put didn't return 1. Instead it returned: " + std::to_string(ret));
-            }
-        }
-
-        void *ptr;
-        auto ret = queue.Allocate(&ptr, 1024);
-        if (ret != 1) {
-            BOOST_FAIL("Queue::Allocate didn't return 1. Instead it returned: " + std::to_string(ret));
-        }
-
-        queue.Save();
-
-        data_in[0] = static_cast<char>(item_id_in);
-        item_id_in++;
-        memcpy(ptr, data_in.data(), 1024);
-
-        ret = queue.Commit();
-        if (ret != 1) {
-            BOOST_FAIL("Queue::Commit didn't return 1. Instead it returned: " + std::to_string(ret));
-        }
-
-        std::array<char, 1024> data_out;
-        QueueCursor cursor = QueueCursor::TAIL;
-
-        for (int i = 0; i < maxItemBeforeWrap-1; i++, item_id_out++) {
-            size_t size = data_out.size();
-            auto ret = queue.Get(cursor, data_out.data(), &size, &cursor, 1);
-            if (ret < 0) {
-                BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
-            }
-            BOOST_REQUIRE_EQUAL(data_out.size(), size);
-            BOOST_REQUIRE_EQUAL(data_out[0], item_id_out);
-        }
-
-        queue.Close(false);
-    }
-
-    {
-        Queue queue(file.Path(), Queue::MIN_QUEUE_SIZE);
-        queue.Open();
-
-        std::array<char, 1024> data_out;
-        QueueCursor cursor = QueueCursor::TAIL;
-        int item_id_out = 0;
-        for (int i = 0; i < maxItemBeforeWrap-1; i++, item_id_out++) {
-            size_t size = data_out.size();
-            auto ret = queue.Get(cursor, data_out.data(), &size, &cursor, 1);
-            if (ret < 0) {
-                BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
-            }
-            BOOST_REQUIRE_EQUAL(data_out.size(), size);
-            BOOST_REQUIRE_EQUAL(data_out[0], item_id_out);
-        }
-
-        size_t size = data_out.size();
-        auto ret = queue.Get(cursor, data_out.data(), &size, &cursor, 1);
-        if (ret != 0) {
-            BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
-        }
-    }
-}
-
-BOOST_AUTO_TEST_CASE( queue_close_before_commit_wrap ) {
-    TempFile file("/tmp/QueueTests.");
-
-    int maxItemBeforeWrap = ((Queue::MIN_QUEUE_SIZE-FILE_HEADER_SIZE-ITEM_HEADER_SIZE) / (ITEM_HEADER_SIZE+1024));
 
     {
         Queue queue(file.Path(), Queue::MIN_QUEUE_SIZE);
@@ -266,7 +183,7 @@ BOOST_AUTO_TEST_CASE( queue_close_before_commit_wrap ) {
 
         int item_id_in = 0;
 
-        for (int i = 0; i < maxItemBeforeWrap-1; i++, item_id_in++) {
+        for (int i = 0; i < 10; i++, item_id_in++) {
             data_in[0] = static_cast<char>(item_id_in);
             auto ret = queue.Put(data_in.data(), data_in.size());
             if (ret != 1) {
@@ -274,77 +191,58 @@ BOOST_AUTO_TEST_CASE( queue_close_before_commit_wrap ) {
             }
         }
 
-        void *ptr;
-        auto ret = queue.Allocate(&ptr, 1024);
-        if (ret != 1) {
-            BOOST_FAIL("Queue::Allocate didn't return 1. Instead it returned: " + std::to_string(ret));
-        }
-        static_cast<char*>(ptr)[0] = static_cast<char>(item_id_in);
-
-        for (int i = 1; i <= 1024; i++) {
-            auto ret = queue.Allocate(&ptr, 1024+i);
-            if (ret != 1) {
-                BOOST_FAIL("Queue::Allocate didn't return 1. Instead it returned: " + std::to_string(ret));
-            }
-        }
-
-        BOOST_REQUIRE_EQUAL(static_cast<uint8_t*>(ptr)[0], static_cast<uint8_t>(item_id_in));
-
         queue.Save();
 
-        item_id_in++;
-
-        ret = queue.Commit();
-        if (ret != 1) {
-            BOOST_FAIL("Queue::Commit didn't return 1. Instead it returned: " + std::to_string(ret));
-        }
-
         std::array<char, 1024> data_out;
         QueueCursor cursor = QueueCursor::TAIL;
-        int item_id_out = 3;
-        for (int i = 0; i < maxItemBeforeWrap-4; i++, item_id_out++) {
+        int item_id_out = 0;
+
+        for (int i = 0; i < 5; i++, item_id_out++) {
             size_t size = data_out.size();
             auto ret = queue.Get(cursor, data_out.data(), &size, &cursor, 1);
             if (ret < 0) {
                 BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
             }
             BOOST_REQUIRE_EQUAL(data_out.size(), size);
-            BOOST_REQUIRE_EQUAL(data_out[0], item_id_out);
+            BOOST_REQUIRE_EQUAL(static_cast<uint8_t>(data_out[0]), static_cast<uint8_t>(item_id_out));
+        }
+        queue.Reset();
+
+        item_id_in = 0;
+        item_id_out = 0;
+
+        for (int i = 0; i < 10; i++, item_id_in++) {
+            data_in[0] = static_cast<char>(item_id_in);
+            auto ret = queue.Put(data_in.data(), data_in.size());
+            if (ret != 1) {
+                BOOST_FAIL("Queue::Put didn't return 1. Instead it returned: " + std::to_string(ret));
+            }
         }
 
-        std::array<char, 2048> data_out2;
-        size_t size = data_out2.size();
-        ret = queue.Get(cursor, data_out2.data(), &size, &cursor, 1);
-        if (ret < 0) {
-            BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
+        for (int i = 0; i < 5; i++, item_id_out++) {
+            size_t size = data_out.size();
+            auto ret = queue.Get(cursor, data_out.data(), &size, &cursor, 1);
+            if (ret < 0) {
+                BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
+            }
+            BOOST_REQUIRE_EQUAL(data_out.size(), size);
+            BOOST_REQUIRE_EQUAL(static_cast<uint8_t>(data_out[0]), static_cast<uint8_t>(item_id_out));
         }
-        BOOST_REQUIRE_EQUAL(data_out2.size(), size);
-        BOOST_REQUIRE_EQUAL(data_out2[0], item_id_out);
 
-        queue.Close(false);
-    }
+        queue.Close(true);
 
-    {
-        Queue queue(file.Path(), Queue::MIN_QUEUE_SIZE);
         queue.Open();
 
-        std::array<char, 1024> data_out;
-        QueueCursor cursor = QueueCursor::TAIL;
-        int item_id_out = 3;
-        for (int i = 0; i < maxItemBeforeWrap-4; i++, item_id_out++) {
+        for (int i = 5; i < 5; i++, item_id_out++) {
             size_t size = data_out.size();
             auto ret = queue.Get(cursor, data_out.data(), &size, &cursor, 1);
             if (ret < 0) {
                 BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
             }
             BOOST_REQUIRE_EQUAL(data_out.size(), size);
-            BOOST_REQUIRE_EQUAL(data_out[0], item_id_out);
+            BOOST_REQUIRE_EQUAL(static_cast<uint8_t>(data_out[0]), static_cast<uint8_t>(item_id_out));
         }
 
-        size_t size = data_out.size();
-        auto ret = queue.Get(cursor, data_out.data(), &size, &cursor, 1);
-        if (ret != 0) {
-            BOOST_FAIL("Unexpected Queue::Get return value: " + std::to_string(ret));
-        }
+        queue.Close(false);
     }
 }

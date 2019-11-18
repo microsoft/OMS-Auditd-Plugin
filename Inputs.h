@@ -44,13 +44,14 @@ protected:
 
 private:
     UnixDomainListener _listener;
-    std::function<void(IOBase&)> _handler_fn;
     std::unordered_map<int, std::shared_ptr<Input>> _inputs;
     std::shared_ptr<InputBuffer> _buffer;
     std::shared_ptr<OperationalStatus> _op_status;
+    std::vector<std::shared_ptr<Input>> _inputs_to_clean;
 
     void add_connection(int fd);
     void remove_connection(int fd);
+    void cleanup();
 };
 
 #endif //AUOMS_INPUTS_H

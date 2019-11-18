@@ -366,10 +366,21 @@ bool Output::handle_events() {
             ret = _queue->Get(_cursor, data.data(), &size, &cursor, 100);
         } while(ret == Queue::TIMEOUT && _writer->IsOpen());
 
+        if (ret == Queue::INTERRUPTED) {
+            continue;
+        }
+
         if (ret == Queue::BUFFER_TOO_SMALL) {
             Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
             _queue->Reset();
-            break;
+            continue;
+        }
+
+        auto vs = Event::GetVersionAndSize(data.data());
+        if (vs.second != size) {
+            Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
+            _queue->Reset();
+            continue;
         }
 
         if (ret == Queue::OK && _writer->IsOpen() && !IsStopping()) {

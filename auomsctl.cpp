@@ -1085,7 +1085,7 @@ int set_rules() {
     std::vector<AuditRule> desired_rules;
     for (auto& rule: rules) {
         // Only include the rule in the desired rules if it is supported on the host system
-        if (rule.IsSupported()) {
+        if (rule.IsValid()) {
             rule.AddKey(AUOMS_RULE_KEY);
             desired_rules.emplace_back(rule);
         }
@@ -1156,7 +1156,7 @@ int load_rules() {
     std::vector<AuditRule> desired_rules;
     for (auto& rule: rules) {
         // Only include the rule in the desired rules if it is supported on the host system
-        if (rule.IsSupported()) {
+        if (rule.IsValid()) {
             rule.AddKey(AUOMS_RULE_KEY);
             desired_rules.emplace_back(rule);
         }

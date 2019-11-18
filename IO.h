@@ -73,6 +73,18 @@ public:
     ssize_t ReadAll(void *buf, size_t buf_size) {
         return ReadAll(buf, buf_size, nullptr);
     }
+
+    /*
+     * Return OK on success
+     * Return CLOSED if fd closed
+     * Return FAILED if read failed
+     * Return TIMEOUT if read timeout occurred
+     * Return INTERRUPTED if signal received
+     */
+    virtual ssize_t DiscardAll(size_t size, std::function<bool()> fn) = 0;
+    ssize_t DiscardAll(size_t size) {
+        return DiscardAll(size, nullptr);
+    }
 };
 
 class IWriter: public IO {
@@ -117,6 +129,7 @@ public:
     ssize_t Read(void *buf, size_t buf_size, std::function<bool()> fn) override;
     ssize_t Read(void *buf, size_t buf_size, long timeout, std::function<bool()> fn) override;
     ssize_t ReadAll(void *buf, size_t buf_size, std::function<bool()> fn) override;
+    ssize_t DiscardAll(size_t size, std::function<bool()> fn) override;
     ssize_t WriteAll(const void *buf, size_t size, long timeout, std::function<bool()> fn) override;
 
 protected:

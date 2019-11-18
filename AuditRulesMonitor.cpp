@@ -47,7 +47,7 @@ void AuditRulesMonitor::get_desired_rules() {
         _desired_rules.resize(0);
         for (auto& rule: rules) {
             // Only include the rule in the desired rules if it is supported on the host system
-            if (rule.IsSupported()) {
+            if (rule.IsLoadable()) {
                 rule.AddKey(AUOMS_RULE_KEY);
                 _desired_rules.emplace_back(rule);
             }

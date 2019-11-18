@@ -43,6 +43,8 @@ void Inputs::on_stop() {
     }
 
     _inputs.clear();
+    cleanup();
+
     Logger::Info("Inputs stopped");
 }
 
@@ -64,8 +66,17 @@ void Inputs::run() {
     }
 }
 
+void Inputs::cleanup() {
+    for (auto input : _inputs_to_clean) {
+        input->Stop();
+    }
+    _inputs_to_clean.clear();
+}
+
 void Inputs::add_connection(int fd) {
     std::lock_guard<std::mutex> lock(_run_mutex);
+
+    cleanup();
 
     auto input = std::make_shared<Input>(std::make_unique<IOBase>(fd), _buffer, [this, fd]() { remove_connection(fd); });
     _inputs.insert(std::make_pair(fd, input));
@@ -75,7 +86,11 @@ void Inputs::add_connection(int fd) {
 
 void Inputs::remove_connection(int fd) {
     std::lock_guard<std::mutex> lock(_run_mutex);
-    _inputs.erase(fd);
+    auto it = _inputs.find(fd);
+    if (it != _inputs.end()) {
+        _inputs_to_clean.push_back(it->second);
+        _inputs.erase(fd);
+    }
 
     if (_inputs.empty()) {
         _op_status->SetErrorCondition(ErrorCategory::DATA_COLLECTION, "No collectors connected!");

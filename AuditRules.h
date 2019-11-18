@@ -171,7 +171,7 @@ public:
     bool IsWatch() const;
 
     // Return true if the rule is supported on the current system
-    bool IsSupported() const;
+    bool IsLoadable() const;
 
     std::unordered_set<char> GetPerms() const;
     // Is a no-op if PERM field not already present in rule
@@ -224,6 +224,8 @@ protected:
     int add_field(uint32_t field, uint32_t op, uint32_t value);
     int add_str_field(uint32_t field, uint32_t op, const std::string& value);
     void remove_field(int idx);
+
+    std::string get_str_field(uint32_t field) const;
 
     void append_action(std::string& out) const;
     void append_flag(std::string& out) const;

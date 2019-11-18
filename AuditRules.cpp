@@ -422,13 +422,18 @@ bool AuditRule::parse_add_S_arg(const std::string& val, std::string& error) {
     }
     auto parts = split(val, ',');
     for (auto& part: parts) {
-        auto scall = SyscallNameToNumber(mtype, part);
-        if (scall < 0) {
-            error.append("Invalid value for option '-S': Invalid syscall name: '");
-            error.append(part);
-            error.append("'");
+        if (part.find_first_not_of("0123456789") == std::string::npos) {
+            auto scall = std::atoi(part.c_str());
+            AddSyscall(scall);
+        } else {
+            auto scall = SyscallNameToNumber(mtype, part);
+            if (scall < 0) {
+                error.append("Invalid value for option '-S': Invalid syscall name: '");
+                error.append(part);
+                error.append("'");
+            }
+            AddSyscall(scall);
         }
-        AddSyscall(scall);
     }
     return true;
 }
@@ -942,6 +947,16 @@ std::string AuditRule::RawText() const {
 
     str << "Flags: " << std::hex << ruleptr()->flags << std::endl;
     str << "Action: " << std::hex << ruleptr()->action << std::endl;
+
+    str << "Syscall: " << std::endl;
+    for (int j = 0, i = 0; i < AUDIT_BITMASK_SIZE && j < 8; ++j) {
+        str << "   ";
+        for (int x = 0; x < 8 && i < AUDIT_BITMASK_SIZE; i++, x++) {
+            str << " " << std::hex << ruleptr()->mask[i];
+        }
+        str << std::endl;
+    }
+
     str << "FieldCount: " << std::dec << ruleptr()->field_count << std::endl;
 
     for (int i = 0; i < ruleptr()->field_count; ++i) {
@@ -991,11 +1006,13 @@ bool AuditRule::IsWatch() const {
     return false;
 }
 
-bool AuditRule::IsSupported() const {
+bool AuditRule::IsLoadable() const {
     bool is_64bit = false;
     bool has_interfield_compare = false;
     bool has_exe_field = false;
     bool has_sessionid_field = false;
+    bool has_dir_field = false;
+    bool has_path_field = false;
 
     for (int i = 0; i < ruleptr()->field_count; ++i) {
         int field = ruleptr()->fields[i] & ~AUDIT_OPERATORS;
@@ -1014,6 +1031,11 @@ bool AuditRule::IsSupported() const {
             case AUDIT_EXE:
                 has_exe_field = true;
                 break;
+            case AUDIT_DIR:
+                has_dir_field = true;
+                break;
+            case AUDIT_WATCH:
+                has_path_field = true;
         }
     }
 
@@ -1031,6 +1053,22 @@ bool AuditRule::IsSupported() const {
     }
     if (!KernelInfo::HasAuditSessionIdField() && has_sessionid_field) {
         return false;
+    }
+
+    // The kernel audit code will refuse to load a rule if the specified dir doesn't exist.
+    if (has_dir_field) {
+        auto str = get_str_field(AUDIT_DIR);
+        if (!IsDir(str)) {
+            return false;
+        }
+    }
+
+    // The kernel audit code will refuse to load a rule if the specified path's parent dir doesn't exist.
+    if (has_path_field) {
+        auto str = get_str_field(AUDIT_WATCH);
+        if (!IsDir(Dirname(str))) {
+            return false;
+        }
     }
 
     return true;
@@ -1137,7 +1175,7 @@ void AuditRule::SetPerms(const std::unordered_set<char>& perms) {
 // Will return empty set if no syscalls, or syscall ALL
 std::unordered_set<int> AuditRule::GetSyscalls() const {
     std::unordered_set<int> syscalls;
-    for (int i = 0; i < AUDIT_BITMASK_SIZE; ++i) {
+    for (int i = 0; i < (AUDIT_BITMASK_SIZE-1); ++i) {
         if (ruleptr()->mask[i] != 0) {
             for (int x = 0; x < 32; ++x) {
                 int s = (i*32)+x;
@@ -1356,6 +1394,21 @@ void AuditRule::remove_field(int idx) {
     ruleptr()->values[ruleptr()->field_count-1] = 0;
     _value_offsets[ruleptr()->field_count-1] = 0;
     ruleptr()->field_count -= 1;
+}
+
+std::string AuditRule::get_str_field(uint32_t field) const {
+    for (int i = 0; i < ruleptr()->field_count; ++i) {
+        if (field == ruleptr()->fields[i] & ~AUDIT_OPERATORS) {
+            auto offset = _value_offsets[i];
+            auto len = ruleptr()->values[i];
+            if (len > 0 && offset+len <= ruleptr()->buflen) {
+                return std::string(&ruleptr()->buf[offset], len);
+            } else {
+                return std::string();
+            }
+        }
+    }
+    return std::string();
 }
 
 void AuditRule::append_field_name(std::string& out, int field) const {
@@ -1791,7 +1844,12 @@ void AuditRule::append_syscalls(std::string& out) const {
                         if (!first) {
                             out.append(",");
                         }
-                        out.append(SyscallToName(mach, s));
+                        auto name = SyscallToName(mach, s);
+                        if (starts_with(name, "unknown-syscall")) {
+                            out.append(std::to_string(s));
+                        } else {
+                            out.append(name);
+                        }
                         first = false;
                     }
                 }
@@ -1888,9 +1946,13 @@ void merge_rule(AuditRule& drule, const AuditRule& srule) {
             drule.AddPerms(diff);
         }
     } else {
-        auto diff = diff_set(drule.GetSyscalls(), srule.GetSyscalls());
-        if (!diff.empty()) {
-            drule.AddSyscalls(diff);
+        if (srule.IsSyscallAll()) {
+            drule.SetSyscallAll();
+        } else {
+            auto diff = diff_set(drule.GetSyscalls(), srule.GetSyscalls());
+            if (!diff.empty()) {
+                drule.AddSyscalls(diff);
+            }
         }
     }
     auto diff = diff_set(drule.GetKeys(), srule.GetKeys());
@@ -1906,8 +1968,12 @@ bool is_subset(const AuditRule& drule, const AuditRule& srule) {
         auto diff = diff_set(drule.GetPerms(), srule.GetPerms());
         return diff.empty();
     } else {
-        auto diff = diff_set(drule.GetSyscalls(), srule.GetSyscalls());
-        return diff.empty();
+        if (drule.IsSyscallAll()) {
+            return true;
+        } else {
+            auto diff = diff_set(drule.GetSyscalls(), srule.GetSyscalls());
+            return diff.empty();
+        }
     }
 }
 
