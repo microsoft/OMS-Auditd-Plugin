@@ -22,13 +22,14 @@
 
 class RawEventReader: public IEventReader {
 public:
-    ssize_t ReadEvent(void *buf, size_t buf_size, IReader* reader, std::function<bool()> fn) override {
+    ssize_t ReadEvent(void *buf, size_t buf_size, IReader* reader, const std::function<bool()>& fn) override {
         uint32_t hdr;
 
         if (buf_size < sizeof(hdr)) {
             return IO::FAILED;
         }
 
+    retry:
         // Read header (SIZE, MSG_NUM)
         ssize_t ret = reader->ReadAll(&hdr, sizeof(uint32_t), fn);
         if (ret != IO::OK) {
@@ -47,8 +48,15 @@ public:
         }
 
         if (event_size > buf_size) {
-            Logger::Info("RawEventReader: Message size (%d) in header is too large (> %ld)", event_size, buf_size);
-            return IO::FAILED;
+            Logger::Info("RawEventReader: Message size (%d) in header is too large (> %ld), reading and discarding message contents", event_size, buf_size);
+            ret = reader->DiscardAll(event_size-sizeof(uint32_t), fn);
+            if (ret != IO::OK) {
+                if (ret == IO::FAILED) {
+                    Logger::Info("RawEventReader: Unexpected error while reading message");
+                }
+                return ret;
+            }
+            goto retry;
         }
 
         // Read message

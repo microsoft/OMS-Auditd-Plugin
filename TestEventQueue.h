@@ -3,7 +3,7 @@
 
     Copyright (c) Microsoft Corporation
 
-    All rights reserved. 
+    All rights reserved.
 
     MIT License
 
@@ -13,41 +13,45 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_SIGNALS_H
-#define AUOMS_SIGNALS_H
 
-#include <atomic>
-#include <functional>
-#include <mutex>
+#ifndef AUOMS_TESTEVENTQUEUE_H
+#define AUOMS_TESTEVENTQUEUE_H
 
-#include <pthread.h>
+#include "Event.h"
 
-class Signals {
+#include <vector>
+
+
+class TestEventQueue: public IEventBuilderAllocator {
 public:
-    static void Init();
-    static void InitThread();
-    static void Start();
-    static bool IsExit();
-    static void Terminate();
-
-    static void SetHupHandler(std::function<void()>&& fn) {
-        std::lock_guard<std::mutex> _lock(_mutex);
-        _hup_fn = std::move(fn);
+    virtual int Allocate(void** data, size_t size) {
+        _buffer.resize(size);
+        *data = _buffer.data();
+        return 1;
     }
-    static void SetExitHandler(std::function<void()>&& fn) {
-        std::lock_guard<std::mutex> _lock(_mutex);
-        _exit_fn = std::move(fn);
+
+    virtual int Commit() {
+        _events.emplace_back(std::make_shared<std::vector<uint8_t>>(_buffer.begin(), _buffer.end()));
+        return 1;
+    }
+
+    virtual int Rollback() {
+        _buffer.resize(0);
+        return 1;
+    }
+
+    size_t GetEventCount() {
+        return _events.size();
+    }
+
+    Event GetEvent(int idx) {
+        auto event = _events[idx];
+        return Event(event->data(), event->size());
     }
 
 private:
-    static void run();
-
-    static std::atomic<bool> _exit;
-    static std::mutex _mutex;
-    static std::function<void()> _hup_fn;
-    static std::function<void()> _exit_fn;
-    static pthread_t _main_id;
+    std::vector<uint8_t> _buffer;
+    std::vector<std::shared_ptr<std::vector<uint8_t>>> _events;
 };
 
-
-#endif //AUOMS_SIGNALS_H
+#endif //AUOMS_TESTEVENTQUEUE_H

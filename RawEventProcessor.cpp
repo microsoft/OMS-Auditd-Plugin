@@ -14,8 +14,6 @@
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#include <climits>
-#include <iterator>
 #include "RawEventProcessor.h"
 
 #include "Queue.h"
@@ -23,6 +21,10 @@
 #include "Translate.h"
 #include "Interpret.h"
 #include "StringUtils.h"
+
+#include <climits>
+#include <algorithm>
+#include <iterator>
 
 // Character that separates key in AUDIT_FILTERKEY field in rules
 // This value mirrors what is defined for AUDIT_KEY_SEPARATOR in libaudit.h
@@ -33,6 +35,10 @@
 void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
 
     Event event(data, data_len);
+
+    _bytes_metric->Add(static_cast<double>(data_len));
+    _record_metric->Add(static_cast<double>(event.NumRecords()));
+    _event_metric->Add(1.0);
 
     auto ret = event.Validate();
     if (ret != 0) {
@@ -126,6 +132,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     static auto SV_INTEGRITY_HASH = "hash"sv;
     static auto SV_NAME = "name"sv;
     static auto SV_NAMETYPE = "nametype"sv;
+    static auto SV_OBJTYPE = "objtype"sv;
     static auto SV_MODE = "mode"sv;
     static auto SV_OUID = "ouid"sv;
     static auto SV_OGID = "ogid"sv;
@@ -140,6 +147,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     static auto SV_PID = "pid"sv;
     static auto SV_PPID = "ppid"sv;
     static auto SV_SYSCALL = "syscall"sv;
+    static auto SV_PROCTITLE = "proctitle"sv;
     static auto S_EXECVE = std::string("execve");
     static auto SV_JSON_ARRAY_START = "[\""sv;
     static auto SV_JSON_ARRAY_SEP = "\",\""sv;
@@ -172,6 +180,8 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     EventRecordField sockaddr_field;
     EventRecord integrity_rec;
     EventRecordField integrity_field;
+    EventRecord proctitle_rec;
+    EventRecordField proctitle_field;
     EventRecord dropped_rec;
     std::vector<EventRecord> other_recs;
 
@@ -191,12 +201,6 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                         }
                         case 'i': {
                             if (fname != SV_ITEMS) {
-                                num_fields += 1;
-                            }
-                            break;
-                        }
-                        case 'a': {
-                            if (fname.length() != 2 || fname[1] < '0' || fname[1] > '3') {
                                 num_fields += 1;
                             }
                             break;
@@ -252,11 +256,10 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                 break;
             case RecordType::PATH:
                 if (rec.NumFields() > 0) {
-                    /*
                     if (num_path == 0) {
-                        num_fields += 5; // name, mode, ouid, ogid, nametype
+                        // This assumes there will only be a nametype field or an objtype field but never both
+                        num_fields += 5; // name, mode, ouid, ogid, (nametype or objtype)
                     }
-                     */
                     num_path += 1;
                     path_recs.emplace_back(rec);
                     if (!path_rec) {
@@ -291,12 +294,23 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                             integrity_rec = rec;
                             integrity_field = field;
                             num_fields += 1;
+                        }
+                    }
+                }
+                break;
+            case RecordType::PROCTITLE:
+                if (!proctitle_rec) {
+                    for (int i = 0; i < rec.NumFields(); ++i) {
+                        auto field = rec.FieldAt(i);
+                        if (field.FieldName() == SV_PROCTITLE) {
+                            num_fields += 1;
+                            proctitle_rec = rec;
+                            proctitle_field = field;
                             break;
                         }
                     }
                 }
                 break;
-
             case RecordType::AUOMS_DROPPED_RECORDS:
                 dropped_rec = rec;
                 break;
@@ -345,6 +359,11 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         _syscall = _tmp_val;
     }
 
+    // Exclude proctitle if EXECVE is present
+    if (execve_recs.size() > 0 && proctitle_rec && proctitle_field) {
+        num_fields -= 1;
+    }
+
     if (num_fields == 0) {
         return false;
     }
@@ -384,12 +403,6 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                     }
                     break;
                 }
-                case 'a': {
-                    if (fname.length() != 2 || fname[1] < '0' || fname[1] > '3') {
-                        add_field = true;
-                    }
-                    break;
-                }
                 case 'p':
                     if (fname == SV_PID) {
                         _pid = atoi(f.RawValuePtr());
@@ -425,7 +438,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             if (add_field) {
                 if (!process_field(syscall_rec, f, false)) {
                     cancel_event();
-                    return true;
+                    return false;
                 }
             }
         }
@@ -449,8 +462,6 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             }
         }
     }
-/*
-    ** Remember to deal with objtype
 
     _path_name.resize(0);
     _path_nametype.resize(0);
@@ -468,49 +479,69 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         int path_num = 0;
 
         for (auto& rec: path_recs) {
+            bool found_nametype = false;
             for (auto &f : rec) {
                 auto fname = f.FieldName();
-                switch (fname[0]) {
-                    case 'n': {
-                        if (fname == SV_NAME) {
-                            if (path_num != 0) {
-                                _path_name.append(SV_JSON_ARRAY_SEP);
+                if (fname.size() >= 2) {
+                    switch (fname[0]) {
+                        case 'm': {
+                            if (fname == SV_MODE) {
+                                if (path_num != 0) {
+                                    _path_mode.append(SV_JSON_ARRAY_SEP);
+                                }
+                                _path_mode.append(f.RawValuePtr(), f.RawValueSize());
                             }
-                            // name might be escaped
-                            unescape_raw_field(_unescaped_val, f.RawValuePtr(), f.RawValueSize());
-                            // Path names might have non-ASCII/non-printable chars, escape the name before adding it.
-                            json_escape_string(_tmp_val, _unescaped_val.data(), _unescaped_val.size());
-                            _path_name.append(_tmp_val);
-                        } else if (fname == SV_NAMETYPE) {
-                            if (path_num != 0) {
-                                _path_nametype.append(SV_JSON_ARRAY_SEP);
-                            }
-                            _path_nametype.append(f.RawValuePtr(), f.RawValueSize());
+                            break;
                         }
-                        break;
-                    }
-                    case 'm': {
-                        if (fname == SV_MODE) {
-                            if (path_num != 0) {
-                                _path_mode.append(SV_JSON_ARRAY_SEP);
+                        case 'n': {
+                            if (fname == SV_NAME) {
+                                if (path_num != 0) {
+                                    _path_name.append(SV_JSON_ARRAY_SEP);
+                                }
+                                // name might be escaped
+                                unescape_raw_field(_unescaped_val, f.RawValuePtr(), f.RawValueSize());
+                                // Path names might have non-ASCII/non-printable chars, escape the name before adding it.
+                                json_escape_string(_tmp_val, _unescaped_val.data(), _unescaped_val.size());
+                                _path_name.append(_tmp_val);
+                            } else if (fname == SV_NAMETYPE && !found_nametype) {
+                                if (path_num != 0) {
+                                    _path_nametype.append(SV_JSON_ARRAY_SEP);
+                                }
+                                _path_nametype.append(f.RawValuePtr(), f.RawValueSize());
+                                found_nametype = true;
                             }
-                            _path_mode.append(f.RawValuePtr(), f.RawValueSize());
+                            break;
                         }
-                        break;
-                    }
-                    case 'o': {
-                        if (fname == SV_OUID) {
-                            if (path_num != 0) {
-                                _path_ouid.append(SV_JSON_ARRAY_SEP);
+                        case 'o': {
+                            switch (fname[1]) {
+                                case 'b':
+                                    if (fname == SV_OBJTYPE && !found_nametype) {
+                                        if (path_num != 0) {
+                                            _path_nametype.append(SV_JSON_ARRAY_SEP);
+                                        }
+                                        _path_nametype.append(f.RawValuePtr(), f.RawValueSize());
+                                        found_nametype = true;
+                                    }
+                                    break;
+                                case 'g':
+                                    if (fname == SV_OGID) {
+                                        if (path_num != 0) {
+                                            _path_ogid.append(SV_JSON_ARRAY_SEP);
+                                        }
+                                        _path_ogid.append(f.RawValuePtr(), f.RawValueSize());
+                                    }
+                                    break;
+                                case 'u':
+                                    if (fname == SV_OUID) {
+                                        if (path_num != 0) {
+                                            _path_ouid.append(SV_JSON_ARRAY_SEP);
+                                        }
+                                        _path_ouid.append(f.RawValuePtr(), f.RawValueSize());
+                                    }
+                                    break;
                             }
-                            _path_ouid.append(f.RawValuePtr(), f.RawValueSize());
-                        } else if (fname == SV_OGID) {
-                            if (path_num != 0) {
-                                _path_ogid.append(SV_JSON_ARRAY_SEP);
-                            }
-                            _path_ogid.append(f.RawValuePtr(), f.RawValueSize());
+                            break;
                         }
-                        break;
                     }
                 }
             }
@@ -568,18 +599,22 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             return false;
         }
     }
-*/
+
     if (argc_rec && argc_field) {
         if (!process_field(argc_rec, argc_field, false)) {
             cancel_event();
-            return true;
+            return false;
         }
     }
 
     if (execve_recs.size() > 0) {
-        _execve_converter.Convert(execve_recs);
+        // Exclude proctitle since we have EXECVE
+        proctitle_rec = EventRecord();
+        proctitle_field = EventRecordField();
 
-        ret = _builder->AddField(SV_CMDLINE, _execve_converter.Cmdline(), nullptr, field_type_t::UNESCAPED);
+        _execve_converter.Convert(execve_recs, _cmdline);
+        ret = _builder->AddField(SV_CMDLINE, _cmdline, nullptr, field_type_t::UNESCAPED);
+
         if (ret != 1) {
             if (ret == Queue::CLOSED) {
                 throw std::runtime_error("Queue closed");
@@ -587,19 +622,35 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             cancel_event();
             return false;
         }
+    } else {
+        _cmdline.resize(0);
     }
 
     if (sockaddr_rec && sockaddr_field) {
         if (!process_field(sockaddr_rec, sockaddr_field, false)) {
             cancel_event();
-            return true;
+            return false;
         }
     }
 
     if (integrity_rec && integrity_field) {
         if (!process_field(integrity_rec, integrity_field, false)) {
             cancel_event();
-            return true;
+            return false;
+        }
+    }
+
+    if (proctitle_rec && proctitle_field) {
+        unescape_raw_field(_unescaped_val, proctitle_field.RawValuePtr(), proctitle_field.RawValueSize());
+        ExecveConverter::ConvertRawCmdline(_unescaped_val, _cmdline);
+
+        ret = _builder->AddField(SV_PROCTITLE, _cmdline, nullptr, field_type_t::PROCTITLE);
+        if (ret != 1) {
+            if (ret == Queue::CLOSED) {
+                throw std::runtime_error("Queue closed");
+            }
+            cancel_event();
+            return false;
         }
     }
 
@@ -642,9 +693,8 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     std::shared_ptr<ProcessTreeItem> p;
     std::string cmdline;
 
-    if (execve_recs.size() > 0) {
-        cmdline = _execve_converter.Cmdline();
-        p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, cmdline);
+    if (!_cmdline.empty()) {
+        p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, _cmdline);
     } else if (!_syscall.empty()) {
         p = _processTree->GetInfoForPid(_pid);
     }
@@ -692,6 +742,9 @@ bool RawEventProcessor::process_field(const EventRecord& record, const EventReco
     auto val_ptr = field.RawValuePtr();
 
     auto field_type = FieldNameToType(static_cast<RecordType>(field.RecordType()), field.FieldName(), field.RawValue());
+    if (field_type == field_type_t::UNCLASSIFIED && field.FieldType() == field_type_t::UNESCAPED) {
+        field_type = field_type_t::UNESCAPED;
+    }
 
     _field_name.resize(0);
     if (prepend_rec_type) {
@@ -728,14 +781,14 @@ bool RawEventProcessor::process_field(const EventRecord& record, const EventReco
             }
             break;
         }
-        case field_type_t::ESCAPED:
-            break;
         case field_type_t::ESCAPED_KEY:
             if (unescape_raw_field(_tmp_val, val_ptr, field.RawValueSize()) > 0) {
                 std::replace(_tmp_val.begin(), _tmp_val.end(), static_cast<char>(KEY_SEP), ',');
             } else {
                 _tmp_val.resize(0);
             }
+            break;
+        case field_type_t::ESCAPED:
             break;
         case field_type_t::PROCTITLE:
             break;
@@ -914,7 +967,6 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
         }
         return false;
     }
-
     return true;
 }
 

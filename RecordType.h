@@ -168,6 +168,8 @@ enum class RecordType: int {
     INTEGRITY_HASH            = 1803,
     INTEGRITY_PCR             = 1804,
     INTEGRITY_RULE            = 1805,
+    INTEGRITY_EVM_XATTR       = 1806,
+    INTEGRITY_POLICY_RULE     = 1807,
     KERNEL                    = 2000,
     FIRST_ANOM_MSG            = 2100,
     LAST_ANOM_MSG             = 2199,
@@ -253,7 +255,7 @@ enum class RecordType: int {
     AUOMS_COLLECTOR_REPORT    = 10003,
     AUOMS_DROPPED_RECORDS     = 10004,
     AUOMS_STATUS              = 10005,
-    AUOMS_SYSCALL_METRICS     = 10006,
+    AUOMS_METRIC              = 10006,
     AUOMS_EXECVE              = 14688,
 };
 

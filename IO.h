@@ -44,7 +44,7 @@ public:
      * Return FAILED if read failed
      * Return INTERRUPTED if signal received
      */
-    virtual ssize_t Read(void *buf, size_t buf_size, std::function<bool()> fn) = 0;
+    virtual ssize_t Read(void *buf, size_t buf_size, const std::function<bool()>& fn) = 0;
     ssize_t Read(void *buf, size_t buf_size) {
         return Read(buf, buf_size, nullptr);
     }
@@ -56,11 +56,10 @@ public:
      * Return TIMEOUT if read timeout occurred
      * Return INTERRUPTED if signal received
      */
-    virtual ssize_t Read(void *buf, size_t buf_size, long timeout, std::function<bool()> fn) = 0;
+    virtual ssize_t Read(void *buf, size_t buf_size, long timeout, const std::function<bool()>& fn) = 0;
     ssize_t Read(void *buf, size_t buf_size, long timeout) {
         return Read(buf, buf_size, timeout, nullptr);
     }
-
 
     /*
      * Return OK on success
@@ -69,9 +68,21 @@ public:
      * Return TIMEOUT if read timeout occurred
      * Return INTERRUPTED if signal received
      */
-    virtual ssize_t ReadAll(void *buf, size_t buf_size, std::function<bool()> fn) = 0;
+    virtual ssize_t ReadAll(void *buf, size_t buf_size, const std::function<bool()>& fn) = 0;
     ssize_t ReadAll(void *buf, size_t buf_size) {
         return ReadAll(buf, buf_size, nullptr);
+    }
+
+    /*
+     * Return OK on success
+     * Return CLOSED if fd closed
+     * Return FAILED if read failed
+     * Return TIMEOUT if read timeout occurred
+     * Return INTERRUPTED if signal received
+     */
+    virtual ssize_t DiscardAll(size_t size, const std::function<bool()>& fn) = 0;
+    ssize_t DiscardAll(size_t size) {
+        return DiscardAll(size, nullptr);
     }
 };
 
@@ -85,8 +96,8 @@ public:
      * Return FAILED if read failed
      * Return INTERRUPTED if signal received
      */
-    virtual ssize_t WriteAll(const void *buf, size_t size, long timeout, std::function<bool()> fn) = 0;
-    inline ssize_t WriteAll(const void *buf, size_t size, std::function<bool()> fn) {
+    virtual ssize_t WriteAll(const void *buf, size_t size, long timeout, const std::function<bool()>& fn) = 0;
+    inline ssize_t WriteAll(const void *buf, size_t size, const std::function<bool()>& fn) {
         return WriteAll(buf, size, -1, std::move(fn));
     }
     inline ssize_t WriteAll(const void *buf, size_t size) {
@@ -114,10 +125,11 @@ public:
 
     ssize_t WaitReadable(long timeout) override;
     ssize_t WaitWritable(long timeout) override;
-    ssize_t Read(void *buf, size_t buf_size, std::function<bool()> fn) override;
-    ssize_t Read(void *buf, size_t buf_size, long timeout, std::function<bool()> fn) override;
-    ssize_t ReadAll(void *buf, size_t buf_size, std::function<bool()> fn) override;
-    ssize_t WriteAll(const void *buf, size_t size, long timeout, std::function<bool()> fn) override;
+    ssize_t Read(void *buf, size_t buf_size, const std::function<bool()>& fn) override;
+    ssize_t Read(void *buf, size_t buf_size, long timeout, const std::function<bool()>& fn) override;
+    ssize_t ReadAll(void *buf, size_t buf_size, const std::function<bool()>& fn) override;
+    ssize_t DiscardAll(size_t size, const std::function<bool()>& fn) override;
+    ssize_t WriteAll(const void *buf, size_t size, long timeout, const std::function<bool()>& fn) override;
 
 protected:
     std::atomic<int> _fd;

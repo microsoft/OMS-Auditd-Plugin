@@ -17,12 +17,48 @@
 #include "Outputs.h"
 
 #include "Logger.h"
+#include "OMSEventWriter.h"
+#include "JSONEventWriter.h"
+#include "MsgPackEventWriter.h"
+#include "RawEventWriter.h"
+#include "SyslogEventWriter.h"
+#include "EventFilter.h"
 
 #include <cstring>
 
 extern "C" {
 #include <dirent.h>
 #include <unistd.h>
+}
+
+std::shared_ptr<IEventWriter> OutputsEventWriterFactory::CreateEventWriter(const std::string& name, const Config& config) {
+    TextEventWriterConfig writer_config;
+    writer_config.LoadFromConfig(name, config);
+
+    std::string format = "oms";
+
+    if (config.HasKey("output_format")) {
+        format = config.GetString("output_format");
+    }
+
+    if (format == "oms") {
+        return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new OMSEventWriter(writer_config)));
+    } else if (format == "json") {
+        return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new JSONEventWriter(writer_config)));
+    } else if (format == "msgpack") {
+        return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new MsgPackEventWriter()));
+    } else if (format == "raw") {
+        return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new RawEventWriter()));
+    } else if (format == "syslog") {
+        return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new SyslogEventWriter(writer_config)));
+    } else {
+        Logger::Error("Output(%s): Invalid output_format parameter value: '%s'", name.c_str(), format.c_str());
+        return nullptr;
+    }
+}
+
+std::shared_ptr<IEventFilter> OutputsEventFilterFactory::CreateEventFilter(const std::string& name, const Config& config) {
+    return EventFilter::NewEventFilter(name, config, _user_db, _filtersEngine, _processTree);
 }
 
 void Outputs::Reload(const std::vector<std::string>& allowed_socket_dirs) {
@@ -200,7 +236,7 @@ void Outputs::do_conf_sync() {
             }
         } else {
             auto cursor_file = _cursor_dir + "/" + ent.first + ".cursor";
-            auto o = std::make_shared<Output>(ent.first, cursor_file, _queue, _user_db, _filtersEngine, _processTree);
+            auto o = std::make_shared<Output>(ent.first, cursor_file, _queue, _writer_factory, _filter_factory);
             it = _outputs.insert(std::make_pair(ent.first, o)).first;
             load = true;
         }

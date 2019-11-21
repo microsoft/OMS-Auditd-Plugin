@@ -27,7 +27,7 @@ public:
         SetNonBlock(true);
     }
 
-    ssize_t ReadLine(char* buf, size_t buf_len, long timeout, std::function<bool()> fn);
+    ssize_t ReadLine(char* buf, size_t buf_len, long timeout, const std::function<bool()>& fn);
 
 private:
     std::array<char,10240> _data;
@@ -36,7 +36,7 @@ private:
     size_t _cur_idx;
 
     bool have_line();
-    ssize_t get_data(long timeout, std::function<bool()> fn);
+    ssize_t get_data(long timeout, const std::function<bool()>& fn);
 };
 
 

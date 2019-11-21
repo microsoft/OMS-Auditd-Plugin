@@ -25,7 +25,7 @@
 #include <fcntl.h>
 #include <poll.h>
 
-int Netlink::Open(reply_fn_t default_msg_handler_fn) {
+int Netlink::Open(reply_fn_t&& default_msg_handler_fn) {
     std::unique_lock<std::mutex> _lock(_run_mutex);
 
     if (_start) {
@@ -47,7 +47,7 @@ int Netlink::Open(reply_fn_t default_msg_handler_fn) {
     }
 
     _fd = fd;
-    _default_msg_handler_fn = default_msg_handler_fn;
+    _default_msg_handler_fn = std::move(default_msg_handler_fn);
 
     _lock.unlock();
 
@@ -63,7 +63,7 @@ void Netlink::Close() {
     Stop();
 }
 
-int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t reply_fn) {
+int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t&& reply_fn) {
     std::unique_lock<std::mutex> _lock(_run_mutex);
 
     if (_stop) {
@@ -330,7 +330,7 @@ void Netlink::run() {
 }
 
 void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq, const void* payload_data, size_t payload_len) {
-    reply_fn_t fn = _default_msg_handler_fn;
+    reply_fn_t* fn_ptr = nullptr;
     bool done = false;
 
     if (msg_seq != 0) {
@@ -339,7 +339,7 @@ void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq
         std::lock_guard<std::mutex> _lock(_run_mutex);
         auto itr = _replies.find(msg_seq);
         if (itr != _replies.end()) {
-            fn = itr->second->_fn;
+            fn_ptr = &itr->second->_fn;
             done = itr->second->_done;
         } else {
             // No ReplyRec found for the seq #
@@ -352,7 +352,7 @@ void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq
         }
     } else {
         if (_default_msg_handler_fn) {
-            fn = _default_msg_handler_fn;
+            fn_ptr = &_default_msg_handler_fn;
         } else {
             done = true;
             Logger::Warn(
@@ -363,9 +363,9 @@ void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq
 
     // If the request hasn't been marked done, has a valid reply_fn associated, and and the message is not of type NLMSG_ERRROR or NLMSG_DONE
     // then call the reply_fn
-    if (!done && fn && msg_type != NLMSG_ERROR && msg_type != NLMSG_DONE) {
+    if (!done && fn_ptr != nullptr && *fn_ptr && msg_type != NLMSG_ERROR && msg_type != NLMSG_DONE) {
         try {
-            if (!fn(msg_type, msg_flags, payload_data, payload_len) && msg_seq > 0) {
+            if (!(*fn_ptr)(msg_type, msg_flags, payload_data, payload_len) && msg_seq > 0) {
                 // The reply_fn returned false, so mark the request as complete.
                 std::lock_guard<std::mutex> _lock(_run_mutex);
                 auto itr = _replies.find(msg_seq);
@@ -402,7 +402,7 @@ void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq
             std::lock_guard<std::mutex> _lock(_run_mutex);
             // If the request failed, or the request succeeded but no response is expected then set the value to err->error
             // If !fn then no response is expected and the return value is err->error (typically == 0)
-            if (err->error != 0 || !fn) {
+            if (err->error != 0 || fn_ptr == nullptr || !(*fn_ptr)) {
                 auto itr = _replies.find(msg_seq);
                 if (itr != _replies.end()) {
                     if (!itr->second->_done) {
@@ -428,7 +428,7 @@ void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq
     }
 }
 
-int NetlinkRetry(std::function<int()> fn) {
+int NetlinkRetry(const std::function<int()>& fn) {
     std::function<bool(int)> p = [](int ret) { return ret == -ETIMEDOUT; };
     auto ret = Retry(5, std::chrono::milliseconds(1), true, fn, p);
     return ret.first;

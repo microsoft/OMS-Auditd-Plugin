@@ -17,41 +17,7 @@
 #ifndef AUOMS_TESTEVENTDATA_H
 #define AUOMS_TESTEVENTDATA_H
 
-#include "Event.h"
-
-#include <vector>
-
-class TestEventQueue: public IEventBuilderAllocator {
-public:
-    virtual int Allocate(void** data, size_t size) {
-        _buffer.resize(size);
-        *data = _buffer.data();
-        return 1;
-    }
-
-    virtual int Commit() {
-        _events.emplace_back(std::make_shared<std::vector<uint8_t>>(_buffer.begin(), _buffer.end()));
-        return 1;
-    }
-
-    virtual int Rollback() {
-        _buffer.resize(0);
-        return 1;
-    }
-
-    size_t GetEventCount() {
-        return _events.size();
-    }
-
-    Event GetEvent(int idx) {
-        auto event = _events[idx];
-        return Event(event->data(), event->size());
-    }
-
-private:
-    std::vector<uint8_t> _buffer;
-    std::vector<std::shared_ptr<std::vector<uint8_t>>> _events;
-};
+#include "TestEventQueue.h"
 
 struct TestEventField {
     TestEventField(const char* name, const char* raw, const char* interp, field_type_t field_type) {
@@ -123,6 +89,9 @@ struct TestEvent {
         builder->EndEvent();
     }
 };
+
+extern const std::string passwd_file_text;
+extern const std::string group_file_text;
 
 extern std::vector<const char*> raw_test_events;
 extern const std::vector<TestEvent> test_events;

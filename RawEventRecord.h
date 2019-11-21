@@ -29,7 +29,7 @@ class RawEventRecord {
 public:
     static constexpr size_t MAX_RECORD_SIZE = 9*1024; // MAX_AUDIT_MESSAGE_LENGTH in libaudit.h is 8970
 
-    explicit RawEventRecord(): _record_fields(128) {}
+    explicit RawEventRecord(): _record_fields(128), _unparsable(false) {}
 
     inline char* Data() { return _data.data(); };
 
@@ -50,6 +50,7 @@ private:
     std::string _type_name_str;
     EventId _event_id;
     std::vector<std::string_view> _record_fields;
+    bool _unparsable;
 };
 
 

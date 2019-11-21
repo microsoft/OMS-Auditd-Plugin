@@ -27,7 +27,7 @@
 #include <unistd.h>
 #include <limits.h>
 
-std::bitset<FILTER_BITSET_SIZE> FiltersEngine::AddFilter(ProcFilterSpec& pfs, std::string& outputName)
+std::bitset<FILTER_BITSET_SIZE> FiltersEngine::AddFilter(const ProcFilterSpec& pfs, const std::string& outputName)
 {
     std::bitset<FILTER_BITSET_SIZE> ret;
 
@@ -71,7 +71,7 @@ std::bitset<FILTER_BITSET_SIZE> FiltersEngine::AddFilter(ProcFilterSpec& pfs, st
     return ret;
 }
 
-std::bitset<FILTER_BITSET_SIZE> FiltersEngine::AddFilterList(std::vector<ProcFilterSpec>& pfsVec, std::string& outputName)
+std::bitset<FILTER_BITSET_SIZE> FiltersEngine::AddFilterList(const std::vector<ProcFilterSpec>& pfsVec, const std::string& outputName)
 {
     std::bitset<FILTER_BITSET_SIZE> ret;
 
@@ -82,7 +82,7 @@ std::bitset<FILTER_BITSET_SIZE> FiltersEngine::AddFilterList(std::vector<ProcFil
     return ret;
 }
 
-bool FiltersEngine::ProcessMatchFilter(std::shared_ptr<ProcessTreeItem> process, ProcFilterSpec& pfs, unsigned int height)
+bool FiltersEngine::ProcessMatchFilter(const std::shared_ptr<ProcessTreeItem>& process, const ProcFilterSpec& pfs, unsigned int height)
 {
     if (pfs._depth != -1 && pfs._depth < height) {
         return false;
@@ -146,7 +146,7 @@ bool FiltersEngine::ProcessMatchFilter(std::shared_ptr<ProcessTreeItem> process,
     return true;
 }
 
-std::bitset<FILTER_BITSET_SIZE> FiltersEngine::GetFlags(std::shared_ptr<ProcessTreeItem> process, unsigned int height)
+std::bitset<FILTER_BITSET_SIZE> FiltersEngine::GetFlags(const std::shared_ptr<ProcessTreeItem>& process, unsigned int height)
 {
     std::bitset<FILTER_BITSET_SIZE> flags;
 
@@ -174,7 +174,7 @@ std::bitset<FILTER_BITSET_SIZE> FiltersEngine::GetCommonFlagMask()
     return flags;
 }
 
-bool FiltersEngine::syscallIsFiltered(std::string& syscall, std::unordered_map<std::string, bool>& syscalls)
+bool FiltersEngine::syscallIsFiltered(const std::string& syscall, const std::unordered_map<std::string, bool>& syscalls)
 {
     auto it = syscalls.find(syscall);
     if (it != syscalls.end()) {
@@ -184,9 +184,10 @@ bool FiltersEngine::syscallIsFiltered(std::string& syscall, std::unordered_map<s
             return true;
         }
     }
+    return false;
 }
 
-bool FiltersEngine::IsEventFiltered(std::string& syscall, std::shared_ptr<ProcessTreeItem> p, std::bitset<FILTER_BITSET_SIZE>& filterFlagsMask)
+bool FiltersEngine::IsEventFiltered(const std::string& syscall, const std::shared_ptr<ProcessTreeItem>& p, const std::bitset<FILTER_BITSET_SIZE>& filterFlagsMask)
 {
     // Get event syscall
     bool filtered = false;

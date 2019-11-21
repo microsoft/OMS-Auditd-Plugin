@@ -86,15 +86,15 @@ ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
 {
     try {
         if (write_event(event)) {
-            writer->WriteAll(_buffer.GetString(), _buffer.GetSize());
+            return writer->WriteAll(_buffer.GetString(), _buffer.GetSize());
+        } else {
+            return IEventWriter::NOOP;
         }
     }
     catch (const std::exception& ex) {
         Logger::Warn("Unexpected exception while processing event: %s", ex.what());
         return IWriter::FAILED;
     }
-    
-    return IWriter::OK;
 }
 
 bool OMSEventWriter::begin_record(const EventRecord& record, const std::string& record_type_name)

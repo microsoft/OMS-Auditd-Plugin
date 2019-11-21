@@ -21,14 +21,18 @@
 #include "UserDB.h"
 #include "ProcessTree.h"
 #include "ExecveConverter.h"
+#include "Metrics.h"
 
 class RawEventProcessor {
 public:
-    RawEventProcessor(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<UserDB>& user_db, const std::shared_ptr<ProcessTree>& processTree, const std::shared_ptr<FiltersEngine> filtersEngine):
-    _builder(builder), _user_db(user_db), _state_ptr(nullptr), _processTree(processTree), _filtersEngine(filtersEngine),
+    RawEventProcessor(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<UserDB>& user_db, const std::shared_ptr<ProcessTree>& processTree, const std::shared_ptr<FiltersEngine> filtersEngine, const std::shared_ptr<Metrics>& metrics):
+    _builder(builder), _user_db(user_db), _state_ptr(nullptr), _processTree(processTree), _filtersEngine(filtersEngine), _metrics(metrics),
         _event_flags(0), _pid(0), _ppid(0), _uid(-1), _last_proc_event_gen(0)
     {
         _globalFlagsMask = _filtersEngine->GetCommonFlagMask();
+        _bytes_metric = _metrics->AddMetric("data", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _record_metric = _metrics->AddMetric("data", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _event_metric = _metrics->AddMetric("data", "events", MetricPeriod::SECOND, MetricPeriod::HOUR);
     }
 
     void ProcessData(const void* data, size_t data_len);
@@ -51,6 +55,10 @@ private:
     void* _state_ptr;
     std::shared_ptr<ProcessTree> _processTree;
     std::shared_ptr<FiltersEngine> _filtersEngine;
+    std::shared_ptr<Metrics> _metrics;
+    std::shared_ptr<Metric> _bytes_metric;
+    std::shared_ptr<Metric> _record_metric;
+    std::shared_ptr<Metric> _event_metric;
     uint32_t _event_flags;
     pid_t _pid;
     pid_t _ppid;
@@ -62,6 +70,7 @@ private:
     std::string _field_name;
     std::string _unescaped_val;
     std::string _tmp_val;
+    std::string _cmdline;
     std::string _path_name;
     std::string _path_nametype;
     std::string _path_mode;

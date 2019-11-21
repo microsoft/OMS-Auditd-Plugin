@@ -23,6 +23,7 @@
 #include "EventId.h"
 #include "OMSEventWriter.h"
 #include "IO.h"
+#include "IEventFilter.h"
 
 #include <string>
 #include <mutex>
@@ -122,15 +123,47 @@ protected:
  *
  ****************************************************************************/
 
+class IEventWriterFactory {
+public:
+    virtual std::shared_ptr<IEventWriter> CreateEventWriter(const std::string& name, const Config& config) = 0;
+};
+
+class RawOnlyEventWriterFactory: public IEventWriterFactory {
+public:
+    RawOnlyEventWriterFactory() {}
+
+    virtual std::shared_ptr<IEventWriter> CreateEventWriter(const std::string& name, const Config& config) override;
+};
+
+
+/****************************************************************************
+ *
+ ****************************************************************************/
+
+class IEventFilterFactory {
+public:
+    virtual std::shared_ptr<IEventFilter> CreateEventFilter(const std::string& name, const Config& config) = 0;
+};
+
+class AllPAssEventFilterFactory: public IEventFilterFactory {
+public:
+    AllPAssEventFilterFactory() {}
+
+    virtual std::shared_ptr<IEventFilter> CreateEventFilter(const std::string& name, const Config& config) override;
+};
+
+/****************************************************************************
+ *
+ ****************************************************************************/
+
 class Output: public RunBase {
 public:
     static constexpr int START_SLEEP_PERIOD = 1;
     static constexpr int MAX_SLEEP_PERIOD = 60;
     static constexpr int DEFAULT_ACK_QUEUE_SIZE = 1000;
 
-    Output(const std::string& name, const std::string& cursor_path, std::shared_ptr<Queue>& queue, std::shared_ptr<UserDB> user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree):
-            _name(name), _cursor_path(cursor_path), _queue(queue), _user_db(user_db), _filtersEngine(filtersEngine),
-            _processTree(processTree), _ack_mode(false)
+    Output(const std::string& name, const std::string& cursor_path, const std::shared_ptr<Queue>& queue, const std::shared_ptr<IEventWriterFactory>& writer_factory, const std::shared_ptr<IEventFilterFactory>& filter_factory):
+            _name(name), _cursor_path(cursor_path), _queue(queue), _writer_factory(writer_factory), _filter_factory(filter_factory), _ack_mode(false)
     {
         _cursor_writer = std::make_shared<CursorWriter>(name, cursor_path);
         _ack_reader = std::unique_ptr<AckReader>(new AckReader(name));
@@ -162,19 +195,17 @@ protected:
     std::string _cursor_path;
     std::string _socket_path;
     std::shared_ptr<Queue> _queue;
-    std::shared_ptr<UserDB> _user_db;
-    std::shared_ptr<FiltersEngine> _filtersEngine;
-    std::shared_ptr<ProcessTree> _processTree;
+    std::shared_ptr<IEventWriterFactory> _writer_factory;
+    std::shared_ptr<IEventFilterFactory> _filter_factory;
     bool _ack_mode;
     std::unique_ptr<Config> _config;
     QueueCursor _cursor;
-    QueueCursor _ack_cursor;
     std::shared_ptr<IEventWriter> _event_writer;
+    std::shared_ptr<IEventFilter> _event_filter;
     std::shared_ptr<IOBase> _writer;
     std::shared_ptr<AckQueue> _ack_queue;
     std::unique_ptr<AckReader> _ack_reader;
     std::shared_ptr<CursorWriter> _cursor_writer;
-    std::bitset<FILTER_BITSET_SIZE> _filter_flags;
 };
 
 

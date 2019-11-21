@@ -76,7 +76,9 @@ ssize_t TextEventWriter::ReadAck(EventId& event_id, IReader* reader) {
 ssize_t TextEventWriter::WriteEvent(const Event& event, IWriter* writer)
 {
     try {
-        write_event(event);
+        if (!write_event(event)) {
+            return IEventWriter::NOOP;
+        }
     }
     catch (const std::exception& ex) {
         Logger::Warn("Unexpected exception while processing event: %s", ex.what());
@@ -88,47 +90,20 @@ ssize_t TextEventWriter::WriteEvent(const Event& event, IWriter* writer)
 
 bool TextEventWriter::write_event(const Event& event)
 {
-    // Get event syscall
-    std::string syscall;
-    bool filtered = false;
+    if (!begin_event(event))
+        return false;
 
-    for (auto rec : event) {
-        for (auto field : rec) {
-            std::string field_name;
-            field_name.assign(field.FieldNamePtr(), field.FieldNameSize());
-            if (field_name == "syscall") {
-                syscall = field.InterpValue();
-                break;
-            }
-        }
-        if (!syscall.empty()) {
-            break;
+    int records = 0;
+
+    for (auto record : event) {
+        if (write_record(record)) {
+            records++;
         }
     }
 
-    std::shared_ptr<ProcessTreeItem> p = nullptr;
-
-    if (!syscall.empty()) {
-        p = _config._processTree->GetInfoForPid(event.Pid());
-    }
-
-    if (syscall.empty() || !_config._filtersEngine->IsEventFiltered(syscall, p, _config.FilterFlagsMask)) {
-
-        if (!begin_event(event))
-            return false;
-
-        int records = 0;
-
-        for (auto record : event) {
-            if (write_record(record)) {
-                records++;
-            }
-        }
-
-        if (records > 0) {
-            end_event(event);
-            return true;
-        }
+    if (records > 0) {
+        end_event(event);
+        return true;
     }
 
     return false;
@@ -216,7 +191,7 @@ bool TextEventWriter::write_field(const EventRecordField& field)
 					write_string_field(interp_name, interp_value);
 					break;
 				case 3: // _raw_value was hex encoded and decoded string needs escaping
-					json_escape_string(escaped_value, interp_value.data(), interp_value.size());
+					tty_escape_string(escaped_value, interp_value.data(), interp_value.size());
 					write_string_field(interp_name, escaped_value);
 					break;
 			}
@@ -231,7 +206,7 @@ bool TextEventWriter::write_field(const EventRecordField& field)
 						// Replace "unset" and "4294967295" with "-1"
 						if ((field.InterpValueSize() == 5 && std::strncmp("unset", field.InterpValuePtr(), field.InterpValueSize()) == 0) ||
 								(field.InterpValueSize() == 10 && strncmp("4294967295", field.InterpValuePtr(), field.InterpValueSize()) == 0)) {
-							write_int32_field(interp_name, -1);
+							write_string_field(interp_name, "-1");
 						} else {
 							write_raw_field(interp_name, field.InterpValuePtr(), field.InterpValueSize());
 						}
@@ -249,7 +224,7 @@ bool TextEventWriter::write_field(const EventRecordField& field)
 		} else if (_config.FilterFieldNameSet.count(interp_name) == 0) {
             if (field.FieldType() == field_type_t::UNESCAPED) {
                 // fields we have created that potentially need escaping
-                json_escape_string(escaped_value, field.RawValuePtr(), field.RawValueSize());
+                tty_escape_string(escaped_value, field.RawValuePtr(), field.RawValueSize());
                 write_string_field(interp_name, escaped_value);
             }
             else {

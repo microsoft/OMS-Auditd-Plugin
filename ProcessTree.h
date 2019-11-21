@@ -74,15 +74,14 @@ class ProcessTree;
 // Class that monitors pnotify events and writes them to ProcessTree queues
 class ProcessNotify: public RunBase {
 public:
-    ProcessNotify(std::shared_ptr<ProcessTree> processTree): _processTree(processTree) {
-        InitProcSocket();
-    }
+    ProcessNotify(std::shared_ptr<ProcessTree> processTree): _processTree(processTree), _proc_socket(-1) {}
 
 protected:
+    void on_stopping() override;
     void run() override;
 
 private:
-    void InitProcSocket();
+    bool InitProcSocket();
 
     std::shared_ptr<ProcessTree> _processTree;
     int _proc_socket;
@@ -116,6 +115,7 @@ public:
     void ShowProcess(std::shared_ptr<ProcessTreeItem> p);
 
 protected:
+    void on_stopping() override;
     void run() override;
 
 private:

@@ -29,7 +29,8 @@
 #include "Defer.h"
 #include "Gate.h"
 #include "FileUtils.h"
-#include "FiltersEngine.h"
+#include "Metrics.h"
+#include "ProcMetrics.h"
 
 #include <iostream>
 #include <fstream>
@@ -138,7 +139,7 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
         }
     };
 
-    FileWatcher watcher(fn, {
+    FileWatcher watcher(std::move(fn), {
             {"/sbin", IN_CREATE|IN_MOVED_TO},
     });
 
@@ -160,7 +161,7 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
     };
 
     Logger::Info("Connecting to AUDIT NETLINK socket");
-    ret = netlink.Open(handler);
+    ret = netlink.Open(std::move(handler));
     if (ret != 0) {
         Logger::Error("Failed to open AUDIT NETLINK connection: %s", std::strerror(-ret));
         return false;
@@ -196,7 +197,7 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
         ret = netlink.AuditSetPid(our_pid);
         if (ret == -ETIMEDOUT) {
             // If setpid timedout, it may have still succeeded, so re-fetch pid
-            ret = NetlinkRetry([&netlink,&pid]() { return netlink.AuditGetPid(pid); });
+            ret = NetlinkRetry([&]() { return netlink.AuditGetPid(pid); });
             if (ret != 0) {
                 Logger::Error("Failed to get audit pid: %s", std::strerror(-ret));
                 return false;
@@ -223,7 +224,6 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
             ret = NetlinkRetry([&netlink]() { return netlink.AuditSetEnabled(1); });
             if (ret != 0) {
                 Logger::Error("Failed to enable auditing: %s", std::strerror(-ret));
-                return false;
             }
         }
     });
@@ -272,6 +272,7 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
             }
         }
     }
+    return false;
 }
 
 int main(int argc, char**argv) {
@@ -399,9 +400,13 @@ int main(int argc, char**argv) {
     auto event_queue = std::make_shared<EventQueue>(queue);
     auto builder = std::make_shared<EventBuilder>(event_queue);
 
-    RawEventAccumulator accumulator (builder);
+    auto metrics = std::make_shared<Metrics>(queue);
+    metrics->Start();
 
-    auto filtersEngine = std::make_shared<FiltersEngine>();
+    auto proc_metrics = std::make_shared<ProcMetrics>("auomscollect", metrics);
+    proc_metrics->Start();
+
+    RawEventAccumulator accumulator (builder, metrics);
 
     auto output_config = std::make_unique<Config>(std::unordered_map<std::string, std::string>({
         {"output_format","raw"},
@@ -409,8 +414,8 @@ int main(int argc, char**argv) {
         {"enable_ack_mode", "true"},
         {"ack_queue_size", "10"}
     }));
-    auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
-    Output output("output", cursor_path, queue, user_db, filtersEngine, processTree);
+    auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
+    Output output("output", cursor_path, queue, writer_factory, nullptr);
     output.Load(output_config);
 
     std::thread autosave_thread([&]() {
@@ -442,6 +447,8 @@ int main(int argc, char**argv) {
     Logger::Info("Exiting");
 
     try {
+        proc_metrics->Stop();
+        metrics->Stop();
         accumulator.Flush(0);
         if (stop_delay > 0) {
             Logger::Info("Waiting %d seconds for output to flush", stop_delay);

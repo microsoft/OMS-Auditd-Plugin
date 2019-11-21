@@ -40,7 +40,7 @@ public:
         return OK;
     }
 
-    virtual ssize_t WriteAll(const void *buf, size_t size, long timeout, std::function<bool()> fn) {
+    virtual ssize_t WriteAll(const void *buf, size_t size, long timeout, const std::function<bool()>& fn) {
         _buf.assign(reinterpret_cast<const char*>(buf), size);
         _events.emplace_back(_buf);
         return size;
@@ -94,8 +94,6 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
             {"ogid", "owner_group"},
             {"sgid", "set_group"},
     };
-
-    config.FilterFlagsMask = 4;
 
     config.FilterRecordTypeSet = std::unordered_set<std::string> {
             "BPRM_FCAPS",

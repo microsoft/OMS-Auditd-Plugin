@@ -30,7 +30,7 @@
 constexpr int CLEAN_PROCESS_TIMEOUT = 60;
 constexpr int CLEAN_PROCESS_INTERVAL = 60;
 
-void ProcessNotify::InitProcSocket()
+bool ProcessNotify::InitProcSocket()
 {
     struct sockaddr_nl s_addr;
     struct __attribute__ ((aligned(NLMSG_ALIGNTO))) {
@@ -45,8 +45,8 @@ void ProcessNotify::InitProcSocket()
 
     _proc_socket = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_CONNECTOR);
     if (_proc_socket < 0) {
-        Logger::Error("Cannot create netlink socket for proc monitoring");
-        exit(1);
+        Logger::Error("Cannot create netlink socket for proc monitoring: %s", std::strerror(errno));
+        return false;
     }
 
     s_addr.nl_family = AF_NETLINK;
@@ -54,9 +54,17 @@ void ProcessNotify::InitProcSocket()
     s_addr.nl_pid = getpid();
 
     if (bind(_proc_socket, (struct sockaddr *) &s_addr, sizeof(struct sockaddr_nl)) < 0) {
-        Logger::Error("Cannot bind to netlink socket for proc monitoring");
+        Logger::Error("Cannot bind to netlink socket for proc monitoring: %s", std::strerror(errno));
         close(_proc_socket);
-        exit(1);
+        return false;
+    }
+
+    // Prevent ENOBUFS when messages generated faster then can be received.
+    int on = 1;
+    if (setsockopt(_proc_socket, SOL_NETLINK, NETLINK_NO_ENOBUFS, &on, sizeof(on)) != 0) {
+        Logger::Error("Cannot set NETLINK_NO_ENOBUFS option on socket for proc monitoring: %s", std::strerror(errno));
+        close(_proc_socket);
+        return false;
     }
 
     memset(&message, 0, sizeof(message));
@@ -71,13 +79,26 @@ void ProcessNotify::InitProcSocket()
     message.mode = PROC_CN_MCAST_LISTEN;
 
     if (send(_proc_socket, &message, sizeof(message), 0) < 0) {
-        Logger::Error("Cannot send to netlink socket for proc monitoring");
-        exit(1);
+        Logger::Error("Cannot send to netlink socket for proc monitoring: %s", std::strerror(errno));
+        close(_proc_socket);
+        return false;
+    }
+    return true;
+}
+
+void ProcessNotify::on_stopping() {
+    if (_proc_socket > -1) {
+        close(_proc_socket);
+        _proc_socket = -1;
     }
 }
 
 void ProcessNotify::run()
 {
+    if (!InitProcSocket()) {
+        return;
+    }
+
     struct __attribute__ ((aligned(NLMSG_ALIGNTO))) {
         struct nlmsghdr header;
         struct __attribute__ ((__packed__)) {
@@ -89,8 +110,18 @@ void ProcessNotify::run()
     Logger::Info("ProcessNotify starting");
 
     while(!IsStopping()) {
-        if (recv(_proc_socket, &message, sizeof(message), 0) <= 0) {
-            Logger::Error("Error receiving from netlink socket for process monitoring");
+        auto ret = recv(_proc_socket, &message, sizeof(message), 0);
+        if (ret == 0) {
+            if (!IsStopping()) {
+                Logger::Error("Unexpected EOF on netlink socket for process monitoring");
+            }
+            return;
+        } else if ( ret < 0) {
+            if (errno == EINTR && !IsStopping()) {
+                continue;
+            }
+            Logger::Error("Error receiving from netlink socket for process monitoring: %s", std::strerror(errno));
+            return;
         }
 
         switch (message.event.what) {
@@ -131,11 +162,18 @@ void ProcessTree::AddPnExitQueue(int pid)
     _queue_data.notify_one();
 }
 
+void ProcessTree::on_stopping() {
+    _queue_data.notify_all();
+}
+
 void ProcessTree::run()
 {
     std::unique_lock<std::mutex> queue_lock(_queue_mutex);
     while (!IsStopping()) {
-        _queue_data.wait(queue_lock, [&]{return !_PnQueue.empty();});
+        _queue_data.wait(queue_lock, [&]{return !_PnQueue.empty() || IsStopping();});
+        if (IsStopping()) {
+            return;
+        }
         while (!_PnQueue.empty()) {
             struct ProcessQueueItem p = _PnQueue.front();
             _PnQueue.pop();

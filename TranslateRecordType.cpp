@@ -16,6 +16,7 @@
 
 #include "Translate.h"
 #include "StringTable.h"
+#include "StringUtils.h"
 
 static StringTable<RecordType> s_record_type_table(RecordType ::UNKNOWN, {
         {"GET",RecordType::GET},
@@ -150,6 +151,8 @@ static StringTable<RecordType> s_record_type_table(RecordType ::UNKNOWN, {
         {"INTEGRITY_HASH",RecordType::INTEGRITY_HASH},
         {"INTEGRITY_PCR",RecordType::INTEGRITY_PCR},
         {"INTEGRITY_RULE",RecordType::INTEGRITY_RULE},
+        {"INTEGRITY_EVM_XATTR",RecordType::INTEGRITY_EVM_XATTR},
+        {"INTEGRITY_POLICY_RULE",RecordType::INTEGRITY_POLICY_RULE},
         {"ANOM_LOGIN_FAILURES",RecordType::ANOM_LOGIN_FAILURES},
         {"ANOM_LOGIN_TIME",RecordType::ANOM_LOGIN_TIME},
         {"ANOM_LOGIN_SESSIONS",RecordType::ANOM_LOGIN_SESSIONS},
@@ -219,7 +222,7 @@ static StringTable<RecordType> s_record_type_table(RecordType ::UNKNOWN, {
         {"AUOMS_COLLECTOR_REPORT", RecordType::AUOMS_COLLECTOR_REPORT},
         {"AUOMS_DROPPED_RECORDS", RecordType::AUOMS_DROPPED_RECORDS},
         {"AUOMS_STATUS", RecordType::AUOMS_STATUS},
-        {"AUOMS_SYSCALL_METRICS", RecordType::AUOMS_SYSCALL_METRICS},
+        {"AUOMS_METRIC", RecordType::AUOMS_METRIC},
         {"AUOMS_EXECVE", RecordType::AUOMS_EXECVE},
 });
 
@@ -241,5 +244,22 @@ std::string RecordTypeToName(RecordType code) {
 }
 
 RecordType RecordNameToType(const std::string_view& name) {
-    return s_record_type_table.ToInt(name);
+    using namespace std::string_view_literals;
+
+    static auto SV_UNKNOWN = "UNKNOWN["sv;
+
+    if (name.size() > 9 && starts_with(name, SV_UNKNOWN) && name[name.size()-1] == ']') {
+        try {
+            auto id = std::stoul(std::string(name.substr(8, name.size()-9)));
+            RecordType rc = static_cast<RecordType>(id);
+            if (s_record_type_table.ToString(rc).empty()) {
+                return RecordType::UNKNOWN;
+            }
+            return rc;
+        } catch (std::exception&) {
+            return RecordType::UNKNOWN;
+        }
+    } else {
+        return s_record_type_table.ToInt(name);
+    }
 }

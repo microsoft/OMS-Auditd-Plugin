@@ -145,6 +145,13 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
             return false;
         }
 
+        // The IMA code does't follow the proper audit message format so take the whole message
+        if (_record_type == RecordType::INTEGRITY_POLICY_RULE) {
+            _record_fields.push_back(itr.remainder());
+            _unparsable = true;
+            return true;
+        }
+
         while(itr.next()) {
             _record_fields.push_back(itr.value());
         }
@@ -156,6 +163,7 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
 
 int RawEventRecord::AddRecord(EventBuilder& builder) {
     static auto SV_NODE = "node"sv;
+    static auto SV_UNPARSED_TEXT = "unparsed_text"sv;
 
     uint16_t num_fields = static_cast<uint16_t>(_record_fields.size());
     if (!_node.empty()) {
@@ -172,6 +180,16 @@ int RawEventRecord::AddRecord(EventBuilder& builder) {
         if (ret != 1) {
             return ret;
         }
+    }
+
+    // If record is marked as unparsable, then the text (after the 'audit():' section is included as the only value in
+    // _record_fields
+    if (_unparsable) {
+        ret = builder.AddField(SV_UNPARSED_TEXT, _record_fields[0], nullptr, field_type_t::UNESCAPED);
+        if (ret != 1) {
+            return ret;
+        }
+        return builder.EndRecord();
     }
 
     for (auto f: _record_fields) {

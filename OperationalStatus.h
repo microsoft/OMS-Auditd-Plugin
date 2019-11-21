@@ -33,7 +33,7 @@ enum class ErrorCategory {
 
 class OperationalStatusListener: public RunBase {
 public:
-    explicit OperationalStatusListener(const std::string socket_path, std::function<std::string()> status_fn): _listener(socket_path), _status_fn(status_fn) {}
+    explicit OperationalStatusListener(const std::string socket_path, std::function<std::string()>&& status_fn): _listener(socket_path), _status_fn(status_fn) {}
 
     bool Initialize();
 

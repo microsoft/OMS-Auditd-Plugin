@@ -70,11 +70,11 @@ int parse_execve_fieldname(const std::string_view& fname, const std::string_view
     return -1;
 }
 
-void ExecveConverter::Convert(std::vector<EventRecord> execve_recs) {
+void ExecveConverter::Convert(std::vector<EventRecord> execve_recs, std::string& cmdline) {
     static auto S_ELIPSIS = std::string("...");
     static auto S_MISSING_ARG_PIECE = std::string("<...>");
 
-    _cmdline.resize(0);
+    cmdline.resize(0);
 
     // Sort EXECVE records so that args (e.g. a0, a1, a2 ...) will be in order.
     std::sort(execve_recs.begin(), execve_recs.end(), [](const EventRecord& a, const EventRecord& b) -> int {
@@ -109,10 +109,10 @@ void ExecveConverter::Convert(std::vector<EventRecord> execve_recs) {
                 if (accum_arg_len) {
                     if (!_tmp_val.empty()) {
                         unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
-                        bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+                        bash_escape_string(cmdline, _unescaped_val.data(), _unescaped_val.length());
                     }
                     if (expected_arg_len > accum_arg_len) {
-                        _cmdline.append(S_MISSING_ARG_PIECE);
+                        cmdline.append(S_MISSING_ARG_PIECE);
                     }
                     expected_arg_num += 1;
                 }
@@ -122,14 +122,14 @@ void ExecveConverter::Convert(std::vector<EventRecord> execve_recs) {
             }
 
             if (expected_arg_num < arg_num) {
-                if (!_cmdline.empty()) {
-                    _cmdline.push_back(' ');
+                if (!cmdline.empty()) {
+                    cmdline.push_back(' ');
                 }
-                _cmdline.push_back('<');
-                _cmdline.append(std::to_string(expected_arg_num));
-                _cmdline.append(S_ELIPSIS);
-                _cmdline.append(std::to_string(arg_num-1));
-                _cmdline.push_back('>');
+                cmdline.push_back('<');
+                cmdline.append(std::to_string(expected_arg_num));
+                cmdline.append(S_ELIPSIS);
+                cmdline.append(std::to_string(arg_num-1));
+                cmdline.push_back('>');
                 expected_arg_num = arg_num;
             }
 
@@ -139,19 +139,19 @@ void ExecveConverter::Convert(std::vector<EventRecord> execve_recs) {
                     if (expected_arg_len > 0) {
                         if (!_tmp_val.empty()) {
                             unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
-                            bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+                            bash_escape_string(cmdline, _unescaped_val.data(), _unescaped_val.length());
                         }
-                        _cmdline.append(S_MISSING_ARG_PIECE);
+                        cmdline.append(S_MISSING_ARG_PIECE);
                         expected_arg_len = 0;
                         expected_arg_idx = 0;
                     }
 
                     _unescaped_val.resize(0);
-                    if (!_cmdline.empty()) {
-                        _cmdline.push_back(' ');
+                    if (!cmdline.empty()) {
+                        cmdline.push_back(' ');
                     }
                     unescape_raw_field(_unescaped_val, val.data(), val.size());
-                    bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+                    bash_escape_string(cmdline, _unescaped_val.data(), _unescaped_val.length());
                     expected_arg_num += 1;
                     break;
                 case 1: // a%d_len=%d
@@ -166,17 +166,17 @@ void ExecveConverter::Convert(std::vector<EventRecord> execve_recs) {
                         // never saw the corresponding a%d_len=%d field, so just ignore the other parts
                         break;
                     }
-                    if (expected_arg_idx == 0 && !_cmdline.empty()) {
-                        _cmdline.push_back(' ');
+                    if (expected_arg_idx == 0 && !cmdline.empty()) {
+                        cmdline.push_back(' ');
                     }
                     if (expected_arg_idx < arg_idx) {
                         // There's a gap in the parts, so unescape and bash escape the part we have
                         // then fill in the missing parts with the place holder
                         if (!_tmp_val.empty()) {
                             unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
-                            bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+                            bash_escape_string(cmdline, _unescaped_val.data(), _unescaped_val.length());
                         }
-                        _cmdline.append(S_MISSING_ARG_PIECE);
+                        cmdline.append(S_MISSING_ARG_PIECE);
                         _tmp_val.resize(0);
                         _unescaped_val.resize(0);
                         expected_arg_idx = arg_idx;
@@ -186,7 +186,7 @@ void ExecveConverter::Convert(std::vector<EventRecord> execve_recs) {
                     expected_arg_idx += 1;
                     if (expected_arg_len <= accum_arg_len) {
                         unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
-                        bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+                        bash_escape_string(cmdline, _unescaped_val.data(), _unescaped_val.length());
                         expected_arg_len = 0;
                         accum_arg_len = 0;
                         expected_arg_idx = 0;
@@ -202,10 +202,32 @@ void ExecveConverter::Convert(std::vector<EventRecord> execve_recs) {
     if (expected_arg_len > 0) {
         if (!_tmp_val.empty()) {
             unescape_raw_field(_unescaped_val, _tmp_val.data(), _tmp_val.size());
-            bash_escape_string(_cmdline, _unescaped_val.data(), _unescaped_val.length());
+            bash_escape_string(cmdline, _unescaped_val.data(), _unescaped_val.length());
         }
         if (expected_arg_len > accum_arg_len) {
-            _cmdline.append(S_MISSING_ARG_PIECE);
+            cmdline.append(S_MISSING_ARG_PIECE);
+        }
+    }
+}
+
+void ExecveConverter::ConvertRawCmdline(const std::string_view& raw_cmdline, std::string& cmdline) {
+    const char* ptr = reinterpret_cast<const char*>(raw_cmdline.data());
+    size_t size = raw_cmdline.size();
+
+    cmdline.resize(0);
+
+    while(size > 0) {
+        if (!cmdline.empty()) {
+            cmdline.push_back(' ');
+        }
+        // bash_escape_string will stop at the first NULL byte
+        size_t n = bash_escape_string(cmdline, ptr, size);
+        size -= n;
+        ptr += n;
+        // Skip past the NULL byte(s)
+        while(size > 0 && *ptr == 0) {
+            --size;
+            ++ptr;
         }
     }
 }

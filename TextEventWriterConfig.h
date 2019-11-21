@@ -32,10 +32,9 @@ public:
         RecordsFieldName = "records";
         FieldSuffix = "_r";
         ProcessFlagsFieldName = "ProcessFlags";
-        FilterFlagsMask = 0;
     }
 
-    void LoadFromConfig(std::string name, const Config& config, std::shared_ptr<UserDB> user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree);
+    void LoadFromConfig(std::string name, const Config& config);
 
     std::string TimestampFieldName;
     std::string SerialFieldName;
@@ -52,11 +51,6 @@ public:
     std::unordered_map<std::string, std::string> InterpFieldNameMap;
     std::unordered_set<std::string> FilterRecordTypeSet;
     std::unordered_set<std::string> FilterFieldNameSet;
-    std::bitset<FILTER_BITSET_SIZE> FilterFlagsMask;
-
-    std::shared_ptr<ProcFilter> proc_filter = NULL;
-    std::shared_ptr<FiltersEngine> _filtersEngine;
-    std::shared_ptr<ProcessTree> _processTree;
 };
 
 

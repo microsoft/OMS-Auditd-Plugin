@@ -21,6 +21,7 @@
 #include "RawEventAccumulator.h"
 #include "StringUtils.h"
 #include "ExecveConverter.h"
+#include "TestEventQueue.h"
 
 #include <fstream>
 #include <stdexcept>
@@ -55,8 +56,8 @@ public:
                 recs.emplace_back(rec);
             }
         }
-        _converter.Convert(recs);
-        _cmdlines.emplace_back(_converter.Cmdline());
+        _converter.Convert(recs, _cmdline);
+        _cmdlines.emplace_back(_cmdline);
         _size = 0;
         return 1;
     }
@@ -71,6 +72,7 @@ private:
     size_t _size;
     std::vector<std::string>& _cmdlines;
     ExecveConverter _converter;
+    std::string _cmdline;
 };
 
 class TestData {
@@ -175,7 +177,12 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     auto raw_allocator = std::shared_ptr<IEventBuilderAllocator>(raw_queue);
     auto raw_builder = std::make_shared<EventBuilder>(raw_allocator);
 
-    RawEventAccumulator accumulator(raw_builder);
+    auto metrics_queue = new TestEventQueue();
+    auto metrics_allocator = std::shared_ptr<IEventBuilderAllocator>(metrics_queue);
+    auto metrics_builder = std::make_shared<EventBuilder>(metrics_allocator);
+    auto metrics = std::make_shared<Metrics>(metrics_builder);
+
+    RawEventAccumulator accumulator(raw_builder, metrics);
 
     for (auto& test : test_data) {
         for (auto& line: test.event_records) {

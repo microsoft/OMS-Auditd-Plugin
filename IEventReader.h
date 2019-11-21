@@ -23,7 +23,7 @@
 
 class IEventReader {
 public:
-    virtual ssize_t ReadEvent(void *buf, size_t buf_size, IReader* reader, std::function<bool()> fn) = 0;
+    virtual ssize_t ReadEvent(void *buf, size_t buf_size, IReader* reader, const std::function<bool()>& fn) = 0;
     virtual ssize_t WriteAck(const Event& event, IWriter* writer) = 0;
     virtual ssize_t WriteAck(const EventId& event_id, IWriter* writer) = 0;
 };

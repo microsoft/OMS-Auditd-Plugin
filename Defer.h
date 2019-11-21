@@ -20,7 +20,7 @@
 
 class Defer {
 public:
-    Defer(std::function<void()> fn): _fn(fn) {};
+    Defer(std::function<void()>&& fn): _fn(std::move(fn)) {};
     ~Defer() { _fn(); }
 
 private:

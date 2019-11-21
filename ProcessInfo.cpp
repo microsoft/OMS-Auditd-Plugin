@@ -17,6 +17,7 @@
 #include "ProcessInfo.h"
 #include "Logger.h"
 #include "StringUtils.h"
+#include "ExecveConverter.h"
 
 #include <climits>
 #include <cerrno>
@@ -178,8 +179,44 @@ bool ProcessInfo::parse_stat() {
         return false;
     }
 
+    // Skip to utime
+    for (int i = 0; i < 7; ++i) {
+        f_end = strchr(ptr, ' ');
+        if (f_end == nullptr || f_end >= end) {
+            return false;
+        }
+        ptr = f_end + 1;
+        if (ptr >= end) {
+            return false;
+        }
+    }
+
+    // utime
+    errno = 0;
+    _utime = strtoull(ptr, &f_end, 10);
+    if (errno != 0 || *f_end != ' ') {
+        return false;
+    }
+
+    ptr = f_end+1;
+    if (ptr >= end) {
+        return false;
+    }
+
+    // stime
+    errno = 0;
+    _stime = strtoull(ptr, &f_end, 10);
+    if (errno != 0 || *f_end != ' ') {
+        return false;
+    }
+
+    ptr = f_end+1;
+    if (ptr >= end) {
+        return false;
+    }
+
     // Skip to starttime
-    for (int i = 0; i < 15; ++i) {
+    for (int i = 0; i < 6; ++i) {
         f_end = strchr(ptr, ' ');
         if (f_end == nullptr || f_end >= end) {
             return false;
@@ -343,23 +380,7 @@ bool ProcessInfo::read(int pid) {
 }
 
 void ProcessInfo::format_cmdline(std::string& str) {
-    const char* ptr = reinterpret_cast<const char*>(_cmdline.data());
-    size_t size = _cmdline.size();
-
-    str.clear();
-
-    while(size > 0) {
-        if (!str.empty()) {
-            str.push_back(' ');
-        }
-        size_t n = bash_escape_string(str, ptr, size);
-        size -= n;
-        ptr += n;
-        while(size > 0 && *ptr == 0) {
-            --size;
-            ++ptr;
-        }
-    }
+    ExecveConverter::ConvertRawCmdline(std::string_view(reinterpret_cast<char*>(_cmdline.data()), _cmdline.size()), str);
 }
 
 bool ProcessInfo::get_arg1(std::string& str) {

@@ -12,6 +12,8 @@ bool PathExists(const std::string& path);
 
 bool IsDir(const std::string& path);
 
+std::string Dirname(const std::string& path);
+
 std::vector<std::string> GetDirList(const std::string& dir);
 
 std::vector<std::string> ReadFile(const std::string& path);

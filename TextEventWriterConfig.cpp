@@ -152,23 +152,10 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
-        {"filter_flags_mask", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
-            if (config.HasKey(name)) {
-                auto mask = config.GetUint64(name);
-                if (mask > 0xFFFF) {
-                    return false;
-                }
-                et_config.FilterFlagsMask = static_cast<uint32_t>(mask) << 16;
-            }
-            return true;
-        }},
 };
 
-void TextEventWriterConfig::LoadFromConfig(std::string name, const Config& config, std::shared_ptr<UserDB> user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree)
+void TextEventWriterConfig::LoadFromConfig(std::string name, const Config& config)
 {
-    _filtersEngine = filtersEngine;
-    _processTree = processTree;
-
     for (auto cs : _configSetters) {
         try {
             if (!cs.second(cs.first, *this, config)) {
@@ -178,14 +165,4 @@ void TextEventWriterConfig::LoadFromConfig(std::string name, const Config& confi
             Logger::Error("Invalid config value for '%s'", cs.first.c_str());
         }
     }
-
-    // Load filter rules. TODO move to TextEventWriter
-    proc_filter = std::make_shared<ProcFilter>(user_db);
-
-    if (!proc_filter->ParseConfig(config)) {
-        Logger::Error("Invalid 'process_filters' value");
-        exit(1);
-    }
-
-    FilterFlagsMask = filtersEngine->AddFilterList(proc_filter->_filters, name);
 }
