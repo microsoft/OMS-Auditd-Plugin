@@ -22,7 +22,13 @@
 #include <ctype.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <sys/socket.h>
+#include <linux/netlink.h>
 
+#ifndef SOL_NETLINIK
+// This isn't defined in older socket.h include files.
+#define SOL_NETLINK	270
+#endif
 
 
 //constexpr int CLEAN_PROCESS_TIMEOUT = 300;
@@ -117,6 +123,7 @@ void ProcessNotify::run()
             }
             return;
         } else if ( ret < 0) {
+
             if (errno == EINTR && !IsStopping()) {
                 continue;
             }

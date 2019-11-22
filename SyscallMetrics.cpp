@@ -41,6 +41,7 @@ void SyscallMetrics::run() {
 
     if (!init()) {
         Logger::Warn("SyscallMetrics: initialization failed");
+        return;
     }
 
     // Collect syscall metrics once per second without drift
@@ -64,6 +65,23 @@ bool SyscallMetrics::init() {
     int ret = mkdir(FTRACE_INSTANCE_DIR, 0750);
     if (ret != 0 && errno != EEXIST) {
         Logger::Warn("SyscallMetrics: Failed to create ftrace instance dir (%s): %s", FTRACE_INSTANCE_DIR, std::strerror(errno));
+        return false;
+    }
+
+    for (int i = 0; i < 5; ++i) {
+        if (!PathExists(FTRACE_INSTANCE_DIR)) {
+            Logger::Warn("SyscallMetrics: Waiting for ftrace instance dir (%s) to appear", FTRACE_INSTANCE_DIR);
+            _sleep(1000);
+        }
+    }
+
+    if (!PathExists(FTRACE_INSTANCE_DIR)) {
+        Logger::Warn("SyscallMetrics: ftrace instance dir (%s) failed to appear even though mkdir succeeded", FTRACE_INSTANCE_DIR);
+        return false;
+    }
+
+    if (!PathExists(FTRACE_SYS_ENTER_TRIGGER) || !PathExists(FTRACE_SYS_ENTER_HIST)) {
+        Logger::Warn("SyscallMetrics: ftrace doesn't support hist trigger on this system, syscall metrics will not be collected", FTRACE_INSTANCE_DIR);
         return false;
     }
 

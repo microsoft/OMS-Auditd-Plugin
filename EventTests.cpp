@@ -19,40 +19,9 @@
 #include <boost/test/unit_test.hpp>
 
 #include "Queue.h"
+#include "EventQueue.h"
 #include "TempFile.h"
 
-
-class TestEventQueue: public IEventBuilderAllocator {
-public:
-    TestEventQueue(std::shared_ptr<Queue> queue): _queue(queue), _data(nullptr), _size(0) {}
-
-    virtual uint64_t GetGenerationId() {
-        return 0;
-    }
-
-    virtual int Allocate(void** data, size_t size) {
-        int ret = _queue->Allocate(data, size);
-        if (ret != 1) {
-            return ret;
-        }
-        _data = *data;
-        _size = size;
-        return 1;
-    }
-
-    virtual int Commit() {
-        return _queue->Commit();
-    }
-
-    virtual int Rollback() {
-        return _queue->Rollback();
-    }
-
-private:
-    std::shared_ptr<Queue> _queue;
-    void* _data;
-    size_t _size;
-};
 
 
 BOOST_AUTO_TEST_CASE( test )
@@ -60,7 +29,7 @@ BOOST_AUTO_TEST_CASE( test )
     TempFile file("/tmp/EventTests.");
 
     auto queue = std::make_shared<Queue>(file.Path(), 64*1024);
-    auto event_queue = std::make_shared<TestEventQueue>(queue);
+    auto event_queue = std::make_shared<EventQueue>(queue);
 
     queue->Open();
 
