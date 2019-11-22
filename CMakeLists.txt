@@ -315,6 +315,7 @@ target_link_libraries(StringTests ${Boost_LIBRARIES})
 add_test(String ${CMAKE_BINARY_DIR}/StringTests --log_sink=StringTests.log --report_sink=StringTests.report)
 
 add_executable(EventProcessorTests
+        auoms_version.h
         EventProcessorTests.cpp
         Event.cpp
         TextEventWriter.cpp
