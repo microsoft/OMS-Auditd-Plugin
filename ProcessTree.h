@@ -111,6 +111,7 @@ public:
     void Clean();
     std::shared_ptr<ProcessTreeItem> GetInfoForPid(int pid);
     void PopulateTree();
+    void UpdateFlags();
     void ShowTree();
     void ShowProcess(std::shared_ptr<ProcessTreeItem> p);
 

@@ -29,7 +29,6 @@ public:
     _builder(builder), _user_db(user_db), _state_ptr(nullptr), _processTree(processTree), _filtersEngine(filtersEngine), _metrics(metrics),
         _event_flags(0), _pid(0), _ppid(0), _uid(-1), _last_proc_event_gen(0)
     {
-        _globalFlagsMask = _filtersEngine->GetCommonFlagMask();
         _bytes_metric = _metrics->AddMetric("data", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
         _record_metric = _metrics->AddMetric("data", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
         _event_metric = _metrics->AddMetric("data", "events", MetricPeriod::SECOND, MetricPeriod::HOUR);
@@ -78,7 +77,6 @@ private:
     std::string _path_ogid;
     uint64_t _last_proc_event_gen;
     ExecveConverter _execve_converter;
-    std::bitset<FILTER_BITSET_SIZE> _globalFlagsMask;
 };
 
 

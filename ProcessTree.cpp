@@ -421,9 +421,10 @@ void ProcessTree::ApplyFlags(std::shared_ptr<ProcessTreeItem> process)
     }
 }
 
-
 void ProcessTree::PopulateTree()
-{ 
+{
+    std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
+
     int pid;
     int ppid;
     int uid;
@@ -476,6 +477,10 @@ void ProcessTree::PopulateTree()
             }
         }
     }
+}
+
+void ProcessTree::UpdateFlags() {
+    std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
 
     for (auto p : _processes) {
         ApplyFlags(p.second);
