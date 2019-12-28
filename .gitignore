@@ -2,6 +2,18 @@
 
 /build/config.mak
 /build/Makefile.version
+/build/build*.log
+/build/CMakeCache.txt
+/build/CMakeFiles/
+/build/CTestTestfile.cmake
+/build/Testing/
+/build/cmake_install.cmake
+/build/compile_commands.json
 /intermediate/
 /target/
 auoms_version.h
+env_config.h
+/ext_include/
+/cmake-build-debug/
+/.idea/
+/.vscode/

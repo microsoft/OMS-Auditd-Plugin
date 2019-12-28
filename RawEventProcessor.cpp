@@ -143,6 +143,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     static auto SV_PATH_OGID = "path_ogid"sv;
     static auto SV_EMPTY = ""sv;
     static auto SV_CMDLINE = "cmdline"sv;
+    static auto SV_CONTAINERID = "containerid"sv;
     static auto SV_DROPPED = "dropped_"sv;
     static auto SV_PID = "pid"sv;
     static auto SV_PPID = "ppid"sv;
@@ -367,6 +368,9 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     if (num_fields == 0) {
         return false;
     }
+
+    // For containerid
+    num_fields += 1;
 
     auto ret = _builder->BeginEvent(event.Seconds(), event.Milliseconds(), event.Serial(), 1);
     if (ret != 1) {
@@ -680,6 +684,24 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         }
     }
 
+    std::shared_ptr<ProcessTreeItem> p;
+    std::string cmdline;
+
+    if (!_cmdline.empty()) {
+        p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, _cmdline);
+    } else if (!_syscall.empty()) {
+        p = _processTree->GetInfoForPid(_pid);
+    }
+
+    ret = _builder->AddField(SV_CONTAINERID, p->_containerid, nullptr, field_type_t::UNCLASSIFIED);
+    if (ret != 1) {
+        if (ret == Queue::CLOSED) {
+            throw std::runtime_error("Queue closed");
+        }
+        cancel_event();
+        return false;
+    }
+
     ret = _builder->EndRecord();
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
@@ -690,15 +712,6 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     }
 
     bool filtered = false;
-    std::shared_ptr<ProcessTreeItem> p;
-    std::string cmdline;
-
-    if (!_cmdline.empty()) {
-        p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, _cmdline);
-    } else if (!_syscall.empty()) {
-        p = _processTree->GetInfoForPid(_pid);
-    }
-
     if (_filtersEngine->IsEventFiltered(_syscall, p, _filtersEngine->GetCommonFlagsMask())) {
         filtered = true;
     }

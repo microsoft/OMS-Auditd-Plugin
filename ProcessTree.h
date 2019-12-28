@@ -49,9 +49,9 @@ struct Ancestor {
 class ProcessTreeItem {
 public:
     ProcessTreeItem(enum ProcessTreeSource source, int pid, int ppid=0):
-        _source(source), _pid(pid), _ppid(ppid), _uid(-1), _gid(-1), _flags(0), _exec_propagation(0), _exited(false) {}
+        _source(source), _pid(pid), _ppid(ppid), _uid(-1), _gid(-1), _flags(0), _exec_propagation(0), _exited(false), _containerid("") {}
     ProcessTreeItem(enum ProcessTreeSource source, int pid, int ppid, int uid, int gid, const std::string& exe, const std::string& cmdline):
-        _source(source), _pid(pid), _ppid(ppid), _uid(uid), _gid(gid), _exe(exe), _cmdline(cmdline),
+        _source(source), _pid(pid), _ppid(ppid), _uid(uid), _gid(gid), _exe(exe), _cmdline(cmdline), _containerid(""),
         _flags(0), _exec_propagation(0), _exited(false) {}
 
     enum ProcessTreeSource _source;
@@ -63,6 +63,8 @@ public:
     std::vector<struct Ancestor> _ancestors;
     unsigned int _exec_propagation;
     std::string _exe;
+    std::string _containerid;
+    std::string _containeridfromhostprocess;
     std::string _cmdline;
     std::bitset<FILTER_BITSET_SIZE> _flags;
     bool _exited;
@@ -128,6 +130,8 @@ private:
     std::shared_ptr<ProcessTreeItem> ReadProcEntry(int pid);
     bool is_number(char *s);
     void ApplyFlags(std::shared_ptr<ProcessTreeItem> process);
+    void SetContainerId(std::shared_ptr<ProcessTreeItem> p, std::string containerid);
+    std::string GetContainerId(std::string exe, const std::string& cmdline);
 
     std::shared_ptr<UserDB> _user_db;
     std::shared_ptr<FiltersEngine> _filtersEngine;
