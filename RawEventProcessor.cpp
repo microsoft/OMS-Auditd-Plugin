@@ -699,7 +699,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         p = _processTree->GetInfoForPid(_pid);
     }
 
-    if (_filtersEngine->IsEventFiltered(_syscall, p, _globalFlagsMask)) {
+    if (_filtersEngine->IsEventFiltered(_syscall, p, _filtersEngine->GetCommonFlagsMask())) {
         filtered = true;
     }
 

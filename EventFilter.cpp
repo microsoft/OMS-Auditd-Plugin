@@ -21,7 +21,7 @@
 std::shared_ptr<IEventFilter> EventFilter::NewEventFilter(const std::string& name, const Config& config, std::shared_ptr<UserDB> user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree) {
     std::bitset<FILTER_BITSET_SIZE> filterFlagsMask;
 
-    // Load filter rules. TODO move to TextEventWriter
+    // Load filter rules.
     auto proc_filter = std::make_shared<ProcFilter>(user_db);
 
     if (!proc_filter->ParseConfig(config)) {
@@ -30,8 +30,14 @@ std::shared_ptr<IEventFilter> EventFilter::NewEventFilter(const std::string& nam
     }
 
     filterFlagsMask = filtersEngine->AddFilterList(proc_filter->_filters, name);
+    processTree->UpdateFlags();
 
-    return std::shared_ptr<IEventFilter>(static_cast<IEventFilter*>(new EventFilter(filterFlagsMask, proc_filter, filtersEngine, processTree)));
+    return std::shared_ptr<IEventFilter>(static_cast<IEventFilter*>(new EventFilter(name, filterFlagsMask, proc_filter, filtersEngine, processTree)));
+}
+
+EventFilter::~EventFilter() {
+    _filtersEngine->RemoveFilterList(_proc_filter->_filters, _name);
+    _processTree->UpdateFlags();
 }
 
 bool EventFilter::IsEventFiltered(const Event& event) {

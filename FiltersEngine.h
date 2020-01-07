@@ -41,19 +41,22 @@ class ProcessTreeItem;
 
 class FiltersEngine {
 public:
-    FiltersEngine(): _nextBitPosition(0), _numberOfOutputs(0) {}
-    std::bitset<FILTER_BITSET_SIZE> AddFilter(const ProcFilterSpec& pfs, const std::string& outputName);
+    FiltersEngine(): _nextBitPosition(0) {}
     std::bitset<FILTER_BITSET_SIZE> AddFilterList(const std::vector<ProcFilterSpec>& pfsVec, const std::string& outputName);
+    void RemoveFilterList(const std::vector<ProcFilterSpec>& pfsVec, const std::string& outputName);
     std::bitset<FILTER_BITSET_SIZE> GetFlags(const std::shared_ptr<ProcessTreeItem>& process, unsigned int height);
-    std::bitset<FILTER_BITSET_SIZE> GetCommonFlagMask();
+    std::bitset<FILTER_BITSET_SIZE> GetCommonFlagsMask();
     bool IsEventFiltered(const std::string& syscall, const std::shared_ptr<ProcessTreeItem>& p, const std::bitset<FILTER_BITSET_SIZE>& filterFlagsMask);
 
 private:
+    std::bitset<FILTER_BITSET_SIZE> AddFilter(const ProcFilterSpec& pfs, const std::string& outputName);
+    void RemoveFilter(const ProcFilterSpec& pfs, const std::string& outputName);
+    void SetCommonFlagsMask();
     bool ProcessMatchFilter(const std::shared_ptr<ProcessTreeItem>& process, const ProcFilterSpec& pfs, unsigned int height);
     bool syscallIsFiltered(const std::string& syscall, const std::unordered_map<std::string, bool>& syscalls);
 
     unsigned int _nextBitPosition;
-    unsigned int _numberOfOutputs;
+    std::bitset<FILTER_BITSET_SIZE> _globalFlagsMask;
     std::unordered_set<std::string> _outputs;
     std::unordered_map<ProcFilterSpec, FiltersInfo, ProcFilterSpecHash, ProcFilterSpecCompare> _filtersBitPosition;
     std::unordered_map<unsigned int, std::unordered_map<std::string, bool>> _bitPositionSyscalls;

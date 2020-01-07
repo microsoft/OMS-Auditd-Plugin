@@ -79,7 +79,43 @@ std::bitset<FILTER_BITSET_SIZE> FiltersEngine::AddFilterList(const std::vector<P
         ret |= AddFilter(pfs, outputName);
     }
 
+    SetCommonFlagsMask();
+
     return ret;
+}
+
+void FiltersEngine::RemoveFilter(const ProcFilterSpec& pfs, const std::string& outputName)
+{
+    // check that the filter exists
+    auto it = _filtersBitPosition.find(pfs);
+    if (it == _filtersBitPosition.end()) {
+        return;
+    }
+
+    // check that the filter constains this output
+    struct FiltersInfo& info = it->second;
+    if ((info.outputs.count(outputName) == 0) && (info.outputs.size() > 0)) {
+        return;
+    }
+
+    if (info.outputs.size() <= 1) {
+        // outputs is either empty or only contains this output
+        _bitPositionSyscalls.erase(info.bitPosition);
+        _filtersBitPosition.erase(pfs);
+    } else {
+        // outputs contains this output and others
+        info.outputs.erase(outputName);
+    }
+}
+
+void FiltersEngine::RemoveFilterList(const std::vector<ProcFilterSpec>& pfsVec, const std::string& outputName)
+{
+    for (auto pfs : pfsVec) {
+        RemoveFilter(pfs, outputName);
+    }
+
+    _outputs.erase(outputName);
+    SetCommonFlagsMask();
 }
 
 bool FiltersEngine::ProcessMatchFilter(const std::shared_ptr<ProcessTreeItem>& process, const ProcFilterSpec& pfs, unsigned int height)
@@ -160,7 +196,12 @@ std::bitset<FILTER_BITSET_SIZE> FiltersEngine::GetFlags(const std::shared_ptr<Pr
     return flags;
 }
 
-std::bitset<FILTER_BITSET_SIZE> FiltersEngine::GetCommonFlagMask()
+std::bitset<FILTER_BITSET_SIZE> FiltersEngine::GetCommonFlagsMask()
+{
+    return _globalFlagsMask;
+}
+
+void FiltersEngine::SetCommonFlagsMask()
 {
     std::bitset<FILTER_BITSET_SIZE> flags;
     unsigned int numberOfOutputs = _outputs.size();
@@ -171,7 +212,7 @@ std::bitset<FILTER_BITSET_SIZE> FiltersEngine::GetCommonFlagMask()
         }
     }
 
-    return flags;
+    _globalFlagsMask = flags;
 }
 
 bool FiltersEngine::syscallIsFiltered(const std::string& syscall, const std::unordered_map<std::string, bool>& syscalls)

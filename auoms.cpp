@@ -278,6 +278,8 @@ int main(int argc, char**argv) {
     auto filtersEngine = std::make_shared<FiltersEngine>();
 
     auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
+    processTree->PopulateTree(); // Pre-populate tree
+
     Outputs outputs(queue, outconf_dir, cursor_dir, allowed_socket_dirs, user_db, filtersEngine, processTree);
 
     std::thread autosave_thread([&]() {
@@ -328,7 +330,6 @@ int main(int argc, char**argv) {
     // Start signal handling thread
     Signals::Start();
 
-    processTree->PopulateTree();
     processTree->Start();
     auto processNotify = std::make_shared<ProcessNotify>(processTree);
     processNotify->Start();

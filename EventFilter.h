@@ -37,14 +37,16 @@ public:
 
 class EventFilter: public IEventFilter {
 public:
+    virtual ~EventFilter();
     static std::shared_ptr<IEventFilter> NewEventFilter(const std::string& name, const Config& config, std::shared_ptr<UserDB> user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree);
 
     bool IsEventFiltered(const Event& event) override;
 private:
-    EventFilter(const std::bitset<FILTER_BITSET_SIZE>& filterFlagsMask, const std::shared_ptr<ProcFilter>& proc_filter, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree):
-            _filterFlagsMask(filterFlagsMask), _proc_filter(proc_filter), _filtersEngine(filtersEngine), _processTree(processTree)
+    EventFilter(const std::string& name, const std::bitset<FILTER_BITSET_SIZE>& filterFlagsMask, const std::shared_ptr<ProcFilter>& proc_filter, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree):
+            _name(name), _filterFlagsMask(filterFlagsMask), _proc_filter(proc_filter), _filtersEngine(filtersEngine), _processTree(processTree)
     {}
 
+    std::string _name;
     std::bitset<FILTER_BITSET_SIZE> _filterFlagsMask;
 
     std::shared_ptr<ProcFilter> _proc_filter;
