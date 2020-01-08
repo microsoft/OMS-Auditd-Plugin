@@ -131,7 +131,7 @@ private:
     bool is_number(char *s);
     void ApplyFlags(std::shared_ptr<ProcessTreeItem> process);
     void SetContainerId(std::shared_ptr<ProcessTreeItem> p, std::string containerid);
-    std::string GetContainerId(std::string exe, const std::string& cmdline);
+    std::string ExtractContainerId(std::string exe, const std::string& cmdline);
 
     std::shared_ptr<UserDB> _user_db;
     std::shared_ptr<FiltersEngine> _filtersEngine;

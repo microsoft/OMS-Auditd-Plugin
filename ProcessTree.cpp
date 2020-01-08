@@ -37,12 +37,6 @@
 constexpr int CLEAN_PROCESS_TIMEOUT = 60;
 constexpr int CLEAN_PROCESS_INTERVAL = 60;
 
-// cmdline example: 
-//containerd-shim -namespace moby 
-//-workdir /var/lib/containerd/io.containerd.runtime.v1.linux/moby/ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1 
-//-address /run/containerd/containerd.sock -containerd-binary /usr/bin/containerd -runtime-root /var/run/docker/runtime-runc
-const std::string _cmdline_containerid_match_re = R"REGEX(-workdir\s*\/\S+\/\S+\/\S+\/\S+\/\S+\/(\S{12})\s*)REGEX";
-
 bool ProcessNotify::InitProcSocket()
 {
     struct sockaddr_nl s_addr;
@@ -280,7 +274,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
         exe = exe.substr(1, exe.length() - 2);
     }
 
-    std::string containerid = GetContainerId(exe, cmdline);
+    std::string containerid = ExtractContainerId(exe, cmdline);
     auto it = _processes.find(pid);
     if (it != _processes.end()) {
         process = it->second;
@@ -478,7 +472,7 @@ void ProcessTree::PopulateTree()
         pinfo->format_cmdline(cmdline);
 
         auto process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_procfs, pid, ppid, uid, gid, exe, cmdline);
-        process->_containeridfromhostprocess = GetContainerId(exe, cmdline);
+        process->_containeridfromhostprocess = ExtractContainerId(exe, cmdline);
         _processes[pid] = process;
     }
 
@@ -526,6 +520,9 @@ void ProcessTree::UpdateFlags() {
     }
 }
 
+// This utility method gets called only during the initial population of ProcessTree when a containerid shim process is identfied with non-empty value of _containeridfromhostprocess.
+// All of its childrens get assigned with the ContainerId value recursively.
+// ContainerId is not set for the containerid shim process.
 void ProcessTree::SetContainerId(std::shared_ptr<ProcessTreeItem> p, std::string containerid)
 {
     for (auto c : p->_children) {
@@ -538,14 +535,32 @@ void ProcessTree::SetContainerId(std::shared_ptr<ProcessTreeItem> p, std::string
     }
 }
 
-std::string ProcessTree::GetContainerId(std::string exe, const std::string& cmdline)
+std::string ProcessTree::ExtractContainerId(std::string exe, const std::string& cmdline)
 {
+    // cmdline example: 
+    //containerd-shim -namespace moby 
+    //-workdir /var/lib/containerd/io.containerd.runtime.v1.linux/moby/ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1 
+    //-address /run/containerd/containerd.sock -containerd-binary /usr/bin/containerd -runtime-root /var/run/docker/runtime-runc
+
     std::string containerid = "";
     if (ends_with(exe, "/containerd-shim") && starts_with(cmdline, "containerd-shim -namespace moby")) {
-        std::regex rgx(_cmdline_containerid_match_re);
-        std::smatch match;
-        if (std::regex_search(cmdline, match, rgx)){
-            containerid = match[1];
+        std::string workdirarg = " -workdir ";
+        auto idx = cmdline.find(workdirarg);
+        if (idx != std::string::npos) {
+            auto argstart = idx + workdirarg.length() + 1;
+            //skip initial spaces, if any
+            while (cmdline[argstart] == ' ' && argstart < cmdline.length()) {
+                argstart++;
+            }
+            auto argend = cmdline.find(' ', argstart);
+            if (argend == std::string::npos) {
+                argend = cmdline.length() - 1;
+            }            
+            std::string argvalue = trim_whitespace(cmdline.substr(argstart, (argend - argstart)));
+            auto containerididx = argvalue.find_last_of("/");
+            if (containerididx != std::string::npos && containerididx+13 < argvalue.length()) {
+                containerid = argvalue.substr(containerididx+1, 12);
+            }
         }
     }
     return containerid;
@@ -565,7 +580,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
     process->_ppid = pinfo->ppid();
     process->_exe = pinfo->exe();
     pinfo->format_cmdline(process->_cmdline);
-    process->_containeridfromhostprocess = GetContainerId(process->_exe, process->_cmdline);
+    process->_containeridfromhostprocess = ExtractContainerId(process->_exe, process->_cmdline);
     return process;
 }
 
