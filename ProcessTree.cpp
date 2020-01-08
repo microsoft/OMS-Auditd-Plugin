@@ -17,6 +17,7 @@
 #include <cstring>
 #include "ProcessTree.h"
 #include "Logger.h"
+#include "StringUtils.h"
 #include <stdlib.h>
 #include <dirent.h> 
 #include <ctype.h>
@@ -227,6 +228,7 @@ void ProcessTree::AddPid(int pid, int ppid)
             process->_gid = parent->_gid;
             process->_exe = parent->_exe;
             process->_cmdline = parent->_cmdline;
+            process->_containerid = parent->_containerid;
             process->_exec_propagation = parent->_exec_propagation;
             parent->_children.emplace_back(pid);
             process->_ancestors = parent->_ancestors;
@@ -272,6 +274,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
         exe = exe.substr(1, exe.length() - 2);
     }
 
+    std::string containerid = ExtractContainerId(exe, cmdline);
     auto it = _processes.find(pid);
     if (it != _processes.end()) {
         process = it->second;
@@ -279,6 +282,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
         process->_uid = uid;
         process->_gid = gid;
         process->_exe = exe;
+        process->_containeridfromhostprocess = containerid;
         if (ppid != process->_ppid) {
             auto it2 = _processes.find(process->_ppid);
             if (it2 != _processes.end()) {
@@ -292,6 +296,11 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
             if (it2 != _processes.end()) {
                 auto parentproc = it2->second;
                 parentproc->_children.emplace_back(pid);
+                if (!(parentproc->_containeridfromhostprocess).empty()) {
+                    process->_containerid = parentproc->_containeridfromhostprocess;
+                } else {
+                    process->_containerid = parentproc->_containerid;
+                }
                 process->_ancestors = parentproc->_ancestors;
                 struct Ancestor anc = {ppid, parentproc->_exe};
                 process->_ancestors.emplace_back(anc);
@@ -312,6 +321,11 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
                     p->_cmdline = cmdline;
                     p->_uid = uid;
                     p->_gid = gid;
+                    if (!(process->_containeridfromhostprocess).empty()) {
+                        p->_containerid = process->_containeridfromhostprocess;
+                    } else {
+                        p->_containerid = process->_containerid;
+                    }
                     p->_ancestors = process->_ancestors;
                     struct Ancestor anc = {pid, exe};
                     p->_ancestors.emplace_back(anc);
@@ -327,6 +341,12 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
         if (it2 != _processes.end()) {
             auto parentproc = it2->second;
             parentproc->_children.emplace_back(pid);
+            if (!(parentproc->_containeridfromhostprocess).empty()) {
+                process->_containerid = parentproc->_containeridfromhostprocess;
+            } else {
+                process->_containeridfromhostprocess = containerid;
+                process->_containerid = parentproc->_containerid;
+            }            
             process->_ancestors = parentproc->_ancestors;
             struct Ancestor anc = {ppid, parentproc->_exe};
             process->_ancestors.emplace_back(anc);
@@ -383,6 +403,11 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
             if (it2 != _processes.end()) {
                 auto parentproc = it2->second;
                 parentproc->_children.emplace_back(pid);
+                if (!(parentproc->_containeridfromhostprocess).empty()) {
+                    process->_containerid = parentproc->_containeridfromhostprocess;
+                } else {
+                    process->_containerid = parentproc->_containerid;
+                }
                 process->_ancestors = parentproc->_ancestors;
                 struct Ancestor anc = {process->_ppid, parentproc->_exe};
                 process->_ancestors.emplace_back(anc);
@@ -447,6 +472,7 @@ void ProcessTree::PopulateTree()
         pinfo->format_cmdline(cmdline);
 
         auto process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_procfs, pid, ppid, uid, gid, exe, cmdline);
+        process->_containeridfromhostprocess = ExtractContainerId(exe, cmdline);
         _processes[pid] = process;
     }
 
@@ -477,6 +503,13 @@ void ProcessTree::PopulateTree()
             }
         }
     }
+     // Populate containerid
+    for (auto p : _processes) {
+        auto process = p.second;
+        if( !(process->_containeridfromhostprocess).empty()) {
+            SetContainerId(process, process->_containeridfromhostprocess);
+        }
+    }
 }
 
 void ProcessTree::UpdateFlags() {
@@ -485,7 +518,53 @@ void ProcessTree::UpdateFlags() {
     for (auto p : _processes) {
         ApplyFlags(p.second);
     }
-} 
+}
+
+// This utility method gets called only during the initial population of ProcessTree when a containerid shim process is identfied with non-empty value of _containeridfromhostprocess.
+// All of its childrens get assigned with the ContainerId value recursively.
+// ContainerId is not set for the containerid shim process.
+void ProcessTree::SetContainerId(std::shared_ptr<ProcessTreeItem> p, std::string containerid)
+{
+    for (auto c : p->_children) {
+        auto it2 = _processes.find(c);
+        if (it2 != _processes.end()) {
+            auto cp = it2->second;
+            cp->_containerid = containerid;
+            SetContainerId(cp, containerid);
+        }
+    }
+}
+
+std::string ProcessTree::ExtractContainerId(std::string exe, const std::string& cmdline)
+{
+    // cmdline example: 
+    //containerd-shim -namespace moby 
+    //-workdir /var/lib/containerd/io.containerd.runtime.v1.linux/moby/ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1 
+    //-address /run/containerd/containerd.sock -containerd-binary /usr/bin/containerd -runtime-root /var/run/docker/runtime-runc
+
+    std::string containerid = "";
+    if (ends_with(exe, "/containerd-shim") && starts_with(cmdline, "containerd-shim -namespace moby")) {
+        std::string workdirarg = " -workdir ";
+        auto idx = cmdline.find(workdirarg);
+        if (idx != std::string::npos) {
+            auto argstart = idx + workdirarg.length() + 1;
+            //skip initial spaces, if any
+            while (cmdline[argstart] == ' ' && argstart < cmdline.length()) {
+                argstart++;
+            }
+            auto argend = cmdline.find(' ', argstart);
+            if (argend == std::string::npos) {
+                argend = cmdline.length() - 1;
+            }            
+            std::string argvalue = trim_whitespace(cmdline.substr(argstart, (argend - argstart)));
+            auto containerididx = argvalue.find_last_of("/");
+            if (containerididx != std::string::npos && containerididx+13 < argvalue.length()) {
+                containerid = argvalue.substr(containerididx+1, 12);
+            }
+        }
+    }
+    return containerid;
+}
 
 std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
 {
@@ -501,7 +580,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
     process->_ppid = pinfo->ppid();
     process->_exe = pinfo->exe();
     pinfo->format_cmdline(process->_cmdline);
-
+    process->_containeridfromhostprocess = ExtractContainerId(process->_exe, process->_cmdline);
     return process;
 }
 
