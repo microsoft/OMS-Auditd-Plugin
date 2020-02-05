@@ -687,13 +687,18 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     std::shared_ptr<ProcessTreeItem> p;
     std::string cmdline;
 
-    if (!_cmdline.empty()) {
+    if (!_syscall.empty() && _syscall == "execve") {
         p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, _cmdline);
     } else if (!_syscall.empty()) {
         p = _processTree->GetInfoForPid(_pid);
     }
 
-    ret = _builder->AddField(SV_CONTAINERID, p->_containerid, nullptr, field_type_t::UNCLASSIFIED);
+    std::string containerid = "";
+    if (p) {
+        containerid = p->_containerid;
+    }
+
+    ret = _builder->AddField(SV_CONTAINERID, containerid, nullptr, field_type_t::UNCLASSIFIED);
     if (ret != 1) {
         if (ret == Queue::CLOSED) {
             throw std::runtime_error("Queue closed");
