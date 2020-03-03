@@ -1,15 +1,25 @@
-//
-// Created by tad on 3/18/19.
-//
+/*
+    microsoft-oms-auditd-plugin
+
+    Copyright (c) Microsoft Corporation
+
+    All rights reserved.
+
+    MIT License
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the ""Software""), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
 
 #include <sstream>
 #include "AuditRulesMonitor.h"
 
 #include "Logger.h"
 #include "ExecUtil.h"
-
-#define PREFERRED_BACKLOG_LIMIT 8192
-
+#include "AuditStatus.h"
 
 void AuditRulesMonitor::run() {
     Logger::Info("AuditRulesMonitor: Starting");
@@ -278,23 +288,33 @@ bool AuditRulesMonitor::check_kernel_rules() {
 }
 
 void AuditRulesMonitor::check_audit_status() {
-    audit_status status;
-    auto ret = NetlinkRetry([this,&status]() { return _netlink.AuditGet(status); } );
+    AuditStatus status;
+    auto ret = NetlinkRetry([this,&status]() { return status.GetStatus(_netlink); } );
     if (ret != 0) {
         Logger::Error("Failed to get audit status: %s", std::strerror(-ret));
         return;
     }
-    if (status.backlog_limit < PREFERRED_BACKLOG_LIMIT) {
-        Logger::Error("Increasing audit backlog limit from %u to %u", status.backlog_limit, PREFERRED_BACKLOG_LIMIT);
-        ret = NetlinkRetry([this]() {
-            audit_status status;
-            ::memset(&status, 0, sizeof(status));
-            status.mask = AUDIT_STATUS_BACKLOG_LIMIT;
-            status.backlog_limit = PREFERRED_BACKLOG_LIMIT;
-            return _netlink.AuditSet(status);
+    if (status.GetBacklogLimit() < _backlog_limit) {
+        AuditStatus new_status;
+        Logger::Error("Increasing audit backlog limit from %u to %u", status.GetBacklogLimit(), _backlog_limit);
+        new_status.SetBacklogLimit(_backlog_limit);
+        ret = NetlinkRetry([this,&new_status]() {
+            return new_status.UpdateStatus(_netlink);
         });
         if (ret != 0) {
-            Logger::Error("Failed to set audit backlog limit to %d: %s", PREFERRED_BACKLOG_LIMIT, std::strerror(-ret));
+            Logger::Error("Failed to set audit backlog limit to %d: %s", _backlog_limit, std::strerror(-ret));
+            return;
+        }
+    }
+    if (status.HasFeature(AuditStatus::Feature::BacklogWaitTime) && status.GetBacklogWaitTime() < _backlog_wait_time) {
+        AuditStatus new_status;
+        Logger::Error("Increasing audit backlog wait time from %u to %u", status.GetBacklogWaitTime(), _backlog_wait_time);
+        new_status.SetBacklogWaitTime(_backlog_wait_time);
+        ret = NetlinkRetry([this,&new_status]() {
+            return new_status.UpdateStatus(_netlink);
+        });
+        if (ret != 0) {
+            Logger::Error("Failed to set audit backlog wait time to %d: %s", _backlog_wait_time, std::strerror(-ret));
             return;
         }
     }

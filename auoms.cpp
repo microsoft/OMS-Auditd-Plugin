@@ -128,6 +128,9 @@ int main(int argc, char**argv) {
     std::string data_dir = AUOMS_DATA_DIR;
     std::string run_dir = AUOMS_RUN_DIR;
 
+    uint32_t backlog_limit = 10240;
+    uint32_t backlog_wait_time = 1;
+
     if (config.HasKey("outconf_dir")) {
         outconf_dir = config.GetString("outconf_dir");
     }
@@ -168,6 +171,14 @@ int main(int argc, char**argv) {
         if (!parsePath(allowed_socket_dirs, config.GetString("allowed_output_socket_dirs"))) {
             exit(1);
         }
+    }
+
+    if (config.HasKey("backlog_limit")) {
+        backlog_limit = static_cast<uint32_t>(config.GetUint64("backlog_limit"));
+    }
+
+    if (config.HasKey("backlog_wait_time")) {
+        backlog_limit = static_cast<uint32_t>(config.GetUint64("backlog_wait_time"));
     }
 
     std::string input_socket_path = run_dir + "/input.socket";
@@ -257,11 +268,10 @@ int main(int argc, char**argv) {
     Netlink netlink;
     netlink.Open(nullptr);
 
-
     CollectionMonitor collection_monitor(netlink, queue, auditd_path, collector_path, collector_config_path);
     collection_monitor.Start();
 
-    AuditRulesMonitor rules_monitor(netlink, rules_dir, operational_status);
+    AuditRulesMonitor rules_monitor(netlink, rules_dir, backlog_limit, backlog_wait_time, operational_status);
     rules_monitor.Start();
 
     auto user_db = std::make_shared<UserDB>();
