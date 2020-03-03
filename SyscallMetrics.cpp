@@ -81,7 +81,7 @@ bool SyscallMetrics::init() {
     }
 
     if (!PathExists(FTRACE_SYS_ENTER_TRIGGER) || !PathExists(FTRACE_SYS_ENTER_HIST)) {
-        Logger::Warn("SyscallMetrics: ftrace doesn't support hist trigger on this system, syscall metrics will not be collected", FTRACE_INSTANCE_DIR);
+        Logger::Warn("SyscallMetrics: ftrace doesn't support hist trigger on this system, syscall metrics will not be collected");
         return false;
     }
 

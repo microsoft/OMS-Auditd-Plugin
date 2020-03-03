@@ -138,6 +138,7 @@ add_executable(auoms
         TranslateErrno.cpp
         AuditRules.cpp
         AuditRulesMonitor.cpp
+        AuditStatus.cpp AuditStatus.h
         KernelInfo.cpp
         Version.cpp
         UnixDomainListener.cpp
@@ -175,6 +176,7 @@ add_executable(auomsctl
         auoms_version.h
         Netlink.cpp
         NetlinkAudit.cpp
+        AuditStatus.cpp AuditStatus.h
         RunBase.cpp
         Signals.cpp
         Logger.cpp
