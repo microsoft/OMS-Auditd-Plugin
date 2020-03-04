@@ -150,6 +150,7 @@ add_executable(auoms
         SyscallMetrics.cpp
         ProcMetrics.cpp
         SystemMetrics.cpp
+        LogonRecord.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html

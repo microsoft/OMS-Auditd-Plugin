@@ -21,6 +21,7 @@
 #include "Translate.h"
 #include "Interpret.h"
 #include "StringUtils.h"
+#include "RecordType.h"
 
 #include <climits>
 #include <algorithm>
@@ -65,6 +66,8 @@ void RawEventProcessor::process_event(const Event& event) {
 
     static auto S_PID = "pid"s;
     static auto S_PPID = "ppid"s;
+    static auto S_AUID = "auid"s;
+    static auto S_ADDR = "addr"s;
 
     auto ret = _builder->BeginEvent(event.Seconds(), event.Milliseconds(), event.Serial(), event.NumRecords());
     if (ret != 1) {
@@ -103,6 +106,12 @@ void RawEventProcessor::process_event(const Event& event) {
                 cancel_event();
                 return;
             }
+        }
+
+        if (static_cast<RecordType>(rec.RecordType()) == RecordType::USER_LOGIN) {
+            auto addr_field = rec.FieldByName(S_ADDR);
+            auto auid_field = rec.FieldByName(S_AUID);
+            printf("Login: %ld, %s, %s\n", event.Seconds(), auid_field.RawValuePtr(), addr_field.RawValuePtr());
         }
 
         ret = _builder->EndRecord();
