@@ -1,4 +1,4 @@
-policy_module(auoms,1.3);
+policy_module(auoms,1.4);
 
 ####
 # microsoft-oms-auditd-plugin
@@ -18,6 +18,7 @@ policy_module(auoms,1.3);
 
 require {
         type audisp_t;
+        type auditd_t;
         type unconfined_t;
         role system_r;
         class fd use;
@@ -32,10 +33,15 @@ type auoms_exec_t;
 domain_entry_file(unconfined_t, auoms_exec_t)
 
 domtrans_pattern(audisp_t, auoms_exec_t, unconfined_t)
+domtrans_pattern(auditd_t, auoms_exec_t, unconfined_t)
 
 allow audisp_t unconfined_t:process { sigkill sigstop signull signal };
 
 allow audisp_t auoms_exec_t:file { getattr open };
+allow auditd_t auoms_exec_t:file { getattr open };
+
 allow unconfined_t audisp_t:unix_stream_socket rw_socket_perms;
+allow unconfined_t auditd_t:unix_stream_socket rw_socket_perms;
 
 allow audisp_t unconfined_t:fd use;
+allow auditd_t unconfined_t:fd use;

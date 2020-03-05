@@ -121,7 +121,7 @@ TEMP_FILE=/tmp/create_bundle.$$
 
 # Get the git reference hashes in a file
 (
-cd ../..
+cd $SOURCE_DIR/../..
 echo "Entering 'OMS-Auditd-Plugin'" > $TEMP_FILE
 git rev-parse HEAD >> $TEMP_FILE
 cd ../pal
