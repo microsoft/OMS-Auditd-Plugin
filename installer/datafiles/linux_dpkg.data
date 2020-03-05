@@ -13,6 +13,9 @@ if [ "$1" = "purge" ]; then
     if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
         rm ${{AUOMS_AUDISP_CONF}}
     fi
+    if [ -e ${{AUOMS_AUDIT_CONF}} ]; then
+        rm ${{AUOMS_AUDIT_CONF}}
+    fi
     rm -rf ${{AUOMS_ETC}}
     rm -rf ${{AUOMS_VAR}}
 fi
@@ -25,6 +28,12 @@ if [ "$1" = "upgrade" ]; then
         fi
         cp -p ${{AUOMS_AUDISP_CONF}} ${{AUOMS_AUDISP_CONF}}.auomssave
     fi
+    if [ -e ${{AUOMS_AUDIT_CONF}} ]; then
+        if [ -e ${{AUOMS_AUDIT_CONF}}.auomssave ]; then
+            rm ${{AUOMS_AUDIT_CONF}}.auomssave
+        fi
+        cp -p ${{AUOMS_AUDIT_CONF}} ${{AUOMS_AUDIT_CONF}}.auomssave
+    fi
 fi
 
 %Postinstall_100
@@ -35,6 +44,13 @@ if [ "$1" = "configure" ]; then
         fi
         cp -p ${{AUOMS_AUDISP_CONF}}.auomssave ${{AUOMS_AUDISP_CONF}}
     fi
+    if [ -e ${{AUOMS_AUDIT_CONF}}.auomssave ]; then
+        if [ -e ${{AUOMS_AUDIT_CONF}} ]; then
+            rm ${{AUOMS_AUDIT_CONF}}
+        fi
+        cp -p ${{AUOMS_AUDIT_CONF}}.auomssave ${{AUOMS_AUDIT_CONF}}
+    fi
     /opt/microsoft/auoms/bin/auomsctl upgrade
 fi
 rm -rf ${{AUOMS_AUDISP_CONF}}.*
+rm -rf ${{AUOMS_AUDIT_CONF}}.*

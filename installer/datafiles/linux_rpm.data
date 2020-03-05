@@ -4,7 +4,7 @@ SEPKG_DIR:               '/usr/share/selinux/packages/auoms'
 SEPOLICY_FILE:           '/usr/share/selinux/packages/auoms/auoms.pp'
 
 %Files
-${{SEPOLICY_FILE}};                           intermediate/${{BUILD_CONFIGURATION}}/selinux/auoms.pp;                 755; root; root
+${{SEPOLICY_FILE}};                           ${{TARGET_DIR}}/selinux/auoms.pp;                                       755; root; root
 ${{SEPKG_DIR}}/auoms.te;                      installer/selinux/auoms.te;                                             644; root; root
 ${{SEPKG_DIR}}/auoms.fc;                      installer/selinux/auoms.fc;                                             644; root; root
 
@@ -21,6 +21,12 @@ if [ $1 -gt 1 ] ; then
             rm ${{AUOMS_AUDISP_CONF}}.auomssave
         fi
         cp -p ${{AUOMS_AUDISP_CONF}} ${{AUOMS_AUDISP_CONF}}.auomssave
+    fi
+    if [ -e ${{AUOMS_AUDIT_CONF}} ]; then
+        if [ -e ${{AUOMS_AUDIT_CONF}}.auomssave ]; then
+            rm ${{AUOMS_AUDIT_CONF}}.auomssave
+        fi
+        cp -p ${{AUOMS_AUDIT_CONF}} ${{AUOMS_AUDIT_CONF}}.auomssave
     fi
 fi
 
@@ -66,6 +72,12 @@ if [ $1 -gt 1 ] ; then
         fi
         cp -p ${{AUOMS_AUDISP_CONF}}.auomssave ${{AUOMS_AUDISP_CONF}}
     fi
+    if [ -e ${{AUOMS_AUDIT_CONF}}.auomssave ]; then
+        if [ -e ${{AUOMS_AUDIT_CONF}} ]; then
+            rm ${{AUOMS_AUDIT_CONF}}
+        fi
+        cp -p ${{AUOMS_AUDIT_CONF}}.auomssave ${{AUOMS_AUDIT_CONF}}
+    fi
     /opt/microsoft/auoms/bin/auomsctl upgrade
 fi
 rm -rf ${{AUOMS_AUDISP_CONF}}.*
@@ -79,6 +91,9 @@ fi
 if [ $1 -eq 0 ]; then
     if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
         rm ${{AUOMS_AUDISP_CONF}}
+    fi
+    if [ -e ${{AUOMS_AUDIT_CONF}} ]; then
+        rm ${{AUOMS_AUDIT_CONF}}
     fi
 
     if [ -e /usr/sbin/semodule ]; then
