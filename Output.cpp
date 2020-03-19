@@ -21,6 +21,7 @@
 #include "OMSEventWriter.h"
 #include "JSONEventWriter.h"
 #include "MsgPackEventWriter.h"
+#include "FluentEventWriter.h"
 #include "RawEventWriter.h"
 #include "SyslogEventWriter.h"
 

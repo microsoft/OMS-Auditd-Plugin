@@ -105,6 +105,7 @@ add_executable(auoms
         OMSEventWriter.cpp
         JSONEventWriter.cpp
         MsgPackEventWriter.cpp
+        FluentEventWriter.cpp
         SyslogEventWriter.cpp
         TextEventWriter.cpp
         RawEventProcessor.cpp
