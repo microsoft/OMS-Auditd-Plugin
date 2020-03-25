@@ -43,7 +43,7 @@ public:
     MSGPACK_DEFINE(timestamp, message_dict)
 };
 
-// represents a pack of messages.pap
+// represents a pack of messages
 class FluentEvent
 {
 private:
