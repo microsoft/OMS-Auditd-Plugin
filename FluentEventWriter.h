@@ -40,7 +40,6 @@ public:
         timestamp = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     }
 
-
     MSGPACK_DEFINE(timestamp, message_dict)
 };
 
@@ -65,15 +64,29 @@ public:
     MSGPACK_DEFINE(tag, messages)
 };
 
-class FluentEventWriter: public TextEventWriter {
+class FluentEventWriter : public TextEventWriter
+{
 public:
-    explicit FluentEventWriter(TextEventWriterConfig config, const std::string &tag) : TextEventWriter(config), _tag(tag) {}
-    virtual ssize_t WriteEvent(const Event& event, IWriter* writer);
-    virtual ssize_t ReadAck(EventId& event_id, IReader* reader);
+    FluentEventWriter(TextEventWriterConfig config, const std::string &tag) : TextEventWriter(config), _tag(tag) {}
+    virtual ssize_t WriteEvent(const Event &event, IWriter *writer);
+    virtual ssize_t ReadAck(EventId &event_id, IReader *reader);
 
- private:
-    void write_raw_field(const std::string& name, const char* value_data, size_t value_size) { }
+protected:
+    void write_int32_field(const std::string &name, int32_t value);
+    void write_int64_field(const std::string &name, int64_t value);
+    void write_raw_field(const std::string &name, const char *value_data, size_t value_size);
+
+    bool begin_event(const Event &event);
+    void end_event(const Event &event) {}
+
+    bool begin_record(const EventRecord &record, const std::string &record_type_name);
+    void end_record(const EventRecord &record);
+
+private:
     std::string _tag;
+    FluentEvent* _fluentEvent;
+    std::unordered_map<std::string, std::string> _eventCommonFields;
+    std::unordered_map<std::string, std::string> _recordFields;
 };
 
 #endif //AUOMS_FLUENTEVENTWRITER_H

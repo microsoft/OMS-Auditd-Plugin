@@ -15,53 +15,91 @@
 */
 #include "FluentEventWriter.h"
 
-ssize_t FluentEventWriter::WriteEvent(const Event &event, IWriter *writer)
+void FluentEventWriter::write_int32_field(const std::string& name, int32_t value)
 {
-    FluentEvent fluentEvent(_tag);
+    _recordFields[std::string(name.data(), name.length())] = std::to_string(value);
+}
+
+void FluentEventWriter::write_int64_field(const std::string& name, int64_t value)
+{
+    _recordFields[std::string(name.data(), name.length())] = std::to_string(value);
+}
+
+void FluentEventWriter::write_raw_field(const std::string& name, const char* value_data, size_t value_size)
+{
+    _recordFields[std::string(name.data(), name.length())] = std::string(value_data, value_size);
+}
+
+
+bool FluentEventWriter::begin_event(const Event& event)
+{
+    _fluentEvent = new FluentEvent(_tag);
+    _eventCommonFields.clear();
 
     char hostname[HOST_NAME_MAX];
     gethostname(hostname, HOST_NAME_MAX);
-    for (auto rec: event) {
-        std::unordered_map<std::string, std::string> body;
 
-        std::stringstream str;
-        time_t seconds = event.Seconds();
-        time_t milliseconds = event.Milliseconds();
-        str << std::put_time(gmtime(&seconds), "%FT%T") << "." << std::setw(3) << std::setfill('0') << milliseconds << "Z";
-        body["Timestamp"] = str.str();
+    std::stringstream str;
+    time_t seconds = event.Seconds();
+    time_t milliseconds = event.Milliseconds();
+    str << std::put_time(gmtime(&seconds), "%FT%T") << "." << std::setw(3) << std::setfill('0') << milliseconds << "Z";
+    _eventCommonFields[_config.TimestampFieldName] = str.str();
 
-        std::ostringstream timestamp_str;
-        timestamp_str << event.Seconds() << "."
-                    << std::setw(3) << std::setfill('0')
-                    << event.Milliseconds();
+    std::ostringstream timestamp_str;
+    timestamp_str << event.Seconds() << "."
+                << std::setw(3) << std::setfill('0')
+                << event.Milliseconds();
 
-	    body["AuditID"] = timestamp_str.str() + ":" + std::to_string(event.Serial());
-        body["Computer"] = hostname;
-	    body["SerialNumber"] = std::to_string(event.Serial());
-	    body["ProcessFlags"] = event.Flags()>>16;
+    _eventCommonFields["AuditID"] = timestamp_str.str() + ":" + std::to_string(event.Serial());
+    _eventCommonFields["Computer"] = hostname;
+    _eventCommonFields[_config.SerialFieldName] = std::to_string(event.Serial());
+    _eventCommonFields[_config.ProcessFlagsFieldName] = event.Flags()>>16;
 
-        if ((event.Flags() & EVENT_FLAG_IS_AUOMS_EVENT) != 0) {
-            body["MessageType"] = "AUOMS_EVENT";
-        } else {
-            body["MessageType"] = "AUDIT_EVENT";
-        }
-
-        body["RecordTypeCode"] = std::to_string(rec.RecordType());
-        body["RecordType"] = std::string(rec.RecordTypeNamePtr(), rec.RecordTypeNameSize());
-    	body["RecordText"] = std::string(rec.RecordTextPtr(), rec.RecordTextSize());
-
-        for (auto f: rec) {
-            body[std::string(f.FieldNamePtr(), f.FieldNameSize())] = std::string(f.RawValuePtr(), f.RawValueSize());
-        }
-
-        FluentMessage fluentMsg(body);
-        fluentEvent.Add(fluentMsg);
+    if ((event.Flags() & EVENT_FLAG_IS_AUOMS_EVENT) != 0) {
+        _eventCommonFields[_config.MsgTypeFieldName] = "AUOMS_EVENT";
+    } else {
+        _eventCommonFields[_config.MsgTypeFieldName] = "AUDIT_EVENT";
     }
 
-    msgpack::sbuffer sbuf;
-    msgpack::pack(sbuf, fluentEvent);
+    return true;
+}
 
-    return writer->WriteAll(sbuf.data(), sbuf.size());
+ssize_t FluentEventWriter::WriteEvent(const Event& event, IWriter* writer)
+{
+    try {
+        if (write_event(event)) {
+            msgpack::sbuffer sbuf;
+            msgpack::pack(sbuf, *_fluentEvent);
+
+            return writer->WriteAll(sbuf.data(), sbuf.size());
+        } else {
+            return IEventWriter::NOOP;
+        }
+    }
+    catch (const std::exception& ex) {
+        Logger::Warn("Unexpected exception while processing event: %s", ex.what());
+        return IWriter::FAILED;
+    }
+}
+
+bool FluentEventWriter::begin_record(const EventRecord& record, const std::string& record_type_name)
+{
+    _recordFields.clear();
+    write_int32_field(_config.RecordTypeFieldName, static_cast<int32_t>(record.RecordType()));
+    write_string_field(_config.RecordTypeNameFieldName, record_type_name);
+
+    _recordFields["RecordText"] = std::string(record.RecordTextPtr(), record.RecordTextSize());
+    for (auto itr = _eventCommonFields.begin(); itr != _eventCommonFields.end(); ++itr) {
+        _recordFields[itr->first] = itr->second;
+    }
+
+    return true;
+}
+
+void FluentEventWriter::end_record(const EventRecord& record)
+{
+    FluentMessage fluentMsg(_recordFields);
+    _fluentEvent->Add(fluentMsg);
 }
 
 ssize_t FluentEventWriter::ReadAck(EventId &event_id, IReader *reader)
