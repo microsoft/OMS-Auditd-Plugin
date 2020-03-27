@@ -36,9 +36,6 @@ bool FluentEventWriter::begin_event(const Event& event)
     _fluentEvent = new FluentEvent(_tag);
     _eventCommonFields.clear();
 
-    char hostname[HOST_NAME_MAX];
-    gethostname(hostname, HOST_NAME_MAX);
-
     std::stringstream str;
     time_t seconds = event.Seconds();
     time_t milliseconds = event.Milliseconds();
@@ -51,7 +48,7 @@ bool FluentEventWriter::begin_event(const Event& event)
                 << event.Milliseconds();
 
     _eventCommonFields[_config.AuditIDFieldName] = timestamp_str.str() + ":" + std::to_string(event.Serial());
-    _eventCommonFields[_config.ComputerFieldName] = hostname;
+    _eventCommonFields[_config.ComputerFieldName] = _config.HostnameValue;
     _eventCommonFields[_config.SerialFieldName] = std::to_string(event.Serial());
     _eventCommonFields[_config.ProcessFlagsFieldName] = event.Flags()>>16;
 

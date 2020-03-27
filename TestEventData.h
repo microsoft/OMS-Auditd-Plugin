@@ -102,5 +102,6 @@ extern const std::unordered_map<std::string, std::string> TestConfigFieldNameOve
 extern const std::unordered_map<std::string, std::string> TestConfigInterpFieldNameMap;
 extern const std::unordered_set<std::string> TestConfigFilterRecordTypeSet;
 extern const std::unordered_set<std::string> TestConfigFilterFieldNameSet;
+extern const std::string TestConfigHostnameValue;
 
 #endif //AUOMS_TESTEVENTDATA_H
