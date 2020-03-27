@@ -105,6 +105,7 @@ add_executable(auoms
         OMSEventWriter.cpp
         JSONEventWriter.cpp
         MsgPackEventWriter.cpp
+        FluentEventWriter.cpp
         SyslogEventWriter.cpp
         TextEventWriter.cpp
         RawEventProcessor.cpp
@@ -400,3 +401,20 @@ target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}
 )
 
 add_test(OMSEventWriter ${CMAKE_BINARY_DIR}/OMSEventWriterTests --log_sink=OMSEventWriterTests.log --report_sink=OMSEventWriterTests.report)
+
+add_executable(FluentEventWriterTests
+        FluentEventWriterTests.cpp
+        FluentEventWriter.cpp
+        Event.cpp
+        TextEventWriter.cpp
+        Logger.cpp
+        StringUtils.cpp
+        TestEventData.cpp
+        ExecveConverter.cpp
+)
+
+target_link_libraries(FluentEventWriterTests ${Boost_LIBRARIES}
+        pthread
+)
+
+add_test(FluentEventWriter ${CMAKE_BINARY_DIR}/FluentEventWriterTests --log_sink=FluentEventWriterTests.log --report_sink=FluentEventWriterTests.report)
