@@ -136,6 +136,14 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
                     stdmap[std::string(kv.key.via.str.ptr, kv.key.via.str.size)] = std::string(kv.val.via.str.ptr, kv.val.via.str.size);
                 }
             }
+            auto iter = stdmap.find(config.ComputerFieldName);
+            if(iter == stdmap.end()) {
+                BOOST_FAIL("Computer field is missing in the Fluent message map");
+            }
+            if(iter->second.empty()) {
+                BOOST_FAIL("Computer field value is empty in the Fluent message map");
+            }
+            stdmap.erase(config.ComputerFieldName);
             for (auto itr = stdmap.begin(); itr != stdmap.end(); ++itr) {
                 jsonWriter.Key(itr->first.c_str());
                 jsonWriter.String(itr->second.c_str());

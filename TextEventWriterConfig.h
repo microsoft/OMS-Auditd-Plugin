@@ -32,6 +32,9 @@ public:
         RecordsFieldName = "records";
         FieldSuffix = "_r";
         ProcessFlagsFieldName = "ProcessFlags";
+        ComputerFieldName = "Computer";
+        AuditIDFieldName = "AuditID";
+        RecordTextFieldName = "RecordText";
     }
 
     void LoadFromConfig(std::string name, const Config& config);
@@ -43,6 +46,9 @@ public:
     std::string RecordTypeNameFieldName;
     std::string RecordsFieldName;
     std::string ProcessFlagsFieldName;
+    std::string ComputerFieldName;
+    std::string AuditIDFieldName;
+    std::string RecordTextFieldName;
 
     std::string FieldSuffix; // The suffix to add to the interpreted field name
 

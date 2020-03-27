@@ -50,8 +50,8 @@ bool FluentEventWriter::begin_event(const Event& event)
                 << std::setw(3) << std::setfill('0')
                 << event.Milliseconds();
 
-    _eventCommonFields["AuditID"] = timestamp_str.str() + ":" + std::to_string(event.Serial());
-    _eventCommonFields["Computer"] = hostname;
+    _eventCommonFields[_config.AuditIDFieldName] = timestamp_str.str() + ":" + std::to_string(event.Serial());
+    _eventCommonFields[_config.ComputerFieldName] = hostname;
     _eventCommonFields[_config.SerialFieldName] = std::to_string(event.Serial());
     _eventCommonFields[_config.ProcessFlagsFieldName] = event.Flags()>>16;
 
@@ -88,7 +88,7 @@ bool FluentEventWriter::begin_record(const EventRecord& record, const std::strin
     write_int32_field(_config.RecordTypeFieldName, static_cast<int32_t>(record.RecordType()));
     write_string_field(_config.RecordTypeNameFieldName, record_type_name);
 
-    _recordFields["RecordText"] = std::string(record.RecordTextPtr(), record.RecordTextSize());
+    _recordFields[_config.RecordTextFieldName] = std::string(record.RecordTextPtr(), record.RecordTextSize());
     for (auto itr = _eventCommonFields.begin(); itr != _eventCommonFields.end(); ++itr) {
         _recordFields[itr->first] = itr->second;
     }
