@@ -24,6 +24,7 @@
 #include "IO.h"
 #include "TempDir.h"
 #include "TestEventData.h"
+#include "TestEventWriter.h"
 #include <fstream>
 #include <stdexcept>
 
@@ -31,32 +32,6 @@ extern "C" {
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdlib.h>
-};
-
-
-class TestEventWriter: public IWriter {
-public:
-    virtual ssize_t WaitWritable(long timeout) {
-        return OK;
-    }
-
-    virtual ssize_t WriteAll(const void *buf, size_t size, long timeout, const std::function<bool()>& fn) {
-        _buf.assign(reinterpret_cast<const char*>(buf), size);
-        _events.emplace_back(_buf);
-        return size;
-    }
-
-    size_t GetEventCount() {
-        return _events.size();
-    }
-
-    std::string GetEvent(int idx) {
-        return _events[idx];
-    }
-
-private:
-    std::string _buf;
-    std::vector<std::string> _events;
 };
 
 BOOST_AUTO_TEST_CASE( basic_test ) {
@@ -70,53 +45,10 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     }
 
     TextEventWriterConfig config;
-    config.FieldNameOverrideMap = std::unordered_map<std::string, std::string> {
-            {"1327", "PROCTITLE"},
-    };
-
-    config.InterpFieldNameMap = std::unordered_map<std::string, std::string> {
-            {"uid", "user"},
-            {"auid", "audit_user"},
-            {"euid", "effective_user"},
-            {"suid", "set_user"},
-            {"fsuid", "filesystem_user"},
-            {"inode_uid", "inode_user"},
-            {"oauid", "o_audit_user"},
-            {"ouid", "o_user"},
-            {"obj_uid", "obj_user"},
-            {"sauid", "sender_audit_user"},
-            {"gid", "group"},
-            {"egid", "effective_group"},
-            {"fsgid", "filesystem_group"},
-            {"inode_gid", "inode_group"},
-            {"new_gid", "new_group"},
-            {"obj_gid", "obj_group"},
-            {"ogid", "owner_group"},
-            {"sgid", "set_group"},
-    };
-
-    config.FilterRecordTypeSet = std::unordered_set<std::string> {
-            "BPRM_FCAPS",
-            "CRED_ACQ",
-            "CRED_DISP",
-            "CRED_REFR",
-            "CRYPTO_KEY_USER",
-            "CRYPTO_SESSION",
-            "LOGIN",
-            "PROCTITLE",
-            "USER_ACCT",
-            "USER_CMD",
-            "USER_END",
-            "USER_LOGOUT",
-            "USER_START",
-    };
-
-    config.FilterFieldNameSet = std::unordered_set<std::string> {
-            "arch_r",
-            "ses_r",
-            "mode_r",
-            "syscall_r",
-    };
+    config.FieldNameOverrideMap = TestConfigFieldNameOverrideMap;
+    config.InterpFieldNameMap = TestConfigInterpFieldNameMap;
+    config.FilterRecordTypeSet = TestConfigFilterRecordTypeSet;
+    config.FilterFieldNameSet = TestConfigFilterFieldNameSet;
 
     OMSEventWriter oms_writer(config);
 

@@ -17,17 +17,17 @@
 
 void FluentEventWriter::write_int32_field(const std::string& name, int32_t value)
 {
-    _recordFields[std::string(name.data(), name.length())] = std::to_string(value);
+    _recordFields[name] = std::to_string(value);
 }
 
 void FluentEventWriter::write_int64_field(const std::string& name, int64_t value)
 {
-    _recordFields[std::string(name.data(), name.length())] = std::to_string(value);
+    _recordFields[name] = std::to_string(value);
 }
 
 void FluentEventWriter::write_raw_field(const std::string& name, const char* value_data, size_t value_size)
 {
-    _recordFields[std::string(name.data(), name.length())] = std::string(value_data, value_size);
+    _recordFields[name] = std::string(value_data, value_size);
 }
 
 
