@@ -1,0 +1,10 @@
+<Sysmon schemaversion="4.21">
+  <HashAlgorithms>md5,sha1</HashAlgorithms>
+   <EventFiltering>
+      <RuleGroup name="rulegroup1" groupRelation="or">
+         <ProcessCreate onmatch="exclude">
+             <Image condition="begin with">ping.exe</Image>
+         </ProcessCreate>
+      </RuleGroup>
+   </EventFiltering>
+</Sysmon>

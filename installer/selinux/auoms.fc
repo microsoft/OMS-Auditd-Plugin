@@ -1,1 +1,0 @@
-/opt/microsoft/auoms/bin/auomscollect      --  gen_context(system_u:object_r:auoms_exec_t,s0)

@@ -109,6 +109,7 @@ public:
     ~ProcFilter() = default;
 
     bool ParseConfig(const Config& config);
+    bool ParseSysmonConfig(std::string& xmlFile);
     std::vector<ProcFilterSpec> _filters;
 
 private:
