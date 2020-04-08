@@ -273,14 +273,17 @@ target_link_libraries(ConfigTests ${Boost_LIBRARIES})
 add_test(Config ${CMAKE_BINARY_DIR}/ConfigTests --log_sink=ConfigTests.log --report_sink=ConfigTests.report)
 
 add_executable(EventTests
-        TempFile.cpp
+        TempDir.cpp
         Logger.cpp
-        Queue.cpp
+        PriorityQueue.cpp
+        FileUtils.cpp
         Event.cpp
         EventTests.cpp
 )
 
-target_link_libraries(EventTests ${Boost_LIBRARIES})
+target_link_libraries(EventTests ${Boost_LIBRARIES}
+        pthread
+)
 
 add_test(Event ${CMAKE_BINARY_DIR}/EventTests --log_sink=EventTests.log --report_sink=EventTests.report)
 
@@ -360,8 +363,6 @@ add_executable(EventProcessorTests
 )
 
 target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
-        audit
-        auparse
         dl
         pthread
         rt
@@ -383,8 +384,6 @@ add_executable(ExecveConverterTests
 )
 
 target_link_libraries(ExecveConverterTests ${Boost_LIBRARIES}
-        audit
-        auparse
         dl
         pthread
         rt

@@ -37,7 +37,7 @@ class RawEventQueue: public IEventBuilderAllocator {
 public:
     explicit RawEventQueue(std::vector<std::string>& cmdlines): _buffer(), _size(0), _cmdlines(cmdlines) {}
 
-    int Allocate(void** data, size_t size) override {
+    bool Allocate(void** data, size_t size) override {
         if (_size != size) {
             _size = size;
         }
@@ -45,10 +45,10 @@ public:
             _buffer.resize(_size);
         }
         *data = _buffer.data();
-        return 1;
+        return true;
     }
 
-    int Commit() override {
+    bool Commit() override {
         Event event(_buffer.data(), _size);
         std::vector<EventRecord> recs;
         for(auto& rec :event) {
@@ -59,12 +59,12 @@ public:
         _converter.Convert(recs, _cmdline);
         _cmdlines.emplace_back(_cmdline);
         _size = 0;
-        return 1;
+        return true;
     }
 
-    int Rollback() override {
+    bool Rollback() override {
         _size = 0;
-        return 1;
+        return true;
     }
 
 private:

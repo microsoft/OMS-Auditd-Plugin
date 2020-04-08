@@ -17,7 +17,7 @@
 #define BOOST_TEST_MODULE "EventProcessorTests"
 #include <boost/test/unit_test.hpp>
 
-#include "Queue.h"
+#include "PriorityQueue.h"
 #include "Logger.h"
 #include "TempDir.h"
 #include "TestEventData.h"
@@ -47,7 +47,7 @@ class RawEventQueue: public IEventBuilderAllocator {
 public:
     explicit RawEventQueue(std::shared_ptr<RawEventProcessor> proc): _buffer(), _size(0), _proc(std::move(proc)) {}
 
-    int Allocate(void** data, size_t size) override {
+    bool Allocate(void** data, size_t size) override {
         if (_size != size) {
             _size = size;
         }
@@ -55,18 +55,18 @@ public:
             _buffer.resize(_size);
         }
         *data = _buffer.data();
-        return 1;
+        return true;
     }
 
-    int Commit() override {
+    bool Commit() override {
         _proc->ProcessData(_buffer.data(), _size);
         _size = 0;
-        return 1;
+        return true;
     }
 
-    int Rollback() override {
+    bool Rollback() override {
         _size = 0;
-        return 1;
+        return true;
     }
 
 private:
