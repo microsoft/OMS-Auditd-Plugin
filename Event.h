@@ -28,9 +28,9 @@ constexpr uint32_t EVENT_FLAG_IS_AUOMS_EVENT = 1;
 
 class IEventBuilderAllocator {
 public:
-    virtual int Allocate(void** data, size_t size) = 0;
-    virtual int Commit() = 0;
-    virtual int Rollback() = 0;
+    virtual bool Allocate(void** data, size_t size) = 0;
+    virtual bool Commit() = 0;
+    virtual bool Rollback() = 0;
 };
 
 class EventBuilder {
@@ -41,18 +41,18 @@ public:
     ~EventBuilder() {
     }
 
-    int BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint16_t num_records);
+    bool BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint16_t num_records);
     void SetEventFlags(uint32_t flags);
     uint32_t GetEventFlags();
     void SetEventPid(int32_t pid);
     int32_t GetEventPid();
-    int EndEvent();
-    int CancelEvent();
-    int BeginRecord(uint32_t record_type, const char* record_name, const char* record_text, uint16_t num_fields);
-    int BeginRecord(uint32_t record_type, const std::string_view& record_name, const std::string_view& record_text, uint16_t num_fields);
-    int EndRecord();
-    int AddField(const char *field_name, const char* raw_value, const char* interp_value, field_type_t field_type);
-    int AddField(const std::string_view& field_name, const std::string_view& raw_value, const std::string_view& interp_value, field_type_t field_type);
+    bool EndEvent();
+    bool CancelEvent();
+    bool BeginRecord(uint32_t record_type, const char* record_name, const char* record_text, uint16_t num_fields);
+    bool BeginRecord(uint32_t record_type, const std::string_view& record_name, const std::string_view& record_text, uint16_t num_fields);
+    bool EndRecord();
+    bool AddField(const char *field_name, const char* raw_value, const char* interp_value, field_type_t field_type);
+    bool AddField(const std::string_view& field_name, const std::string_view& raw_value, const std::string_view& interp_value, field_type_t field_type);
     int GetFieldCount();
 
 private:

@@ -56,7 +56,7 @@ add_executable(auomscollect
         IO.cpp
         Event.cpp
         Signals.cpp
-        Queue.cpp
+        PriorityQueue.cpp
         UnixDomainWriter.cpp
         Logger.cpp
         Config.cpp
@@ -109,7 +109,6 @@ add_executable(auoms
         TextEventWriter.cpp
         RawEventProcessor.cpp
         Signals.cpp
-        Queue.cpp
         UnixDomainWriter.cpp
         Logger.cpp
         Config.cpp
@@ -151,6 +150,7 @@ add_executable(auoms
         SyscallMetrics.cpp
         ProcMetrics.cpp
         SystemMetrics.cpp
+        PriorityQueue.cpp PriorityQueue.h
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -294,6 +294,18 @@ add_executable(QueueTests
 target_link_libraries(QueueTests ${Boost_LIBRARIES})
 
 add_test(Queue ${CMAKE_BINARY_DIR}/QueueTests --log_sink=QueueTests.log --report_sink=QueueTests.report)
+
+add_executable(PriorityQueueTests
+        TempDir.cpp
+        Logger.cpp
+        FileUtils.cpp
+        PriorityQueue.cpp
+        PriorityQueueTests.cpp
+)
+
+target_link_libraries(PriorityQueueTests ${Boost_LIBRARIES} pthread)
+
+add_test(Queue ${CMAKE_BINARY_DIR}/PriorityQueueTests --log_sink=PriorityQueueTests.log --report_sink=PriorityQueueTests.report)
 
 add_executable(UserDBTests
         TempDir.cpp

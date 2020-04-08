@@ -119,6 +119,15 @@ bool Config::GetBool(const std::string& name) const
     }
 }
 
+double Config::GetDouble(const std::string& name) const
+{
+    if (!HasKey(name)) {
+        throw std::runtime_error("Config::GetDouble(): Key not found: " + name);
+    } else {
+        return std::stod(_map.at(name));
+    }
+}
+
 int64_t Config::GetInt64(const std::string& name) const
 {
     if (!HasKey(name)) {

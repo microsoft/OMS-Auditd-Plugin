@@ -8,7 +8,7 @@
 #include "UnixDomainListener.h"
 #include "RunBase.h"
 #include "EventQueue.h"
-#include "Queue.h"
+#include "PriorityQueue.h"
 
 #include <functional>
 
@@ -50,7 +50,7 @@ private:
 
 class OperationalStatus: public RunBase {
 public:
-    explicit OperationalStatus(const std::string socket_path, std::shared_ptr<Queue> queue):
+    explicit OperationalStatus(const std::string socket_path, std::shared_ptr<PriorityQueue> queue):
             _listener(socket_path, [this]() -> std::string { return get_status_str();}),
             _error_conditions(), _builder(std::make_shared<EventQueue>(std::move(queue))) {}
 

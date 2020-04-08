@@ -19,7 +19,7 @@
 
 #include "RunBase.h"
 #include "EventQueue.h"
-#include "Queue.h"
+#include "PriorityQueue.h"
 #include "Logger.h"
 
 #include <atomic>
@@ -166,7 +166,7 @@ private:
 class Metrics: public RunBase {
 public:
     explicit Metrics(std::shared_ptr<EventBuilder> builder): _builder(std::move(builder)) {}
-    explicit Metrics(std::shared_ptr<Queue> queue): _builder(std::make_shared<EventBuilder>(std::make_shared<EventQueue>(std::move(queue)))) {}
+    explicit Metrics(std::shared_ptr<PriorityQueue> queue): _builder(std::make_shared<EventBuilder>(std::make_shared<EventQueue>(std::move(queue)))) {}
 
     std::shared_ptr<Metric> AddMetric(const std::string namespace_name, const std::string name, MetricPeriod sample_period, MetricPeriod agg_period);
 

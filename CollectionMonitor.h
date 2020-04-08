@@ -31,7 +31,7 @@ public:
     static constexpr int MAX_COLLECTOR_RESTARTS = 15; // The maximum times the collector will be restarted within COLLECTOR_RESTART_WINDOW seconds before restarts are disabled.
 
     CollectionMonitor(Netlink& netlink,
-                      std::shared_ptr<Queue> queue,
+                      std::shared_ptr<PriorityQueue> queue,
                       const std::string& auditd_path,
                       const std::string& collector_path,
                       const std::string& collector_config_path)

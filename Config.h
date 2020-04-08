@@ -31,6 +31,7 @@ public:
 
     bool HasKey(const std::string& name) const;
     bool GetBool(const std::string& name) const;
+    double GetDouble(const std::string& name) const;
     int64_t GetInt64(const std::string& name) const;
     uint64_t GetUint64(const std::string& name) const;
     std::string GetString(const std::string& name) const;

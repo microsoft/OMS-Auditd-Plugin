@@ -39,7 +39,7 @@ extern "C" {
 AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _head(0), _tail(0), _size(0) {
     _ring.reserve(max_size);
     for (size_t i = 0; i < max_size; i++) {
-        _ring.emplace_back(EventId(0, 0, 0), QueueCursor(0, 0));
+        _ring.emplace_back(EventId(0, 0, 0), 0, 0);
     }
 }
 
@@ -49,12 +49,12 @@ void AckQueue::Close() {
     _cond.notify_all();
 }
 
-bool AckQueue::Add(const EventId& event_id, const QueueCursor& cursor) {
+bool AckQueue::Add(const EventId& event_id, uint32_t priority, uint64_t seq) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
     _cond.wait(_lock, [this]() { return _closed || _size < _max_size; });
     if (_size < _max_size) {
-        _ring[_head] = std::make_pair(event_id, cursor);
+        _ring[_head] = _RingEntry(event_id, priority, seq);
         _size++;
         _head++;
         if (_head >= _max_size) {
@@ -73,11 +73,11 @@ bool AckQueue::Wait(int millis) {
     return _cond.wait_until(_lock, now + (std::chrono::milliseconds(1) * millis), [this] { return _size == 0; });
 }
 
-bool AckQueue::Ack(const EventId& event_id, QueueCursor& cursor) {
+bool AckQueue::Ack(const EventId& event_id, uint32_t& priority, uint64_t& seq) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
     ssize_t last = -1;
-    while(_size > 0 && _ring[_tail].first <= event_id) {
+    while(_size > 0 && _ring[_tail]._id <= event_id) {
         last = _tail;
         _tail++;
         _size--;
@@ -88,113 +88,10 @@ bool AckQueue::Ack(const EventId& event_id, QueueCursor& cursor) {
     if (last < 0) {
         return false;
     }
-    cursor = _ring[last].second;
+    priority = _ring[last]._priority;
+    seq = _ring[last]._seq;
     _cond.notify_all();
     return true;
-}
-
-/****************************************************************************
- *
- ****************************************************************************/
-
-bool CursorWriter::Read() {
-    std::lock_guard<std::mutex> lock(_mutex);
-
-    std::array<uint8_t, QueueCursor::DATA_SIZE> data;
-
-    int fd = open(_path.c_str(), O_RDONLY);
-    if (fd < 0) {
-        if (errno != ENOENT) {
-            Logger::Error("Output(%s): Failed to open cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
-            return false;
-        } else {
-            _cursor = QueueCursor::HEAD;
-            return true;
-        }
-    }
-
-    auto ret = read(fd, data.data(), data.size());
-    if (ret != data.size()) {
-        if (ret >= 0) {
-            Logger::Error("Output(%s): Failed to read cursor file (%s): only %ld bytes out of %ld where read", _name.c_str(), _path.c_str(), ret, data.size());
-        } else {
-            Logger::Error("Output(%s): Failed to read cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
-        }
-        close(fd);
-        return false;
-    }
-    close(fd);
-
-    _cursor.from_data(data);
-
-    return true;
-}
-
-bool CursorWriter::Write() {
-    std::lock_guard<std::mutex> lock(_mutex);
-
-    std::array<uint8_t, QueueCursor::DATA_SIZE> data;
-    _cursor.to_data(data);
-
-    int fd = open(_path.c_str(), O_WRONLY|O_CREAT, 0600);
-    if (fd < 0) {
-        Logger::Error("Output(%s): Failed to open/create cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
-        return false;
-    }
-
-    auto ret = write(fd, data.data(), data.size());
-    if (ret != data.size()) {
-        if (ret >= 0) {
-            Logger::Error("Output(%s): Failed to write cursor file (%s): only %ld bytes out of %ld where written", _name.c_str(), _path.c_str(), ret, data.size());
-        } else {
-            Logger::Error("Output(%s): Failed to write cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
-        }
-        close(fd);
-        return false;
-    }
-
-    close(fd);
-    return true;
-}
-
-bool CursorWriter::Delete() {
-    auto ret = unlink(_path.c_str());
-    if (ret != 0 && errno != ENOENT) {
-        Logger::Error("Output(%s): Failed to delete cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
-        return false;
-    }
-    return true;
-}
-
-QueueCursor CursorWriter::GetCursor() {
-    std::lock_guard<std::mutex> lock(_mutex);
-    return _cursor;
-}
-
-void CursorWriter::UpdateCursor(const QueueCursor& cursor) {
-    std::lock_guard<std::mutex> lock(_mutex);
-    _cursor = cursor;
-    _cursor_updated = true;
-    _cond.notify_all();
-}
-
-void CursorWriter::on_stopping() {
-    std::lock_guard<std::mutex> lock(_mutex);
-    _cursor_updated = true;
-    _cond.notify_all();
-}
-
-void CursorWriter::run() {
-    while (!IsStopping()) {
-        {
-            std::unique_lock<std::mutex> lock(_mutex);
-            _cond.wait(lock, [this]{ return _cursor_updated;});
-            _cursor_updated = false;
-        }
-        Write();
-        _sleep(100);
-    }
-    Write();
 }
 
 /****************************************************************************
@@ -202,20 +99,21 @@ void CursorWriter::run() {
  ****************************************************************************/
 void AckReader::Init(std::shared_ptr<IEventWriter> event_writer,
                      std::shared_ptr<IOBase> writer,
-                     std::shared_ptr<AckQueue> ack_queue,
-                     std::shared_ptr<CursorWriter> cursor_writer) {
+                     std::shared_ptr<QueueCursor> cursor,
+                     std::shared_ptr<AckQueue> ack_queue) {
     _event_writer = event_writer;
     _writer = writer;
+    _cursor = cursor;
     _queue = ack_queue;
-    _cursor_writer = cursor_writer;
 }
 
 void AckReader::run() {
     EventId id;
-    QueueCursor cursor;
+    uint32_t priority;
+    uint64_t seq;
     while(_event_writer->ReadAck(id, _writer.get()) == IO::OK) {
-        if (_queue->Ack(id, cursor)) {
-            _cursor_writer->UpdateCursor(cursor);
+        if (_queue->Ack(id, priority, seq)) {
+            _cursor->Commit(priority, seq);
         }
     }
     // The connection is lost, Close writer here so that Output::handle_events will exit
@@ -324,7 +222,7 @@ bool Output::Load(std::unique_ptr<Config>& config) {
 
 // Delete any resources associated with the output
 void Output::Delete() {
-    _cursor_writer->Delete();
+    _queue->RemoveCursor(_name);
     Logger::Info("Output(%s): Removed", _name.c_str());
 }
 
@@ -363,44 +261,19 @@ bool Output::check_open()
 }
 
 bool Output::handle_events(bool checkOpen) {
-    std::array<uint8_t, Queue::MAX_ITEM_SIZE> data;
-
-    _cursor = _cursor_writer->GetCursor();
-    _cursor_writer->Start();
-
     if (_ack_mode) {
-        _ack_reader->Init(_event_writer, _writer, _ack_queue, _cursor_writer);
+        _ack_reader->Init(_event_writer, _writer, _cursor, _ack_queue);
         _ack_reader->Start();
     }
 
     while(!IsStopping() && (!checkOpen || _writer->IsOpen())) {
-        QueueCursor cursor;
-        size_t size = data.size();
-
-        int ret;
+        std::pair<std::shared_ptr<QueueItem>,bool> ret;
         do {
-            ret = _queue->Get(_cursor, data.data(), &size, &cursor, 100);
-        } while(ret == Queue::TIMEOUT && (!checkOpen || _writer->IsOpen()));
+            ret = _cursor->Get(100, !_ack_mode);
+        } while((!ret.first && !ret.second) && (!checkOpen || _writer->IsOpen()));
 
-        if (ret == Queue::INTERRUPTED) {
-            continue;
-        }
-
-        if (ret == Queue::BUFFER_TOO_SMALL) {
-            Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
-            _queue->Reset();
-            continue;
-        }
-
-        auto vs = Event::GetVersionAndSize(data.data());
-        if (vs.second != size) {
-            Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
-            _queue->Reset();
-            continue;
-        }
-
-        if (ret == Queue::OK && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
-            Event event(data.data(), size);
+        if (ret.first && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
+            Event event(ret.first->Data(), ret.first->Size());
             bool filtered = _event_filter && _event_filter->IsEventFiltered(event);
             if (!filtered) {
                 auto ret = _event_writer->WriteEvent(event, _writer.get());
@@ -410,11 +283,8 @@ bool Output::handle_events(bool checkOpen) {
                     break;
                 }
             }
-            _cursor = cursor;
             if (_ack_mode && !filtered) {
-                _ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()), _cursor);
-            } else {
-                _cursor_writer->UpdateCursor(cursor);
+                _ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()), ret.first->Priority(), ret.first->Sequence());
             }
         }
     }
@@ -435,14 +305,12 @@ bool Output::handle_events(bool checkOpen) {
         Logger::Info("Output(%s): Connection lost", _name.c_str());
     }
 
-    _cursor_writer->Stop();
-
     return !IsStopping();
 }
 
 void Output::on_stopping() {
     Logger::Info("Output(%s): Stopping", _name.c_str());
-    _queue->Interrupt();
+    _cursor->Close();
     if (_writer) {
         _writer->CloseWrite();
     }
@@ -458,28 +326,23 @@ void Output::on_stop() {
     if (_writer) {
         _writer->Close();
     }
-    if (_cursor_writer) {
-        _cursor_writer->Stop();
-    }
-    _cursor_writer->Write();
     Logger::Info("Output(%s): Stopped", _name.c_str());
 }
 
 void Output::run() {
     Logger::Info("Output(%s): Started", _name.c_str());
 
-    if (!_cursor_writer->Read()) {
-        Logger::Error("Output(%s): Aborting because cursor file is unreadable", _name.c_str());
+    _cursor = _queue->OpenCursor(_name);
+    if (!_cursor) {
+        Logger::Error("Output(%s): Aborting because cursor is invalid", _name.c_str());
         return;
     }
 
     bool checkOpen = true;
 
-    _cursor = _cursor_writer->GetCursor();
-     if (!_config->HasKey("output_socket")) {
-           checkOpen = false;
+    if (!_config->HasKey("output_socket")) {
+        checkOpen = false;
     }
-
 
     while(!IsStopping()) {
         while (!checkOpen || check_open()) {

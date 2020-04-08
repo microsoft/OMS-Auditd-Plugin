@@ -173,26 +173,22 @@ bool OperationalStatus::send_status() {
         num_fields = 2;
     }
 
-    if (_builder.BeginEvent(sec, msec, 0, 1) != 1) {
+    if (!_builder.BeginEvent(sec, msec, 0, 1)) {
         return false;
     }
-    if (_builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_STATUS), RecordTypeToName(RecordType::AUOMS_STATUS), "", num_fields) != 1) {
-        _builder.CancelEvent();
+    if (!_builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_STATUS), RecordTypeToName(RecordType::AUOMS_STATUS), "", num_fields)) {
         return false;
     }
-    if (_builder.AddField("version", AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED) != 1) {
-        _builder.CancelEvent();
+    if (!_builder.AddField("version", AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED)) {
         return false;
     }
     if (!errors.empty()) {
-        if (_builder.AddField("errors", errors, nullptr, field_type_t::UNCLASSIFIED) != 1) {
-            _builder.CancelEvent();
+        if (!_builder.AddField("errors", errors, nullptr, field_type_t::UNCLASSIFIED)) {
             return false;
         }
     }
-    if(_builder.EndRecord() != 1) {
-        _builder.CancelEvent();
+    if(!_builder.EndRecord()) {
         return false;
     }
-    return _builder.EndEvent() == 1;
+    return _builder.EndEvent();
 }

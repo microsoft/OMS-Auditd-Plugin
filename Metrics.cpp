@@ -73,62 +73,50 @@ bool Metrics::send_metrics() {
 
             int num_fields = 10;
 
-            if (_builder->BeginEvent(sec, msec, 0, 1) != 1) {
+            if (!_builder->BeginEvent(sec, msec, 0, 1)) {
                 return false;
             }
-            if (_builder->BeginRecord(static_cast<uint32_t>(rec_type), rec_type_name, "", num_fields) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->BeginRecord(static_cast<uint32_t>(rec_type), rec_type_name, "", num_fields)) {
                 return false;
             }
-            if (_builder->AddField("version", AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("version", AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("StartTime", system_time_to_iso3339(snap.start_time), nullptr,
-                                  field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("StartTime", system_time_to_iso3339(snap.start_time), nullptr,
+                                  field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("EndTime", system_time_to_iso3339(snap.end_time), nullptr,
-                                  field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("EndTime", system_time_to_iso3339(snap.end_time), nullptr,
+                                  field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("Namespace", snap.namespace_name, nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("Namespace", snap.namespace_name, nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("Name", snap.name, nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("Name", snap.name, nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("SamplePeriod", std::to_string(snap.sample_period), nullptr,
-                                  field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("SamplePeriod", std::to_string(snap.sample_period), nullptr,
+                                  field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("NumSamples", std::to_string(snap.num_samples), nullptr,
-                                  field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("NumSamples", std::to_string(snap.num_samples), nullptr,
+                                  field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("Min", std::to_string(snap.min), nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("Min", std::to_string(snap.min), nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("Max", std::to_string(snap.max), nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("Max", std::to_string(snap.max), nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("Avg", std::to_string(snap.avg), nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("Avg", std::to_string(snap.avg), nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->EndRecord() != 1) {
-                _builder->CancelEvent();
+            if (!_builder->EndRecord()) {
                 return false;
             }
-            if (_builder->EndEvent() != 1) {
+            if (!_builder->EndEvent()) {
                 return false;
             }
         }

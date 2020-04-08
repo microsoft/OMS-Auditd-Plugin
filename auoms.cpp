@@ -18,7 +18,7 @@
 #include "StdinReader.h"
 #include "UnixDomainWriter.h"
 #include "Signals.h"
-#include "Queue.h"
+#include "PriorityQueue.h"
 #include "Config.h"
 #include "Logger.h"
 #include "EventQueue.h"
@@ -183,9 +183,14 @@ int main(int argc, char**argv) {
 
     std::string input_socket_path = run_dir + "/input.socket";
     std::string status_socket_path = run_dir + "/status.socket";
-    std::string queue_file = data_dir + "/queue.dat";
-    std::string cursor_dir = data_dir + "/outputs";
-    size_t queue_size = 10*1024*1024;
+
+    int num_priorities = 8;
+    size_t max_file_data_size = 1024*1024;
+    size_t max_unsaved_files = 128;
+    size_t max_fs_bytes = 1024*1024*1024;
+    double max_fs_pct = 10;
+    double min_fs_free_pct = 5;
+    long save_delay = 250;
 
     if (config.HasKey("input_socket_path")) {
         input_socket_path = config.GetString("input_socket_path");
@@ -195,27 +200,32 @@ int main(int argc, char**argv) {
         status_socket_path = config.GetString("status_socket_path");
     }
 
-    if (config.HasKey("queue_file")) {
-        queue_file = config.GetString("queue_file");
+    if (config.HasKey("queue_num_priorities")) {
+        num_priorities = config.GetUint64("queue_num_priorities");
     }
 
-    if (queue_file.empty()) {
-        Logger::Error("Invalid 'queue_file' value");
-        exit(1);
+    if (config.HasKey("queue_max_file_data_size")) {
+        max_file_data_size = config.GetUint64("queue_max_file_data_size");
     }
 
-    if (config.HasKey("queue_size")) {
-        try {
-            queue_size = config.GetUint64("queue_size");
-        } catch(std::exception& ex) {
-            Logger::Error("Invalid 'queue_size' value: %s", config.GetString("queue_size").c_str());
-            exit(1);
-        }
+    if (config.HasKey("queue_max_unsaved_files")) {
+        max_unsaved_files = config.GetUint64("queue_max_unsaved_files");
     }
 
-    if (queue_size < Queue::MIN_QUEUE_SIZE) {
-        Logger::Warn("Value for 'queue_size' (%ld) is smaller than minimum allowed. Using minimum (%ld).", queue_size, Queue::MIN_QUEUE_SIZE);
-        exit(1);
+    if (config.HasKey("queue_max_fs_bytes")) {
+        max_fs_bytes = config.GetUint64("queue_max_fs_bytes");
+    }
+
+    if (config.HasKey("max_fs_pct")) {
+        max_fs_pct = config.GetDouble("max_fs_pct");
+    }
+
+    if (config.HasKey("min_fs_free_pct")) {
+        min_fs_free_pct = config.GetDouble("min_fs_free_pct");
+    }
+
+    if (config.HasKey("queue_save_delay")) {
+        save_delay = config.GetUint64("queue_save_delay");
     }
 
     bool use_syslog = true;
@@ -231,12 +241,10 @@ int main(int argc, char**argv) {
     // They will be handled once Signals::Start() is called.
     Signals::Init();
 
-    auto queue = std::make_shared<Queue>(queue_file, queue_size);
-    try {
-        Logger::Info("Opening queue: %s", queue_file.c_str());
-        queue->Open();
-    } catch (std::runtime_error& ex) {
-        Logger::Error("Failed to open queue file '%s': %s", queue_file.c_str(), ex.what());
+    Logger::Info("Opening queue: %s", data_dir.c_str());
+    auto queue = PriorityQueue::Open(data_dir, num_priorities, max_file_data_size, max_unsaved_files, max_fs_bytes, max_fs_pct, min_fs_free_pct);
+    if (!queue) {
+        Logger::Error("Failed to open queue '%s'", data_dir.c_str());
         exit(1);
     }
 
@@ -290,12 +298,12 @@ int main(int argc, char**argv) {
     auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
     processTree->PopulateTree(); // Pre-populate tree
 
-    Outputs outputs(queue, outconf_dir, cursor_dir, allowed_socket_dirs, user_db, filtersEngine, processTree);
+    Outputs outputs(queue, outconf_dir, allowed_socket_dirs, user_db, filtersEngine, processTree);
 
     std::thread autosave_thread([&]() {
         Signals::InitThread();
         try {
-            queue->Autosave(128*1024, 250);
+            queue->Saver(save_delay);
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
             if (!Signals::IsExit()) {

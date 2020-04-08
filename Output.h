@@ -18,7 +18,7 @@
 #define AUOMS_OUTPUT_H
 
 #include "RunBase.h"
-#include "Queue.h"
+#include "PriorityQueue.h"
 #include "Config.h"
 #include "EventId.h"
 #include "OMSEventWriter.h"
@@ -44,52 +44,30 @@ public:
 
     void Close();
 
-    bool Add(const EventId& event_id, const QueueCursor& cursor);
+    bool Add(const EventId& event_id, uint32_t priority, uint64_t seq);
 
     // Returns false on timeout, true is queue is empty
     bool Wait(int millis);
 
-    bool Ack(const EventId& event_id, QueueCursor& cursor);
+    bool Ack(const EventId& event_id, uint32_t& priority, uint64_t& seq);
 
 private:
+    class _RingEntry {
+    public:
+        _RingEntry(EventId id, uint32_t p, uint64_t s): _id(id), _priority(p), _seq(s) {}
+        EventId _id;
+        uint32_t _priority;
+        uint64_t _seq;
+    };
+
     std::mutex _mutex;
     std::condition_variable _cond;
-    std::vector<std::pair<EventId, QueueCursor>> _ring;
+    std::vector<_RingEntry> _ring;
     size_t _max_size;
     bool _closed;
     size_t _head;
     size_t _tail;
     size_t _size;
-};
-
-/****************************************************************************
- *
- ****************************************************************************/
-
-class CursorWriter: public RunBase {
-public:
-
-    CursorWriter(const std::string& name, const std::string& path): _name(name), _path(path), _cursor_updated(false)
-    {}
-
-    bool Read();
-    bool Write();
-    bool Delete();
-
-    QueueCursor GetCursor();
-    void UpdateCursor(const QueueCursor& cursor);
-
-protected:
-    virtual void on_stopping();
-    virtual void run();
-
-private:
-    std::string _name;
-    std::string _path;
-    std::mutex _mutex;
-    std::condition_variable _cond;
-    bool _cursor_updated;
-    QueueCursor _cursor;
 };
 
 /****************************************************************************
@@ -106,8 +84,8 @@ public:
 
     void Init(std::shared_ptr<IEventWriter> event_writer,
               std::shared_ptr<IOBase> writer,
-              std::shared_ptr<AckQueue> ack_queue,
-              std::shared_ptr<CursorWriter> cursor_writer);
+              std::shared_ptr<QueueCursor> cursor,
+              std::shared_ptr<AckQueue> ack_queue);
 
 protected:
     virtual void run();
@@ -115,8 +93,8 @@ protected:
     std::string _name;
     std::shared_ptr<IEventWriter> _event_writer;
     std::shared_ptr<IOBase> _writer;
+    std::shared_ptr<QueueCursor> _cursor;
     std::shared_ptr<AckQueue> _queue;
-    std::shared_ptr<CursorWriter> _cursor_writer;
 };
 
 /****************************************************************************
@@ -162,10 +140,9 @@ public:
     static constexpr int MAX_SLEEP_PERIOD = 60;
     static constexpr int DEFAULT_ACK_QUEUE_SIZE = 1000;
 
-    Output(const std::string& name, const std::string& cursor_path, const std::shared_ptr<Queue>& queue, const std::shared_ptr<IEventWriterFactory>& writer_factory, const std::shared_ptr<IEventFilterFactory>& filter_factory):
+    Output(const std::string& name, const std::string& cursor_path, const std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<IEventWriterFactory>& writer_factory, const std::shared_ptr<IEventFilterFactory>& filter_factory):
             _name(name), _cursor_path(cursor_path), _queue(queue), _writer_factory(writer_factory), _filter_factory(filter_factory), _ack_mode(false)
     {
-        _cursor_writer = std::make_shared<CursorWriter>(name, cursor_path);
         _ack_reader = std::unique_ptr<AckReader>(new AckReader(name));
     }
 
@@ -194,18 +171,17 @@ protected:
     std::string _name;
     std::string _cursor_path;
     std::string _socket_path;
-    std::shared_ptr<Queue> _queue;
+    std::shared_ptr<PriorityQueue> _queue;
     std::shared_ptr<IEventWriterFactory> _writer_factory;
     std::shared_ptr<IEventFilterFactory> _filter_factory;
     bool _ack_mode;
     std::unique_ptr<Config> _config;
-    QueueCursor _cursor;
+    std::shared_ptr<QueueCursor> _cursor;
     std::shared_ptr<IEventWriter> _event_writer;
     std::shared_ptr<IEventFilter> _event_filter;
     std::shared_ptr<IOBase> _writer;
     std::shared_ptr<AckQueue> _ack_queue;
     std::unique_ptr<AckReader> _ack_reader;
-    std::shared_ptr<CursorWriter> _cursor_writer;
 };
 
 
