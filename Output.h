@@ -140,8 +140,8 @@ public:
     static constexpr int MAX_SLEEP_PERIOD = 60;
     static constexpr int DEFAULT_ACK_QUEUE_SIZE = 1000;
 
-    Output(const std::string& name, const std::string& cursor_path, const std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<IEventWriterFactory>& writer_factory, const std::shared_ptr<IEventFilterFactory>& filter_factory):
-            _name(name), _cursor_path(cursor_path), _queue(queue), _writer_factory(writer_factory), _filter_factory(filter_factory), _ack_mode(false)
+    Output(const std::string& name, const std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<IEventWriterFactory>& writer_factory, const std::shared_ptr<IEventFilterFactory>& filter_factory):
+            _name(name), _queue(queue), _writer_factory(writer_factory), _filter_factory(filter_factory), _ack_mode(false)
     {
         _ack_reader = std::unique_ptr<AckReader>(new AckReader(name));
     }
@@ -169,7 +169,6 @@ protected:
 
     std::mutex _mutex;
     std::string _name;
-    std::string _cursor_path;
     std::string _socket_path;
     std::shared_ptr<PriorityQueue> _queue;
     std::shared_ptr<IEventWriterFactory> _writer_factory;

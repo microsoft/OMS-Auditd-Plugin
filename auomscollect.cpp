@@ -428,7 +428,7 @@ int main(int argc, char**argv) {
         {"ack_queue_size", "10"}
     }));
     auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
-    Output output("output", cursor_path, queue, writer_factory, nullptr);
+    Output output("output", queue, writer_factory, nullptr);
     output.Load(output_config);
 
     std::thread autosave_thread([&]() {
