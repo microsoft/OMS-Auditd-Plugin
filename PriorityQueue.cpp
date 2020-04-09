@@ -24,6 +24,7 @@
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <climits>
+#include <unordered_set>
 
 /**********************************************************************************************************************
  ** QueueItem
@@ -619,7 +620,9 @@ void PriorityQueue::Close() {
     }
 
     for (int p = 0; p < _num_priorities; ++p) {
-        _current_buckets[p] = cycle_bucket(p);
+        if (_current_buckets[p]->Size() > 0) {
+            _current_buckets[p] = cycle_bucket(p);
+        }
     }
 
     _saver_cond.notify_all();
@@ -719,9 +722,9 @@ void PriorityQueue::Saver(long save_delay) {
 
     do {
         if (_next_save_needed.time_since_epoch().count() > 0) {
-            _saver_cond.wait_until(lock, _next_save_needed, [this]() { return _closed || !_unsaved.empty(); });
+            _saver_cond.wait_until(lock, _next_save_needed, [this,save_delay]() { return _closed || save_needed(save_delay); });
         } else {
-            _saver_cond.wait(lock, [this]() { return _closed || !_unsaved.empty(); });
+            _saver_cond.wait(lock, [this,save_delay]() { return _closed || save_needed(save_delay); });
         }
         save(lock, save_delay);
     } while (!_closed);
@@ -841,8 +844,6 @@ std::shared_ptr<QueueItemBucket> PriorityQueue::cycle_bucket(uint32_t priority) 
     bucket = std::make_shared<QueueItemBucket>(priority);
     _current_buckets[priority] = bucket;
 
-
-
     _saver_cond.notify_one();
 
     size_t num_unsaved = 0;
@@ -904,100 +905,87 @@ void PriorityQueue::update_min_seq() {
     _min_seq = min_seq;
 }
 
-void PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
-    update_min_seq();
-    clean_fs(lock);
-    write_unsaved(lock, save_delay);
-}
-
 // Only call while locked
-void PriorityQueue::clean_fs(std::unique_lock<std::mutex>& lock) {
-    std::vector<std::shared_ptr<QueueFile>> to_remove;
+bool PriorityQueue::save_needed(long save_delay) {
+    auto now = std::chrono::steady_clock::now();
+    auto min_age = now - std::chrono::milliseconds(save_delay);
 
-    // Find files that are no longer needed
-    for (uint32_t p = 0; p < _num_priorities; ++p) {
-        auto min_seq = _min_seq[p];
-        auto &pf = _files[p];
-        if (!pf.empty()) {
-            for (auto itr = pf.begin(); itr != pf.end() && itr->first < min_seq; ++itr) {
-                to_remove.emplace_back(itr->second);
+    // Set min_age to now if closed
+    if (_closed) {
+        min_age = now;
+    }
+
+    for (auto& p : _unsaved) {
+        if (!p.empty()) {
+            if (p.size() > 1 || p.rbegin()->second._ts <= min_age) {
+                return true;
             }
         }
     }
-
-    // Unlock while doing the actual file removes
-    lock.unlock();
-
-    std::vector<std::shared_ptr<QueueFile>> to_erase;
-
-    for (auto& f : to_remove) {
-        if (f->Remove()) {
-            to_erase.emplace_back(f);
-        }
-    }
-
-    // Relock before erasing from _files
-    lock.lock();
-
-    for (auto& f : to_erase) {
-        _files[f->Priority()].erase(f->Sequence());
-        _unsaved[f->Priority()].erase(f->Sequence());
-    }
+    return false;
 }
 
 // Only call while locked
-void PriorityQueue::write_unsaved(std::unique_lock<std::mutex>& lock, long save_delay) {
-
-    if (_unsaved.empty()) {
-        return;
-    }
-
-    // Unlock while getting fs stats
-    lock.unlock();
+void PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
+    update_min_seq();
 
     struct statvfs st;
     ::memset(&st, 0, sizeof(st));
-    if (statvfs(_data_dir.c_str(), &st) != 0) {
-        Logger::Error("PriorityQueue::write_unsaved(): statvfs(%s) failed: %s", _data_dir.c_str(), std::strerror(errno));
+
+    uint64_t fs_bytes_allowed = 0;
+    if (save_needed(save_delay)) {
+        // Unlock while getting fs stats
+        lock.unlock();
+
+        if (statvfs(_data_dir.c_str(), &st) != 0) {
+            Logger::Error("PriorityQueue::write_unsaved(): statvfs(%s) failed: %s", _data_dir.c_str(),
+                          std::strerror(errno));
+        }
+
+        // Relock
+        lock.lock();
+
+        if (st.f_blocks > 0) {
+            // Total filesystem size
+            double fs_size = static_cast<double>(st.f_blocks * st.f_frsize);
+            // Amount of free space
+            double fs_free = static_cast<double>(st.f_bavail * st.f_bsize);
+            // Percent of free space
+            double pct_free = fs_free / fs_size;
+            // Percent of fs that can be used (based on _min_fs_free_pct);
+            double pct_free_avail = 0;
+            if (pct_free > _min_fs_free_pct) {
+                pct_free_avail = pct_free - _min_fs_free_pct;
+            }
+
+            // Max space that can be used based on _max_fs_consumed_pct
+            uint64_t max_allowed_fs = static_cast<uint64_t>(fs_size * (_max_fs_consumed_pct / 100));
+            // Max space that can be used based on _min_fs_free_pct
+            uint64_t max_allowed_free = static_cast<uint64_t>(fs_size * (pct_free_avail / 100));
+            // Minimum of all possible fs limits
+            fs_bytes_allowed = std::min(std::min(max_allowed_fs, max_allowed_free), _max_fs_consumed_bytes);
+        }
     }
 
-    // Relock
-    lock.lock();
+    std::vector<std::shared_ptr<QueueFile>> to_remove;
+    std::vector<std::shared_ptr<QueueFile>> can_remove;
 
     uint64_t bytes_saved = 0;
-    for (auto& p : _files) {
-        for (auto& f : p) {
+    // Find files that are no longer needed and count total bytes saved (excluding those that will be deleted)
+    // Also fill in can_remove with items in the order they can be removed to make space for higher priority data
+    for (int32_t p = _files.size()-1; p >= 0; --p) {
+        auto min_seq = _min_seq[p];
+        auto &pf = _files[p];
+        for (auto& f : pf) {
             if (f.second->Saved()) {
                 bytes_saved += f.second->FileSize();
+                if (f.first < min_seq) {
+                    to_remove.emplace_back(f.second);
+                } else {
+                    can_remove.emplace_back(f.second);
+                }
             }
         }
-    }
-
-    uint64_t fs_bytes_available = 0xFFFFFFFFFFFFFFFF;
-    if (st.f_blocks > 0) {
-        // Total filesystem size
-        double fs_size = static_cast<double>(st.f_blocks * st.f_frsize);
-        // Amount of free space
-        double fs_free = static_cast<double>(st.f_bavail * st.f_bsize);
-        // Percent of free space
-        double pct_free = fs_free / fs_size;
-        // Percent of fs that can be used (based on _min_fs_free_pct);
-        double pct_free_avail = 0;
-        if (pct_free > _min_fs_free_pct) {
-            pct_free_avail = pct_free - _min_fs_free_pct;
-        }
-
-        // Max space that cab be used based on _max_fs_consumed_pct
-        uint64_t max_allowed_fs = static_cast<uint64_t>(fs_size * (_max_fs_consumed_pct / 100));
-        // Max space that can be used based on _min_fs_free_pct
-        uint64_t max_allowed_free = static_cast<uint64_t>(fs_size * (pct_free_avail / 100));
-        // Max space based on _max_fs_consumed_bytes
-        uint64_t max_allowed_bytes = 0;
-        if (_max_fs_consumed_bytes > bytes_saved) {
-            max_allowed_bytes = _max_fs_consumed_bytes - bytes_saved;
-        }
-        // Minimum of all possible fs limits
-        fs_bytes_available = std::min(std::min(max_allowed_fs, max_allowed_free), max_allowed_bytes);
     }
 
     std::vector<_UnsavedEntry> to_save;
@@ -1011,23 +999,19 @@ void PriorityQueue::write_unsaved(std::unique_lock<std::mutex>& lock, long save_
         min_age = now;
     }
 
-    uint64_t bytes_to_save = 0;
-    uint64_t cannot_save_bytes = 0;
     int num_delayed = 0;
+
+    // Get the list of buckets that can be saved, in the order they need to be saved.
     for (auto& p : _unsaved) {
         uint64_t last_seq = 0xFFFFFFFFFFFFFFFF;
         if (!p.empty()) {
             last_seq = p.rbegin()->first;
         }
+
         for (auto& f: p) {
             // If the entry is not the last or it is older than min_age then include in to_save
             if (f.first != last_seq || f.second._ts <= min_age) {
-                if (bytes_to_save + f.second._file->FileSize() <= fs_bytes_available) {
-                    bytes_to_save += f.second._file->FileSize();
-                    to_save.emplace_back(f.second);
-                } else {
-                    cannot_save_bytes += f.second._file->FileSize();
-                }
+                to_save.emplace_back(f.second);
             } else {
                 num_delayed += 1;
                 if (f.second._ts < next_save) {
@@ -1043,28 +1027,81 @@ void PriorityQueue::write_unsaved(std::unique_lock<std::mutex>& lock, long save_
         _next_save_needed = std::chrono::steady_clock::time_point();
     }
 
-    if (cannot_save_bytes > 0) {
-        if (now - _last_save_warning > std::chrono::milliseconds(MIN_SAVE_WARNING_GAP_MS)) {
-            _last_save_warning = now;
-            Logger::Warn("PriorityQueue: File System quota would be exceeded (%ld) bytes left unsaved", cannot_save_bytes);
-        }
-    }
-
     // Unlock before doing IO
     lock.unlock();
 
+    std::vector<std::shared_ptr<QueueFile>> removed;
     std::vector<std::shared_ptr<QueueFile>> saved;
 
-    for (auto& f: to_save) {
-        if (f._file->Save()) {
-            saved.emplace_back(f._file);
+    // Remove files that are not needed
+    for (auto& f : to_remove) {
+        if (f->Remove()) {
+            removed.emplace_back(f);
+            bytes_saved -= f->FileSize();
         }
+    }
+
+    // Populate to_save and to_remove;
+    int ridx = 0;
+    int sidx = 0;
+    uint64_t bytes_removed = 0;
+    uint64_t cannot_save_bytes = 0;
+
+    // Iterate through to_save
+    // for each bucket to save, if the save would exceed the quote, remove from can_remove until below quota
+    for (; sidx < to_save.size(); ++sidx) {
+        auto& ue = to_save[sidx];
+        if (bytes_saved + ue._file->FileSize() > fs_bytes_allowed) {
+            while (ridx < can_remove.size() && bytes_saved + ue._file->FileSize() > fs_bytes_allowed && can_remove[ridx]->Priority() >= ue._file->Priority()) {
+                if (can_remove[ridx]->Remove()) {
+                    removed.emplace_back(can_remove[ridx]);
+                    bytes_saved -= can_remove[ridx]->FileSize();
+                    bytes_removed += can_remove[ridx]->FileSize();
+                    ridx += 1;
+                } else {
+                    break;
+                }
+            }
+        }
+        if (bytes_saved + ue._file->FileSize() > fs_bytes_allowed) {
+            break;
+        } else {
+            if (ue._file->Save()) {
+                saved.emplace_back(ue._file);
+                bytes_saved += ue._file->FileSize();
+            } else {
+                break;
+            }
+        }
+    }
+
+    // Tally up unsaved bytes count
+    for (; sidx < to_save.size(); ++sidx) {
+        cannot_save_bytes += to_save[sidx]._file->FileSize();
     }
 
     // Relock before removing items from _unsaved;
     lock.lock();
 
+    // erase from _files and _unsaved the files that where removed.
+    for (auto& f : removed) {
+        _files[f->Priority()].erase(f->Sequence());
+        _unsaved[f->Priority()].erase(f->Sequence());
+    }
+
+    // erase from _unsaved the files that where saved.
     for (auto& f : saved) {
         _unsaved[f->Priority()].erase(f->Sequence());
+    }
+
+    if (bytes_removed > 0) {
+        Logger::Warn("PriorityQueue: Removed (%ld) bytes of unconsumed lower priority data to make from for new higher priority data", bytes_removed);
+    }
+
+    if (cannot_save_bytes > 0) {
+        if (now - _last_save_warning > std::chrono::milliseconds(MIN_SAVE_WARNING_GAP_MS)) {
+            _last_save_warning = now;
+            Logger::Warn("PriorityQueue: File System quota would be exceeded (%ld) bytes left unsaved", cannot_save_bytes);
+        }
     }
 }

@@ -105,6 +105,9 @@ private:
 class QueueFile {
 public:
     static std::shared_ptr<QueueFile> Open(const std::string& path);
+    static constexpr size_t Overhead(int num_items) {
+        return sizeof(FileHeader) + sizeof(IndexEntry)*num_items;
+    }
 
     QueueFile(const std::string& dir, const std::shared_ptr<QueueItemBucket>& bucket) {
         _priority = bucket->Priority();
@@ -290,9 +293,8 @@ private:
     std::shared_ptr<QueueItemBucket> get_next_bucket(uint32_t priority, uint64_t last_seq);
     void update_min_seq();
 
+    bool save_needed(long save_delay);
     void save(std::unique_lock<std::mutex>& lock, long save_delay);
-    void clean_fs(std::unique_lock<std::mutex>& lock);
-    void write_unsaved(std::unique_lock<std::mutex>& lock, long save_delay);
 
     std::string _dir;
     std::string _data_dir;

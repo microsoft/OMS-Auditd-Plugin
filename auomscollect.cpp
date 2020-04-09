@@ -329,8 +329,8 @@ int main(int argc, char**argv) {
     std::string data_dir = AUOMS_DATA_DIR;
     std::string run_dir = AUOMS_RUN_DIR;
 
-    if (config.HasKey("data_dir")) {
-        data_dir = config.GetString("data_dir");
+    if (config.HasKey("queue_dir")) {
+        data_dir = config.GetString("queue_dir");
     }
 
     if (config.HasKey("run_dir")) {
@@ -339,15 +339,19 @@ int main(int argc, char**argv) {
 
     std::string socket_path = run_dir + "/input.socket";
 
-    std::string cursor_path = data_dir + "/collect.cursor";
-    std::string queue_file = data_dir + "/collect_queue.dat";
+    std::string queue_dir = data_dir + "/collect_queue";
 
     if (config.HasKey("socket_path")) {
         socket_path = config.GetString("socket_path");
     }
 
-    if (config.HasKey("cursor_path")) {
-        cursor_path = config.GetString("cursor_path");
+    if (config.HasKey("queue_dir")) {
+        queue_dir = config.GetString("queue_dir");
+    }
+
+    if (queue_dir.empty()) {
+        Logger::Error("Invalid 'queue_file' value");
+        exit(1);
     }
 
     int num_priorities = 8;
@@ -374,25 +378,16 @@ int main(int argc, char**argv) {
         max_fs_bytes = config.GetUint64("queue_max_fs_bytes");
     }
 
-    if (config.HasKey("max_fs_pct")) {
-        max_fs_pct = config.GetDouble("max_fs_pct");
+    if (config.HasKey("queue_max_fs_pct")) {
+        max_fs_pct = config.GetDouble("queue_max_fs_pct");
     }
 
-    if (config.HasKey("min_fs_free_pct")) {
-        min_fs_free_pct = config.GetDouble("min_fs_free_pct");
+    if (config.HasKey("queue_min_fs_free_pct")) {
+        min_fs_free_pct = config.GetDouble("queue_min_fs_free_pct");
     }
 
     if (config.HasKey("queue_save_delay")) {
         save_delay = config.GetUint64("queue_save_delay");
-    }
-
-    if (config.HasKey("queue_file")) {
-        queue_file = config.GetString("queue_file");
-    }
-
-    if (queue_file.empty()) {
-        Logger::Error("Invalid 'queue_file' value");
-        exit(1);
     }
 
     bool use_syslog = true;

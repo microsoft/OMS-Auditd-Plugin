@@ -387,13 +387,6 @@ BOOST_AUTO_TEST_CASE( queue_max_unsaved_files ) {
 
     auto cursor = queue->OpenCursor("test");
 
-    // Remove directories so that save cannot write data to disk
-    for (int i = 0; i < 8; i++) {
-        if (rmdir((dir.Path()+"/data/" + std::to_string(i)).c_str()) != 0) {
-            BOOST_FAIL(std::string("Failed to delete queue dir:") + std::strerror(errno));
-        }
-    }
-
     std::array<uint8_t, 1024> data;
     data.fill(0);
 
@@ -954,8 +947,11 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_multi_cursor ) {
 
     constexpr int num_priorities = 8;
     constexpr int num_items = (16*4)+4;
-    constexpr size_t max_file_data_size = 4096;
-    constexpr size_t max_fs_bytes = 4200*16;
+    constexpr int num_items_per_file = 4;
+    constexpr size_t item_size = 1024;
+    constexpr size_t max_file_data_size = item_size * num_items_per_file;
+    constexpr size_t file_size = QueueFile::Overhead(num_items_per_file)+max_file_data_size;
+    constexpr size_t max_fs_bytes = 16*file_size;
 
     auto queue = PriorityQueue::Open(dir.Path(), num_priorities, max_file_data_size, num_items/4, max_fs_bytes, 100, 0);
     if (!queue) {
@@ -1046,8 +1042,11 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_remove_cursor ) {
 
     constexpr int num_priorities = 8;
     constexpr int num_items = (16*4)+4;
-    constexpr size_t max_file_data_size = 4096;
-    constexpr size_t max_fs_bytes = 4200*16;
+    constexpr int num_items_per_file = 4;
+    constexpr size_t item_size = 1024;
+    constexpr size_t max_file_data_size = item_size * num_items_per_file;
+    constexpr size_t file_size = QueueFile::Overhead(num_items_per_file)+max_file_data_size;
+    constexpr size_t max_fs_bytes = 16*file_size;
 
     auto queue = PriorityQueue::Open(dir.Path(), num_priorities, max_file_data_size, num_items/4, max_fs_bytes, 100, 0);
     if (!queue) {
@@ -1113,8 +1112,11 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_delete_cursor ) {
 
     constexpr int num_priorities = 8;
     constexpr int num_items = (16*4)+4;
-    constexpr size_t max_file_data_size = 4096;
-    constexpr size_t max_fs_bytes = 4200*16;
+    constexpr int num_items_per_file = 4;
+    constexpr size_t item_size = 1024;
+    constexpr size_t max_file_data_size = item_size * num_items_per_file;
+    constexpr size_t file_size = QueueFile::Overhead(num_items_per_file)+max_file_data_size;
+    constexpr size_t max_fs_bytes = 16*file_size;
 
     {
         auto queue = PriorityQueue::Open(dir.Path(), num_priorities, max_file_data_size, num_items/4, max_fs_bytes,100, 0);
@@ -1438,4 +1440,169 @@ BOOST_AUTO_TEST_CASE( queue_cursor_commit ) {
         }
         queue->Close();
     }
+}
+
+BOOST_AUTO_TEST_CASE( queue_fs_force_clean ) {
+    TempDir dir("/tmp/PriorityQueueTests");
+
+    constexpr int num_priorities = 8;
+    constexpr int num_items = 32;
+    constexpr int num_items_per_file = 4;
+    constexpr size_t item_size = 1024;
+    constexpr size_t max_file_data_size = item_size * num_items_per_file;
+    constexpr size_t file_size = QueueFile::Overhead(num_items_per_file)+max_file_data_size;
+    constexpr size_t max_fs_bytes = 4 * file_size;
+
+    auto queue = PriorityQueue::Open(dir.Path(), num_priorities, max_file_data_size, num_items/4, max_fs_bytes, 100, 0);
+    if (!queue) {
+        BOOST_FAIL("Failed to open queue");
+    }
+
+    auto cursor = queue->OpenCursor("test");
+
+    std::array<uint8_t, item_size> data;
+    data.fill(0);
+
+    // First is msg id, second is priority
+    std::vector<std::pair<int,int>> input_pairs1({
+        {1,0},
+        {2,0},
+        {3,0},
+        {4,0},
+
+        {5,0},
+        {6,0},
+        {7,0},
+        {8,0},
+
+        {9,0},
+
+        {71,7},
+        {72,7},
+        {73,7},
+        {74,7},
+
+        {75,7},
+        {76,7},
+        {77,7},
+        {78,7},
+
+        {79,7},
+    });
+
+    std::vector<std::pair<int,int>> input_pairs2({
+        {10,0},
+        {11,0},
+        {12,0},
+
+        {13,0},
+        {14,0},
+        {15,0},
+        {16,0},
+
+        {17,0},
+        {18,0},
+        {19,0},
+        {20,0},
+
+        {21,0},
+        {22,0},
+        {23,0},
+        {24,0},
+
+        {25,0},
+    });
+
+    std::vector<int> expected_output1({
+        1,
+        2,
+        3,
+    });
+
+    std::vector<int> expected_output2({
+        4,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        79,
+    });
+
+    for (auto& in: input_pairs1) {
+        data[0] = in.first;
+        if (!queue->Put(in.second, data.data(), data.size())) {
+            BOOST_FAIL("queue->Put() failed!");
+        }
+    }
+
+    queue->Save(0);
+
+    auto queue_size = get_queue_data_size(dir.Path() + "/data", num_priorities);
+    if (queue_size < 0) {
+        BOOST_FAIL("get_queue_data_size() failed!");
+    }
+    BOOST_REQUIRE_LE(queue_size, max_fs_bytes);
+
+    for (auto expected: expected_output1) {
+        auto val = cursor->Get(0);
+        if (val.second) {
+            BOOST_FAIL("cursor->Get() returned closed==true!");
+        }
+        if (!val.first) {
+            BOOST_FAIL("cursor->Get() returned nullptr!");
+        }
+        auto actual = static_cast<int>(reinterpret_cast<uint8_t*>(val.first->Data())[0]);
+        BOOST_REQUIRE_EQUAL(expected, actual);
+    }
+
+    for (auto& in: input_pairs2) {
+        data[0] = in.first;
+        if (!queue->Put(in.second, data.data(), data.size())) {
+            BOOST_FAIL("queue->Put() failed!");
+        }
+    }
+
+    queue->Save(0);
+
+    queue_size = get_queue_data_size(dir.Path() + "/data", num_priorities);
+    if (queue_size < 0) {
+        BOOST_FAIL("get_queue_data_size() failed!");
+    }
+    BOOST_REQUIRE_LE(queue_size, max_fs_bytes);
+
+    for (auto expected: expected_output2) {
+        auto val = cursor->Get(0);
+        if (val.second) {
+            BOOST_FAIL("cursor->Get() returned closed==true!");
+        }
+        if (!val.first) {
+            BOOST_FAIL("cursor->Get() returned nullptr!");
+        }
+        auto actual = static_cast<int>(reinterpret_cast<uint8_t*>(val.first->Data())[0]);
+        BOOST_REQUIRE_EQUAL(expected, actual);
+    }
+
+    auto val = cursor->Get(0);
+    if (val.second) {
+        BOOST_FAIL("cursor->Get() returned closed==true!");
+    }
+    if (val.first) {
+        BOOST_FAIL("cursor->Get() did not return nullptr!");
+    }
+
+
+    queue->Close();
 }

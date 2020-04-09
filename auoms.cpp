@@ -184,6 +184,14 @@ int main(int argc, char**argv) {
     std::string input_socket_path = run_dir + "/input.socket";
     std::string status_socket_path = run_dir + "/status.socket";
 
+    if (config.HasKey("input_socket_path")) {
+        input_socket_path = config.GetString("input_socket_path");
+    }
+
+    if (config.HasKey("status_socket_path")) {
+        status_socket_path = config.GetString("status_socket_path");
+    }
+
     int num_priorities = 8;
     size_t max_file_data_size = 1024*1024;
     size_t max_unsaved_files = 128;
@@ -192,12 +200,15 @@ int main(int argc, char**argv) {
     double min_fs_free_pct = 5;
     long save_delay = 250;
 
-    if (config.HasKey("input_socket_path")) {
-        input_socket_path = config.GetString("input_socket_path");
+    std::string queue_dir = data_dir + "/queue";
+
+    if (config.HasKey("queue_dir")) {
+        queue_dir = config.GetString("queue_dir");
     }
 
-    if (config.HasKey("status_socket_path")) {
-        status_socket_path = config.GetString("status_socket_path");
+    if (queue_dir.empty()) {
+        Logger::Error("Invalid 'queue_file' value");
+        exit(1);
     }
 
     if (config.HasKey("queue_num_priorities")) {
@@ -216,12 +227,12 @@ int main(int argc, char**argv) {
         max_fs_bytes = config.GetUint64("queue_max_fs_bytes");
     }
 
-    if (config.HasKey("max_fs_pct")) {
-        max_fs_pct = config.GetDouble("max_fs_pct");
+    if (config.HasKey("queue_max_fs_pct")) {
+        max_fs_pct = config.GetDouble("queue_max_fs_pct");
     }
 
-    if (config.HasKey("min_fs_free_pct")) {
-        min_fs_free_pct = config.GetDouble("min_fs_free_pct");
+    if (config.HasKey("queue_min_fs_free_pct")) {
+        min_fs_free_pct = config.GetDouble("queue_min_fs_free_pct");
     }
 
     if (config.HasKey("queue_save_delay")) {
