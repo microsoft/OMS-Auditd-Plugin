@@ -720,13 +720,16 @@ void PriorityQueue::Save(long save_delay) {
 void PriorityQueue::Saver(long save_delay) {
     std::unique_lock<std::mutex> lock(_mutex);
 
+    bool save_success = true;
     do {
         if (_next_save_needed.time_since_epoch().count() > 0) {
             _saver_cond.wait_until(lock, _next_save_needed, [this,save_delay]() { return _closed || save_needed(save_delay); });
-        } else {
+        } else if(save_success) {
             _saver_cond.wait(lock, [this,save_delay]() { return _closed || save_needed(save_delay); });
+        } else {
+            _saver_cond.wait_for(lock, std::chrono::seconds(1), [this,save_delay]() { return _closed; });
         }
-        save(lock, save_delay);
+        save_success = save(lock, save_delay);
     } while (!_closed);
 
     save(lock, save_delay);
@@ -926,7 +929,7 @@ bool PriorityQueue::save_needed(long save_delay) {
 }
 
 // Only call while locked
-void PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
+bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
     update_min_seq();
 
     struct statvfs st;
@@ -1101,7 +1104,9 @@ void PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
     if (cannot_save_bytes > 0) {
         if (now - _last_save_warning > std::chrono::milliseconds(MIN_SAVE_WARNING_GAP_MS)) {
             _last_save_warning = now;
-            Logger::Warn("PriorityQueue: File System quota would be exceeded (%ld) bytes left unsaved", cannot_save_bytes);
+            Logger::Warn("PriorityQueue: File System quota (%ld) would be exceeded (%ld) bytes left unsaved", fs_bytes_allowed, cannot_save_bytes);
         }
     }
+
+    return cannot_save_bytes == 0;
 }

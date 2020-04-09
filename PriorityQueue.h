@@ -294,7 +294,7 @@ private:
     void update_min_seq();
 
     bool save_needed(long save_delay);
-    void save(std::unique_lock<std::mutex>& lock, long save_delay);
+    bool save(std::unique_lock<std::mutex>& lock, long save_delay);
 
     std::string _dir;
     std::string _data_dir;

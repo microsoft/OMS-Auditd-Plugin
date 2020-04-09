@@ -233,7 +233,7 @@ pkg_add() {
     if [ "$INSTALLER" = "DPKG" ]; then
         dpkg --install --refuse-downgrade ${pkg_filename}.deb
     else
-        rpm --install ${pkg_filename}.rpm
+        rpm --upgrade --replacefiles --replacepkgs ${pkg_filename}.rpm
     fi
 }
 
@@ -271,7 +271,7 @@ pkg_upd() {
         export PATH=/usr/local/sbin:/usr/sbin:/sbin:$PATH
     else
         [ -n "${forceFlag}" ] && FORCE="--force"
-        rpm --upgrade --replacefiles $FORCE ${pkg_filename}.rpm
+        rpm --upgrade --replacefiles --replacepkgs $FORCE ${pkg_filename}.rpm
     fi
 }
 
@@ -321,7 +321,7 @@ getInstalledVersion()
             local version="`dpkg -s $1 2> /dev/null | grep 'Version: '`"
             getVersionNumber "$version" "Version: "
         else
-            local version=`rpm -q $1 2> /dev/null`
+            local version=`rpm -q $1 2> /dev/null | tail -n 1`
             getVersionNumber $version ${1}-
         fi
     else
