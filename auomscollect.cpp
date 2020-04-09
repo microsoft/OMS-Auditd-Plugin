@@ -403,10 +403,10 @@ int main(int argc, char**argv) {
     // They will be handled once Signals::Start() is called.
     Signals::Init();
 
-    Logger::Info("Opening queue: %s", data_dir.c_str());
-    auto queue = PriorityQueue::Open(data_dir, num_priorities, max_file_data_size, max_unsaved_files, max_fs_bytes, max_fs_pct, min_fs_free_pct);
+    Logger::Info("Opening queue: %s", queue_dir.c_str());
+    auto queue = PriorityQueue::Open(queue_dir, num_priorities, max_file_data_size, max_unsaved_files, max_fs_bytes, max_fs_pct, min_fs_free_pct);
     if (!queue) {
-        Logger::Error("Failed to open queue '%s'", data_dir.c_str());
+        Logger::Error("Failed to open queue '%s'", queue_dir.c_str());
         exit(1);
     }
 
