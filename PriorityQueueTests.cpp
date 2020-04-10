@@ -223,7 +223,6 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
         }
 
         queue->Close();
-        int i = 0;
     }
 
     {
@@ -1295,7 +1294,7 @@ BOOST_AUTO_TEST_CASE( queue_min_fs_free_pct ) {
     constexpr size_t max_fs_bytes = 1024*16;
 
     float max_fs_pct = static_cast<double>(max_fs_bytes) / fs_size;
-    float min_fs_free_pct = pct_free-max_fs_pct;
+    float min_fs_free_pct = (pct_free-max_fs_pct)*100;
 
     auto queue = PriorityQueue::Open(dir.Path(), num_priorities, max_file_data_size, num_items/4, 1024*1024, 100, min_fs_free_pct);
     if (!queue) {
@@ -1605,4 +1604,77 @@ BOOST_AUTO_TEST_CASE( queue_fs_force_clean ) {
 
 
     queue->Close();
+}
+
+BOOST_AUTO_TEST_CASE( queue_empty_cursor_reset ) {
+    TempDir dir("/tmp/PriorityQueueTests");
+
+    constexpr int num_priorities = 8;
+    constexpr size_t max_file_data_size = 4096;
+
+    {
+        auto queue = PriorityQueue::Open(dir.Path(), num_priorities, max_file_data_size, num_priorities, 1024 * 1024, 100, 0);
+        if (!queue) {
+            BOOST_FAIL("Failed to open queue");
+        }
+        queue->StartSaver(250);
+
+        auto cursor1 = queue->OpenCursor("test1");
+
+        std::array<uint8_t, 1024> data;
+        data.fill(0);
+
+        for (int i = 0; i < 32; i++) {
+            reinterpret_cast<int *>(data.data())[0] = i;
+            if (!queue->Put(0, data.data(), data.size())) {
+                BOOST_FAIL("queue->Put() failed!");
+            }
+        }
+
+        for (int i = 0; i < 32; i++) {
+            auto val = cursor1->Get(0);
+            if (val.second) {
+                BOOST_FAIL("cursor->Get() returned closed==true!");
+            }
+            if (!val.first) {
+                BOOST_FAIL("cursor->Get() returned nullptr!");
+            }
+            auto actual = static_cast<int>(reinterpret_cast<uint8_t*>(val.first->Data())[0]);
+            BOOST_REQUIRE_EQUAL(i, actual);
+        }
+        queue->Close();
+    }
+
+    {
+        auto queue = PriorityQueue::Open(dir.Path(), num_priorities, max_file_data_size, num_priorities, 1024 * 1024, 100, 0);
+        if (!queue) {
+            BOOST_FAIL("Failed to open queue");
+        }
+        queue->StartSaver(250);
+
+        auto cursor1 = queue->OpenCursor("test1");
+
+        std::array<uint8_t, 1024> data;
+        data.fill(0);
+
+        for (int i = 0; i < 32; i++) {
+            reinterpret_cast<int *>(data.data())[0] = i;
+            if (!queue->Put(0, data.data(), data.size())) {
+                BOOST_FAIL("queue->Put() failed!");
+            }
+        }
+
+        for (int i = 0; i < 32; i++) {
+            auto val = cursor1->Get(0);
+            if (val.second) {
+                BOOST_FAIL("cursor->Get() returned closed==true!");
+            }
+            if (!val.first) {
+                BOOST_FAIL("cursor->Get() returned nullptr!");
+            }
+            auto actual = static_cast<int>(reinterpret_cast<uint8_t*>(val.first->Data())[0]);
+            BOOST_REQUIRE_EQUAL(i, actual);
+        }
+        queue->Close();
+    }
 }

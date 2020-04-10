@@ -508,6 +508,13 @@ bool QueueCursor::read_cursor_file() {
         return false;
     }
 
+    // The _max_seq might be less than the cursor. This can happen if the queue is empty.
+    for (int p = 0; p < _cursors.size(); ++p) {
+        if (_cursors[p] > _max_seq[p]) {
+            _cursors[p] = _max_seq[p];
+        }
+    }
+
     _committed = _cursors;
 
     return true;
@@ -844,6 +851,8 @@ std::shared_ptr<QueueItemBucket> PriorityQueue::cycle_bucket(uint32_t priority) 
     _unsaved[priority].emplace(file->Sequence(), _UnsavedEntry(file, bucket));
     _max_file_seq[priority] = bucket->MaxSequence();
 
+    Logger::Info("Unsaved bucket (%d, %ld)", bucket->Priority(), bucket->MaxSequence());
+
     bucket = std::make_shared<QueueItemBucket>(priority);
     _current_buckets[priority] = bucket;
 
@@ -892,6 +901,10 @@ std::shared_ptr<QueueItemBucket> PriorityQueue::get_next_bucket(uint32_t priorit
             }
         }
     }
+
+    // The cursor has switched to a new bucket, so notify the saver because there might be a file that can be removed.
+    _saver_cond.notify_one();
+
     return _current_buckets[priority];
 }
 
@@ -910,18 +923,22 @@ void PriorityQueue::update_min_seq() {
 
 // Only call while locked
 bool PriorityQueue::save_needed(long save_delay) {
-    auto now = std::chrono::steady_clock::now();
-    auto min_age = now - std::chrono::milliseconds(save_delay);
-
     // Set min_age to now if closed
     if (_closed) {
-        min_age = now;
-    }
-
-    for (auto& p : _unsaved) {
-        if (!p.empty()) {
-            if (p.size() > 1 || p.rbegin()->second._ts <= min_age) {
+        for (auto& p : _unsaved) {
+            if (!p.empty()) {
                 return true;
+            }
+        }
+    } else {
+        auto now = std::chrono::steady_clock::now();
+        auto min_age = now - std::chrono::milliseconds(save_delay);
+
+        for (auto& p : _unsaved) {
+            if (!p.empty()) {
+                if (p.size() > 1 || p.rbegin()->second._ts <= min_age) {
+                    return true;
+                }
             }
         }
     }
@@ -957,8 +974,8 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
             double pct_free = fs_free / fs_size;
             // Percent of fs that can be used (based on _min_fs_free_pct);
             double pct_free_avail = 0;
-            if (pct_free > _min_fs_free_pct) {
-                pct_free_avail = pct_free - _min_fs_free_pct;
+            if (pct_free > (_min_fs_free_pct/100)) {
+                pct_free_avail = pct_free - (_min_fs_free_pct/100);
             }
 
             // Max space that can be used based on _max_fs_consumed_pct
@@ -982,10 +999,14 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
         for (auto& f : pf) {
             if (f.second->Saved()) {
                 bytes_saved += f.second->FileSize();
-                if (f.first < min_seq) {
+                if (f.first <= min_seq) {
                     to_remove.emplace_back(f.second);
                 } else {
                     can_remove.emplace_back(f.second);
+                }
+            } else {
+                if (f.first <= min_seq) {
+                    _unsaved[p].erase(f.second->Sequence());
                 }
             }
         }
@@ -1038,6 +1059,7 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
 
     // Remove files that are not needed
     for (auto& f : to_remove) {
+        Logger::Info("Remove (%d, %ld)", f->Priority(), f->Sequence());
         if (f->Remove()) {
             removed.emplace_back(f);
             bytes_saved -= f->FileSize();
@@ -1056,6 +1078,7 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
         auto& ue = to_save[sidx];
         if (bytes_saved + ue._file->FileSize() > fs_bytes_allowed) {
             while (ridx < can_remove.size() && bytes_saved + ue._file->FileSize() > fs_bytes_allowed && can_remove[ridx]->Priority() >= ue._file->Priority()) {
+                Logger::Info("Remove (%d, %ld)", can_remove[ridx]->Priority(), can_remove[ridx]->Sequence());
                 if (can_remove[ridx]->Remove()) {
                     removed.emplace_back(can_remove[ridx]);
                     bytes_saved -= can_remove[ridx]->FileSize();
@@ -1069,6 +1092,7 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
         if (bytes_saved + ue._file->FileSize() > fs_bytes_allowed) {
             break;
         } else {
+            Logger::Info("Save (%d, %ld)", ue._file->Priority(), ue._file->Sequence());
             if (ue._file->Save()) {
                 saved.emplace_back(ue._file);
                 bytes_saved += ue._file->FileSize();
