@@ -10,12 +10,8 @@ fi
 
 %Postuninstall_100
 if [ "$1" = "purge" ]; then
-    if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
-        rm ${{AUOMS_AUDISP_CONF}}
-    fi
-    if [ -e ${{AUOMS_AUDIT_CONF}} ]; then
-        rm ${{AUOMS_AUDIT_CONF}}
-    fi
+    rm -f ${{AUOMS_AUDISP_CONF}}*
+    rm -f ${{AUOMS_AUDIT_CONF}}*
     rm -rf ${{AUOMS_ETC}}
     rm -rf ${{AUOMS_VAR}}
 fi
@@ -52,5 +48,5 @@ if [ "$1" = "configure" ]; then
     fi
     /opt/microsoft/auoms/bin/auomsctl upgrade
 fi
-rm -rf ${{AUOMS_AUDISP_CONF}}.*
-rm -rf ${{AUOMS_AUDIT_CONF}}.*
+rm -f ${{AUOMS_AUDISP_CONF}}.*
+rm -f ${{AUOMS_AUDIT_CONF}}.*
