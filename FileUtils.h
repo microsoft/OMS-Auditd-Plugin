@@ -20,4 +20,10 @@ std::vector<std::string> ReadFile(const std::string& path);
 
 void WriteFile(const std::string& path, const std::vector<std::string>& lines);
 
+// Return false if file already existed (or create fails and throw_on_error == false)
+bool CreateFlagFile(const std::string& path, bool throw_on_error);
+
+// Return false if doesn't exist (or unlink fails and throw_on_error == false)
+bool RemoveFile(const std::string& path, bool throw_on_error);
+
 #endif //AUOMS_FILEUTILS_H
