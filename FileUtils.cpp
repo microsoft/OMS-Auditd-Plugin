@@ -92,21 +92,6 @@ void WriteFile(const std::string& path, const std::vector<std::string>& lines) {
     out.close();
 }
 
-bool CreateFlagFile(const std::string& path, bool throw_on_error) {
-    auto ret = open(path.c_str(), O_CREAT|O_EXCL, 0700);
-    if (ret < 0) {
-        if (errno == EEXIST) {
-            return false;
-        }
-        if (throw_on_error) {
-            throw std::system_error(errno, std::system_category(), "open("+path+",O_CREAT|O_EXCL, 0700)");
-        }
-        return false;
-    }
-    close(ret);
-    return true;
-}
-
 bool RemoveFile(const std::string& path, bool throw_on_error) {
     auto ret = unlink(path.c_str());
     if (ret != 0) {
@@ -118,6 +103,5 @@ bool RemoveFile(const std::string& path, bool throw_on_error) {
         }
         return false;
     }
-    close(ret);
     return true;
 }

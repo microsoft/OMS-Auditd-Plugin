@@ -46,6 +46,7 @@
 #include <sys/resource.h>
 
 #include "env_config.h"
+#include "LockFile.h"
 
 void usage()
 {
@@ -374,10 +375,10 @@ int main(int argc, char**argv) {
         }
     }
 
-    std::string flag_file = data_dir + "/auomscollect.flag";
+    std::string lock_file = data_dir + "/auomscollect.lock";
 
-    if (config.HasKey("flag_file")) {
-        flag_file = config.GetString("flag_file");
+    if (config.HasKey("lock_file")) {
+        lock_file = config.GetString("lock_file");
     }
 
     if (queue_size < Queue::MIN_QUEUE_SIZE) {
@@ -394,18 +395,28 @@ int main(int argc, char**argv) {
         Logger::OpenSyslog("auomscollect", LOG_DAEMON);
     }
 
+    bool reset_queue = false;
+
+    Logger::Info("Trying to acquire singleton lock");
+    LockFile singleton_lock(lock_file);
+    switch(singleton_lock.Lock()) {
+        case LockFile::FAILED:
+            Logger::Error("Failed to acquire singleton lock (%s): %s", lock_file.c_str(), std::strerror(errno));
+            exit(1);
+            break;
+        case LockFile::PREVIOUSLY_ABANDONED:
+            reset_queue = true;
+            break;
+        case LockFile::INTERRUPTED:
+            Logger::Error("Failed to acquire singleton lock (%s): Interrupted", lock_file.c_str());
+            exit(1);
+            break;
+    }
+    Logger::Info("Acquire singleton lock");
+
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
     Signals::Init();
-
-    bool reset_queue = false;
-    try {
-        if (!CreateFlagFile(flag_file, true)) {
-            reset_queue = true;
-        }
-    } catch (std::system_error& ex) {
-        Logger::Error("Failed to create flag file: %s", ex.what());
-    }
 
     if (reset_queue) {
         Logger::Warn("Previous instance may have crashed, resetting queue as a precaution.");
@@ -500,11 +511,7 @@ int main(int argc, char**argv) {
         exit(1);
     }
 
-    try {
-        RemoveFile(flag_file, true);
-    } catch (std::system_error& ex) {
-        Logger::Warn("Failed to remove flag file: %s", ex.what());
-    }
+    singleton_lock.Unlock();
 
     exit(0);
 }

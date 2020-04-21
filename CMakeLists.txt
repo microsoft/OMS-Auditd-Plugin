@@ -77,6 +77,7 @@ add_executable(auomscollect
         Metrics.cpp
         ProcMetrics.cpp
         Cache.h
+        LockFile.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -160,6 +161,7 @@ add_executable(auoms
         SyscallMetrics.cpp
         ProcMetrics.cpp
         SystemMetrics.cpp
+        LockFile.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
