@@ -469,11 +469,11 @@ std::string get_service_util_path() {
 /**********************************************************************************************************************
  **
  *********************************************************************************************************************/
-bool is_auditd_plugin_enabled() {
-    if (!PathExists(AUOMS_PLUGIN_FILE)) {
+bool is_auditd_plugin_enabled_in_file(const std::string& path) {
+    if (!PathExists(path)) {
         return false;
     }
-    auto lines = ReadFile(AUOMS_PLUGIN_FILE);
+    auto lines = ReadFile(path);
     for (auto& line: lines) {
         auto parts = split(line, '=');
         if (parts.size() == 2) {
@@ -485,9 +485,18 @@ bool is_auditd_plugin_enabled() {
     return false;
 }
 
-/**********************************************************************************************************************
- **
- *********************************************************************************************************************/
+bool is_auditd_plugin_enabled() {
+    bool audit = false;
+    if (PathExists("/etc/audit/plugins.d")) {
+        audit = is_auditd_plugin_enabled_in_file("/etc/audit/plugins.d/auoms.conf");
+    }
+    bool audisp = false;
+    if (PathExists("/etc/audisp/plugins.d")) {
+        return is_auditd_plugin_enabled_in_file("/etc/audisp/plugins.d/auoms.conf");
+    }
+    return audit && audisp;
+}
+
 void set_auditd_plugin_status(bool enabled) {
     std::vector<std::string> lines;
     lines.emplace_back("# This file controls the auoms plugin.");
@@ -503,8 +512,15 @@ void set_auditd_plugin_status(bool enabled) {
     lines.emplace_back("#args =");
     lines.emplace_back("format = string");
 
-    WriteFile(AUOMS_PLUGIN_FILE, lines);
-    chmod(AUOMS_PLUGIN_FILE, 0640);
+    if (PathExists("/etc/audit/plugins.d")) {
+        WriteFile("/etc/audit/plugins.d/auoms.conf", lines);
+        chmod("/etc/audit/plugins.d/auoms.conf", 0640);
+    }
+
+    if (PathExists("/etc/audisp/plugins.d")) {
+        WriteFile("/etc/audisp/plugins.d/auoms.conf", lines);
+        chmod("/etc/audisp/plugins.d/auoms.conf", 0640);
+    }
 }
 
 /**********************************************************************************************************************

@@ -39,9 +39,6 @@ ${{AUOMSCTL_BIN}};                            ${{TARGET_DIR}}/builddir/release/b
 /etc/opt/microsoft/auoms/auomscollect.conf;   installer/conf/auomscollect.conf;                   644; root; root; conffile
 /etc/opt/microsoft/auoms/example_output.conf; installer/conf/example_output.conf;                 644; root; root; conffile
 
-${{AUOMS_AUDISP_CONF}};                       installer/conf/audispd_auoms.conf;                  640; root; root; conffile
-${{AUOMS_AUDIT_CONF}};                        installer/conf/audispd_auoms.conf;                  640; root; root; conffile
-
 %Directories
 /opt;                                         755; root; root; sysdir
 /etc;                                         755; root; root; sysdir

@@ -46,6 +46,7 @@
 #include <sys/resource.h>
 
 #include "env_config.h"
+#include "LockFile.h"
 
 void usage()
 {
@@ -117,8 +118,10 @@ void DoStdinCollection(RawEventAccumulator& accumulator) {
         }
     } catch (const std::exception &ex) {
         Logger::Error("Unexpected exception in input loop: %s", ex.what());
+        exit(1);
     } catch (...) {
         Logger::Error("Unexpected exception in input loop");
+        exit(1);
     }
 }
 
@@ -240,8 +243,10 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
             accumulator.Flush(200);
         } catch (const std::exception &ex) {
             Logger::Error("Unexpected exception while flushing input: %s", ex.what());
+            exit(1);
         } catch (...) {
             Logger::Error("Unexpected exception while flushing input");
+            exit(1);
         }
 
         auto now = std::chrono::steady_clock::now();
@@ -390,6 +395,12 @@ int main(int argc, char**argv) {
         save_delay = config.GetUint64("queue_save_delay");
     }
 
+    std::string lock_file = data_dir + "/auomscollect.lock";
+
+    if (config.HasKey("lock_file")) {
+        lock_file = config.GetString("lock_file");
+    }
+
     bool use_syslog = true;
     if (config.HasKey("use_syslog")) {
         use_syslog = config.GetBool("use_syslog");
@@ -398,6 +409,23 @@ int main(int argc, char**argv) {
     if (use_syslog) {
         Logger::OpenSyslog("auomscollect", LOG_DAEMON);
     }
+
+    Logger::Info("Trying to acquire singleton lock");
+    LockFile singleton_lock(lock_file);
+    switch(singleton_lock.Lock()) {
+        case LockFile::FAILED:
+            Logger::Error("Failed to acquire singleton lock (%s): %s", lock_file.c_str(), std::strerror(errno));
+            exit(1);
+            break;
+        case LockFile::PREVIOUSLY_ABANDONED:
+            Logger::Warn("Previous instance did not exit cleanly");
+            break;
+        case LockFile::INTERRUPTED:
+            Logger::Error("Failed to acquire singleton lock (%s): Interrupted", lock_file.c_str());
+            exit(1);
+            break;
+    }
+    Logger::Info("Acquire singleton lock");
 
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
@@ -437,10 +465,7 @@ int main(int argc, char**argv) {
             queue->Saver(save_delay);
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
-            if (!Signals::IsExit()) {
-                Logger::Warn("Terminating");
-                Signals::Terminate();
-            }
+            exit(1);
         }
     });
 
@@ -477,6 +502,8 @@ int main(int argc, char**argv) {
         Logger::Error("Unexpected exception during exit");
         exit(1);
     }
+
+    singleton_lock.Unlock();
 
     exit(0);
 }

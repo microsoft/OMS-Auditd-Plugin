@@ -1,0 +1,41 @@
+%Variables
+SHELL_HEADER:            '#!/bin/sh'
+AUOMSCOLLECT_BIN:        '/opt/microsoft/auoms/bin/auomscollect'
+AUOMS_BIN:               '/opt/microsoft/auoms/bin/auoms'
+AUOMSCTL_BIN:            '/opt/microsoft/auoms/bin/auomsctl'
+
+SHORT_NAME:              'auoms.debug'
+SHORT_NAME_PREFIX:       'MSFT'
+LONG_NAME:               'Debug Symbols for auoms'
+GROUP:                   'Applications/System'
+LICENSE:                 'none'
+VENDOR:                  'http://www.microsoft.com'
+PROVIDES:                'debug symbols'
+DESCRIPTION:             'Debug symbols for auoms'
+MAINTAINER:              'Microsoft Corporation'
+
+%Defines
+
+%Links
+
+%Files
+${{AUOMSCOLLECT_BIN}}.debug;   ${{TARGET_DIR}}/builddir/release/bin/auomscollect.debug; 755; root; root
+${{AUOMS_BIN}}.debug;          ${{TARGET_DIR}}/builddir/release/bin/auoms.debug;        755; root; root
+${{AUOMSCTL_BIN}}.debug;       ${{TARGET_DIR}}/builddir/release/bin/auomsctl.debug;     755; root; root
+
+%Directories
+/opt;                          755; root; root; sysdir
+/opt/microsoft;                755; root; root; sysdir
+/opt/microsoft/auoms;          755; root; root
+/opt/microsoft/auoms/bin;      755; root; root
+
+%Dependencies
+
+%Preinstall_0
+${{SHELL_HEADER}}
+%Postinstall_0
+${{SHELL_HEADER}}
+%Preuninstall_0
+${{SHELL_HEADER}}
+%Postuninstall_0
+${{SHELL_HEADER}}
