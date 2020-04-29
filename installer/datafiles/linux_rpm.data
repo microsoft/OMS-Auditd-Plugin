@@ -80,7 +80,8 @@ if [ $1 -gt 1 ] ; then
     fi
     /opt/microsoft/auoms/bin/auomsctl upgrade
 fi
-rm -rf ${{AUOMS_AUDISP_CONF}}.*
+rm -f ${{AUOMS_AUDISP_CONF}}.*
+rm -f ${{AUOMS_AUDIT_CONF}}.*
 
 %Preuninstall_100
 if [ $1 -eq 0 ]; then
@@ -89,12 +90,8 @@ fi
 
 %Postuninstall_100
 if [ $1 -eq 0 ]; then
-    if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
-        rm ${{AUOMS_AUDISP_CONF}}
-    fi
-    if [ -e ${{AUOMS_AUDIT_CONF}} ]; then
-        rm ${{AUOMS_AUDIT_CONF}}
-    fi
+    rm -f ${{AUOMS_AUDISP_CONF}}*
+    rm -f ${{AUOMS_AUDIT_CONF}}*
 
     if [ -e /usr/sbin/semodule ]; then
         if [ ! -z "$(semodule -l | grep '^auoms\s*[0-9]')" ]; then
