@@ -79,6 +79,7 @@ add_executable(auomscollect
         TranslateRecordType.cpp
         FileUtils.cpp
         Retry.h
+        LockFile.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -154,6 +155,7 @@ add_executable(auoms
         ExecUtil.cpp
         StringTable.h
         ExecveConverter.cpp
+        LockFile.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
