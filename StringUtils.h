@@ -47,23 +47,23 @@ void append_int(std::string& out, Int i) {
             i = -i;
         }
     }
-    auto start = out.end();
+    auto start_idx = out.end() - out.begin();
     do {
         out.push_back((i % 10)+'0');
         i /= 10;
     } while (i > 0);
-    std::reverse(start, out.end());
+    std::reverse(out.begin()+start_idx, out.end());
 }
 
 template <typename Int>
 void append_uint(std::string& out, Int i) {
     auto u = static_cast<typename std::make_unsigned<Int>::type>(i);
-    auto start = out.end();
+    auto start_idx = out.end() - out.begin();
     do {
         out.push_back((u % 10)+'0');
         u /= 10;
     } while (u > 0);
-    std::reverse(start, out.end());
+    std::reverse(out.begin()+start_idx, out.end());
 }
 
 inline bool starts_with(const std::string& str, const std::string& prefix) {
