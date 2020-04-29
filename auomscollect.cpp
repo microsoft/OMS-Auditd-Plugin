@@ -115,8 +115,10 @@ void DoStdinCollection(RawEventAccumulator& accumulator) {
         }
     } catch (const std::exception &ex) {
         Logger::Error("Unexpected exception in input loop: %s", ex.what());
+        exit(1);
     } catch (...) {
         Logger::Error("Unexpected exception in input loop");
+        exit(1);
     }
 }
 
@@ -240,10 +242,10 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
             accumulator.Flush(200);
         } catch (const std::exception &ex) {
             Logger::Error("Unexpected exception while flushing input: %s", ex.what());
-            return false;
+            exit(1);
         } catch (...) {
             Logger::Error("Unexpected exception while flushing input");
-            return false;
+            exit(1);
         }
 
         auto now = std::chrono::steady_clock::now();
@@ -360,6 +362,12 @@ int main(int argc, char**argv) {
         }
     }
 
+    std::string flag_file = data_dir + "/auomscollect.flag";
+
+    if (config.HasKey("flag_file")) {
+        flag_file = config.GetString("flag_file");
+    }
+
     if (queue_size < Queue::MIN_QUEUE_SIZE) {
         Logger::Warn("Value for 'queue_size' (%ld) is smaller than minimum allowed. Using minimum (%ld).", queue_size, Queue::MIN_QUEUE_SIZE);
         exit(1);
@@ -377,6 +385,34 @@ int main(int argc, char**argv) {
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
     Signals::Init();
+
+    bool reset_queue = false;
+    try {
+        if (!CreateFlagFile(flag_file, true)) {
+            reset_queue = true;
+        }
+    } catch (std::system_error& ex) {
+        Logger::Error("Failed to create flag file: %s", ex.what());
+    }
+
+    if (reset_queue) {
+        Logger::Warn("Previous instance may have crashed, resetting queue as a precaution.");
+        if (PathExists(queue_file)) {
+            try {
+                RemoveFile(queue_file, true);
+            } catch (std::system_error& ex) {
+                Logger::Error("Failed to remove queue file: %s", ex.what());
+            }
+        }
+        if (PathExists(cursor_path)) {
+            try {
+                RemoveFile(cursor_path, true);
+            } catch (std::system_error& ex) {
+                Logger::Error("Failed to remove queue cursor: %s", ex.what());
+            }
+        }
+    }
+
 
     auto queue = std::make_shared<Queue>(queue_file, queue_size);
     try {
@@ -407,10 +443,7 @@ int main(int argc, char**argv) {
             queue->Autosave(128*1024, 250);
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
-            if (!Signals::IsExit()) {
-                Logger::Warn("Terminating");
-                Signals::Terminate();
-            }
+            exit(1);
         }
     });
 
@@ -445,6 +478,12 @@ int main(int argc, char**argv) {
     } catch (...) {
         Logger::Error("Unexpected exception during exit");
         exit(1);
+    }
+
+    try {
+        RemoveFile(flag_file, true);
+    } catch (std::system_error& ex) {
+        Logger::Warn("Failed to remove flag file: %s", ex.what());
     }
 
     exit(0);

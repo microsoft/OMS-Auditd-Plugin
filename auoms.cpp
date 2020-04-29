@@ -188,6 +188,12 @@ int main(int argc, char**argv) {
         }
     }
 
+    std::string flag_file = data_dir + "/auoms.flag";
+
+    if (config.HasKey("flag_file")) {
+        flag_file = config.GetString("flag_file");
+    }
+
     if (queue_size < Queue::MIN_QUEUE_SIZE) {
         Logger::Warn("Value for 'queue_size' (%ld) is smaller than minimum allowed. Using minimum (%ld).", queue_size, Queue::MIN_QUEUE_SIZE);
         exit(1);
@@ -205,6 +211,35 @@ int main(int argc, char**argv) {
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
     Signals::Init();
+
+    bool reset_queue = false;
+    try {
+        if (!CreateFlagFile(flag_file, true)) {
+            reset_queue = true;
+        }
+    } catch (std::system_error& ex) {
+        Logger::Error("Failed to create flag file: %s", ex.what());
+    }
+
+    if (reset_queue) {
+        Logger::Warn("Previous instance may have crashed, resetting queue as a precaution.");
+        if (PathExists(queue_file)) {
+            try {
+                RemoveFile(queue_file, true);
+            } catch (std::system_error& ex) {
+                Logger::Error("Failed to remove queue file: %s", ex.what());
+            }
+        }
+
+        try {
+            auto list = GetDirList(cursor_dir);
+            for (auto& name: list) {
+                RemoveFile(cursor_dir + "/" + name, true);
+            }
+        } catch (std::exception& ex) {
+            Logger::Error("Failed to remove cursors: %s", ex.what());
+        }
+    }
 
     auto queue = std::make_shared<Queue>(queue_file, queue_size);
     try {
@@ -270,12 +305,10 @@ int main(int argc, char**argv) {
             queue->Autosave(128*1024, 250);
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
-            if (!Signals::IsExit()) {
-                Logger::Warn("Terminating");
-                Signals::Terminate();
-            }
+            exit(1);
         }
     });
+
     try {
         outputs.Start();
     } catch (const std::exception& ex) {
@@ -285,6 +318,7 @@ int main(int argc, char**argv) {
         Logger::Error("Unexpected exception during outputs startup");
         exit(1);
     }
+
     Signals::SetHupHandler([&outputs,&config_file](){
         Config config;
 
@@ -317,6 +351,7 @@ int main(int argc, char**argv) {
         inputs.Stop();
     });
 
+    bool remove_flag = true;
     try {
         Logger::Info("Starting input loop");
         while (!Signals::IsExit()) {
@@ -330,8 +365,10 @@ int main(int argc, char**argv) {
         Logger::Info("Input loop stopped");
     } catch (const std::exception& ex) {
         Logger::Error("Unexpected exception in input loop: %s", ex.what());
+        remove_flag = false;
     } catch (...) {
         Logger::Error("Unexpected exception in input loop");
+        remove_flag = false;
     }
 
     Logger::Info("Exiting");
@@ -352,6 +389,14 @@ int main(int argc, char**argv) {
     } catch (...) {
         Logger::Error("Unexpected exception during exit");
         exit(1);
+    }
+
+    if (remove_flag) {
+        try {
+            RemoveFile(flag_file, true);
+        } catch (std::system_error& ex) {
+            Logger::Warn("Failed to remove flag file: %s", ex.what());
+        }
     }
 
     exit(0);
