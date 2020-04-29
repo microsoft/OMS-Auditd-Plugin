@@ -148,7 +148,7 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
         while(itr.next()) {
             _record_fields.push_back(itr.value());
         }
-        return _record_fields.size() > 0 || _record_type == RecordType::EOE;
+        return true;
     }
 
     return false;

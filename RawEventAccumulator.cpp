@@ -126,6 +126,10 @@ int RawEvent::AddEvent(EventBuilder& builder) {
 int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
     std::lock_guard<std::mutex> lock(_mutex);
 
+    if (record->IsEmpty()) {
+        return 0;
+    }
+
     auto event_id = record->GetEventId();
     auto itr = _events.find(event_id);
     if (itr != _events.end()) {
