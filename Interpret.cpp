@@ -113,12 +113,16 @@ bool InterpretSockaddrField(std::string& out, const EventRecord& record, const E
     switch (saddr->sa_family) {
         case AF_LOCAL: {
             auto addr = reinterpret_cast<struct sockaddr_un *>(_buf.data());
-            addr->sun_path[sizeof(addr->sun_path)] = 0;
+            // Calculate the sun_path size based on what was actually provided by the kernel
+            // What the kernel emits may be smaller than sizeof(addr->sun_path) and may not be null terminated.
+            size_t path_size = bsize-offsetof(struct sockaddr_un, sun_path);
             out.append("path=");
             if (addr->sun_path[0] != 0) {
-                out.append(addr->sun_path);
+                // The sun_path might not be NUL terminated, so limit strlen to the minimum of path_size or sizeof(addr->sun_path)
+                out.append(addr->sun_path, strnlen(addr->sun_path, std::min(path_size, sizeof(addr->sun_path))));
             } else {
-                out.append(&addr->sun_path[1]);
+                out.push_back('@');
+                out.append(&addr->sun_path[1], path_size-1);
             }
             out.append(" }");
             break;
@@ -144,13 +148,21 @@ bool InterpretSockaddrField(std::string& out, const EventRecord& record, const E
         }
         case AF_AX25: {
             auto addr = reinterpret_cast<struct sockaddr_ax25 *>(_buf.data());
+            if (bsize < sizeof(struct sockaddr_ax25)) {
+                out.append("ax25 len too short }");
+                break;
+            }
             out.append("call=");
-            out.append(addr->sax25_call.ax25_call, sizeof(addr->sax25_call.ax25_call));
+            tty_escape_string_append(out, addr->sax25_call.ax25_call, sizeof(addr->sax25_call.ax25_call));
             out.append(" }");
             break;
         }
         case AF_IPX: {
             auto addr = reinterpret_cast<struct sockaddr_ipx *>(_buf.data());
+            if (bsize < sizeof(struct sockaddr_ipx)) {
+                out.append("ipx len too short }");
+                break;
+            }
             out.append("lport=");
             append_int(out, addr->sipx_port);
             out.append("ipx-net=");
@@ -160,6 +172,10 @@ bool InterpretSockaddrField(std::string& out, const EventRecord& record, const E
         }
         case AF_ATMPVC: {
             auto addr = reinterpret_cast<struct sockaddr_atmpvc *>(_buf.data());
+            if (bsize < sizeof(struct sockaddr_atmpvc)) {
+                out.append("atmpvc len too short }");
+                break;
+            }
             out.append("int=");
             append_uint(out, addr->sap_addr.itf);
             out.append(" }");
@@ -167,7 +183,12 @@ bool InterpretSockaddrField(std::string& out, const EventRecord& record, const E
         }
         case AF_X25: {
             auto addr = reinterpret_cast<struct sockaddr_x25 *>(_buf.data());
+            if (bsize < sizeof(struct sockaddr_x25)) {
+                out.append("x25 len too short }");
+                break;
+            }
             out.append("laddr=");
+            // Valid X25 address is null terminated and only decimal digits (0-9).
             addr->sx25_addr.x25_addr[15] = 0;
             out.append(addr->sx25_addr.x25_addr);
             break;
@@ -193,6 +214,10 @@ bool InterpretSockaddrField(std::string& out, const EventRecord& record, const E
         }
         case AF_NETLINK: {
             auto addr = reinterpret_cast<struct sockaddr_nl *>(_buf.data());
+            if (bsize < sizeof(struct sockaddr_nl)) {
+                out.append("netlink len too short }");
+                break;
+            }
             out.append("nlnk-fam=");
             append_uint(out, addr->nl_family);
             out.append("nlnk-pid=");

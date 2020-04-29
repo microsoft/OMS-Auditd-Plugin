@@ -30,6 +30,7 @@ int unescape_raw_field(std::string& out, const char* in, size_t in_len);
 
 // Escape non ASCII non-printable chars (< 0x20 && > 0x7E)
 void tty_escape_string(std::string& out, const char* in, size_t in_len);
+void tty_escape_string_append(std::string& out, const char* in, size_t in_len);
 
 // Same as tty_escape_string, but also escape double quote
 void json_escape_string(std::string& out, const char* in, size_t in_len);
