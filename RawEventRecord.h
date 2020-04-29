@@ -39,6 +39,7 @@ public:
     inline EventId GetEventId() { return _event_id; }
     inline RecordType GetRecordType() { return _record_type; }
     inline size_t GetSize() { return _size; }
+    inline bool IsEmpty() { return _record_fields.empty(); }
 
 private:
     std::array<char, MAX_RECORD_SIZE> _data;

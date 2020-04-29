@@ -140,6 +140,10 @@ int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
     _bytes_metric->Add(static_cast<double>(record->GetSize()));
     _record_metric->Add(1.0);
 
+    if (record->IsEmpty()) {
+        return 0;
+    }
+
     auto event_id = record->GetEventId();
     int ret = 0;
     auto found = _events.on(event_id, [this,&record,&ret](const std::chrono::steady_clock::time_point& last_touched, std::shared_ptr<RawEvent>& event) {
