@@ -13,46 +13,35 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_RAWEVENTRECORD_H
-#define AUOMS_RAWEVENTRECORD_H
 
-#include <array>
-#include <string>
-#include <string_view>
-#include <vector>
+#ifndef AUOMS_TESTEVENTWRITER_H
+#define AUOMS_TESTEVENTWRITER_H
 
-#include "Event.h"
-#include "EventId.h"
-#include "RecordType.h"
+#include "TextEventWriter.h"
 
-class RawEventRecord {
+class TestEventWriter: public IWriter {
 public:
-    static constexpr size_t MAX_RECORD_SIZE = 9*1024; // MAX_AUDIT_MESSAGE_LENGTH in libaudit.h is 8970
+    virtual ssize_t WaitWritable(long timeout) {
+        return OK;
+    }
 
-    explicit RawEventRecord(): _record_fields(128), _unparsable(false) {}
+    virtual ssize_t WriteAll(const void *buf, size_t size, long timeout, const std::function<bool()>& fn) {
+        _buf.assign(reinterpret_cast<const char*>(buf), size);
+        _events.emplace_back(_buf);
+        return size;
+    }
 
-    inline char* Data() { return _data.data(); };
+    size_t GetEventCount() {
+        return _events.size();
+    }
 
-    bool Parse(RecordType record_type, size_t size);
-    int AddRecord(EventBuilder& builder);
-
-    inline EventId GetEventId() { return _event_id; }
-    inline RecordType GetRecordType() { return _record_type; }
-    inline size_t GetSize() { return _size; }
-    inline bool IsEmpty() { return _record_fields.empty(); }
+    std::string GetEvent(int idx) {
+        return _events[idx];
+    }
 
 private:
-    std::array<char, MAX_RECORD_SIZE> _data;
-    size_t _size;
-    RecordType _record_type;
-    std::string_view _node;
-    std::string _node_str;
-    std::string_view _type_name;
-    std::string _type_name_str;
-    EventId _event_id;
-    std::vector<std::string_view> _record_fields;
-    bool _unparsable;
+    std::string _buf;
+    std::vector<std::string> _events;
 };
 
-
-#endif //AUOMS_RAWEVENTRECORD_H
+#endif //AUOMS_TESTEVENTWRITER_H

@@ -175,36 +175,38 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     for (auto& rec: event) {
         switch(static_cast<RecordType>(rec.RecordType())) {
             case RecordType::SYSCALL:
-                rec_type = RecordType::AUOMS_SYSCALL;
-                rec_type_name = auoms_syscall_name;
-                for (auto &f : rec) {
-                    auto fname = f.FieldName();
-                    switch (fname[0]) {
-                        case 't': {
-                            if (fname != SV_TYPE) {
+                if (!syscall_rec) {
+                    rec_type = RecordType::AUOMS_SYSCALL;
+                    rec_type_name = auoms_syscall_name;
+                    for (auto &f : rec) {
+                        auto fname = f.FieldName();
+                        switch (fname[0]) {
+                            case 't': {
+                                if (fname != SV_TYPE) {
+                                    num_fields += 1;
+                                }
+                                break;
+                            }
+                            case 'i': {
+                                if (fname != SV_ITEMS) {
+                                    num_fields += 1;
+                                }
+                                break;
+                            }
+                            case 's': {
+                                if (fname == SV_SYSCALL) {
+                                    syscall_field = f;
+                                }
                                 num_fields += 1;
+                                break;
                             }
-                            break;
-                        }
-                        case 'i': {
-                            if (fname != SV_ITEMS) {
+                            default:
                                 num_fields += 1;
-                            }
-                            break;
+                                break;
                         }
-                        case 's': {
-                            if (fname == SV_SYSCALL) {
-                                syscall_field = f;
-                            }
-                            num_fields += 1;
-                            break;
-                        }
-                        default:
-                            num_fields += 1;
-                            break;
                     }
+                    syscall_rec = rec;
                 }
-                syscall_rec = rec;
                 break;
             case RecordType::EXECVE: {
                 if (rec.NumFields() > 0) {

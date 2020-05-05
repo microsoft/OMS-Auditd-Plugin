@@ -20,6 +20,7 @@
 #include "OMSEventWriter.h"
 #include "JSONEventWriter.h"
 #include "MsgPackEventWriter.h"
+#include "FluentEventWriter.h"
 #include "RawEventWriter.h"
 #include "SyslogEventWriter.h"
 #include "EventFilter.h"
@@ -47,6 +48,12 @@ std::shared_ptr<IEventWriter> OutputsEventWriterFactory::CreateEventWriter(const
         return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new JSONEventWriter(writer_config)));
     } else if (format == "msgpack") {
         return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new MsgPackEventWriter()));
+    } else if (format == "fluent") {
+        std::string fluentTag = "LINUX_AUDITD_BLOB";
+        if (config.HasKey("fluent_message_tag")) {
+            fluentTag = config.GetString("fluent_message_tag");
+        }
+        return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new FluentEventWriter(writer_config, fluentTag)));
     } else if (format == "raw") {
         return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new RawEventWriter()));
     } else if (format == "syslog") {
@@ -144,7 +151,7 @@ std::unique_ptr<Config> Outputs::read_and_validate_config(const std::string& nam
         }
     }
     
-    if (format != "oms" && format != "json" && format != "msgpack" && format != "raw" && format != "syslog") {
+    if (format != "oms" && format != "json" && format != "msgpack" && format != "raw" && format != "syslog" && format != "fluent") {
         Logger::Error("Output(%s): Invalid output_format parameter value: '%s'", name.c_str(), format.c_str());
         return nullptr;
     }
