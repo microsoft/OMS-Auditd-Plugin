@@ -35,6 +35,7 @@
 #include "SyscallMetrics.h"
 #include "SystemMetrics.h"
 #include "ProcMetrics.h"
+#include "FileUtils.h"
 
 #include <iostream>
 #include <fstream>
@@ -47,6 +48,7 @@
 #include <sys/resource.h>
 
 #include "env_config.h"
+#include "LockFile.h"
 
 void usage()
 {
@@ -202,6 +204,12 @@ int main(int argc, char**argv) {
         }
     }
 
+    std::string lock_file = data_dir + "/auoms.lock";
+
+    if (config.HasKey("lock_file")) {
+        lock_file = config.GetString("lock_file");
+    }
+
     if (queue_size < Queue::MIN_QUEUE_SIZE) {
         Logger::Warn("Value for 'queue_size' (%ld) is smaller than minimum allowed. Using minimum (%ld).", queue_size, Queue::MIN_QUEUE_SIZE);
         exit(1);
@@ -216,9 +224,47 @@ int main(int argc, char**argv) {
         Logger::OpenSyslog("auoms", LOG_DAEMON);
     }
 
+    bool reset_queue = false;
+    Logger::Info("Trying to acquire singleton lock");
+    LockFile singleton_lock(lock_file);
+    switch(singleton_lock.Lock()) {
+        case LockFile::FAILED:
+            Logger::Error("Failed to acquire singleton lock (%s): %s", lock_file.c_str(), std::strerror(errno));
+            exit(1);
+            break;
+        case LockFile::PREVIOUSLY_ABANDONED:
+            reset_queue = true;
+            break;
+        case LockFile::INTERRUPTED:
+            Logger::Error("Failed to acquire singleton lock (%s): Interrupted", lock_file.c_str());
+            exit(1);
+            break;
+    }
+    Logger::Info("Acquire singleton lock");
+
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
     Signals::Init();
+
+    if (reset_queue) {
+        Logger::Warn("Previous instance may have crashed, resetting queue as a precaution.");
+        if (PathExists(queue_file)) {
+            try {
+                RemoveFile(queue_file, true);
+            } catch (std::system_error& ex) {
+                Logger::Error("Failed to remove queue file: %s", ex.what());
+            }
+        }
+
+        try {
+            auto list = GetDirList(cursor_dir);
+            for (auto& name: list) {
+                RemoveFile(cursor_dir + "/" + name, true);
+            }
+        } catch (std::exception& ex) {
+            Logger::Error("Failed to remove cursors: %s", ex.what());
+        }
+    }
 
     auto queue = std::make_shared<Queue>(queue_file, queue_size);
     try {
@@ -288,12 +334,10 @@ int main(int argc, char**argv) {
             queue->Autosave(128*1024, 250);
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
-            if (!Signals::IsExit()) {
-                Logger::Warn("Terminating");
-                Signals::Terminate();
-            }
+            exit(1);
         }
     });
+
     try {
         outputs.Start();
     } catch (const std::exception& ex) {
@@ -303,6 +347,7 @@ int main(int argc, char**argv) {
         Logger::Error("Unexpected exception during outputs startup");
         exit(1);
     }
+
     Signals::SetHupHandler([&outputs,&config_file](){
         Config config;
 
@@ -345,6 +390,7 @@ int main(int argc, char**argv) {
         inputs.Stop();
     });
 
+    bool remove_lock = true;
     try {
         Logger::Info("Starting input loop");
         while (!Signals::IsExit()) {
@@ -358,8 +404,10 @@ int main(int argc, char**argv) {
         Logger::Info("Input loop stopped");
     } catch (const std::exception& ex) {
         Logger::Error("Unexpected exception in input loop: %s", ex.what());
+        remove_lock = false;
     } catch (...) {
         Logger::Error("Unexpected exception in input loop");
+        remove_lock = false;
     }
 
     Logger::Info("Exiting");
@@ -386,6 +434,10 @@ int main(int argc, char**argv) {
     } catch (...) {
         Logger::Error("Unexpected exception during exit");
         exit(1);
+    }
+
+    if (remove_lock) {
+        singleton_lock.Unlock();
     }
 
     exit(0);

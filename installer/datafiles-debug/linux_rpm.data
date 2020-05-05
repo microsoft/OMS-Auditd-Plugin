@@ -1,0 +1,4 @@
+%Variables
+PACKAGE_TYPE: 'RPM'
+
+%Dependencies

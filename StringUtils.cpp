@@ -141,6 +141,10 @@ const char int2hex[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A',
 
 void tty_escape_string(std::string& out, const char* in, size_t in_len) {
     out.clear();
+    tty_escape_string_append(out, in, in_len);
+}
+
+void tty_escape_string_append(std::string& out, const char* in, size_t in_len) {
     auto ptr = in;
     auto end = ptr+in_len;
     for (; ptr < end; ++ptr) {

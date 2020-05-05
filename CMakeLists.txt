@@ -77,6 +77,7 @@ add_executable(auomscollect
         Metrics.cpp
         ProcMetrics.cpp
         Cache.h
+        LockFile.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -90,10 +91,20 @@ target_link_libraries(auomscollect
         rt
 )
 
+if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
+    ADD_CUSTOM_COMMAND(TARGET auomscollect POST_BUILD
+            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug $<TARGET_FILE:auomscollect> ${CMAKE_BINARY_DIR}/auomscollect.debug
+            COMMAND ${CMAKE_STRIP} -g $<TARGET_FILE:auomscollect>
+            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=auomscollect.debug $<TARGET_FILE:auomscollect>
+    )
+    install(FILES ${CMAKE_BINARY_DIR}/auomscollect.debug DESTINATION ${CMAKE_BINARY_DIR}/release/bin)
+endif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
+
 install(TARGETS
         auomscollect
         RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
+
 
 add_executable(auoms
         env_config.h
@@ -151,6 +162,7 @@ add_executable(auoms
         SyscallMetrics.cpp
         ProcMetrics.cpp
         SystemMetrics.cpp
+        LockFile.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -164,6 +176,15 @@ target_link_libraries(auoms
         pthread
         rt
 )
+
+if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
+    ADD_CUSTOM_COMMAND(TARGET auoms POST_BUILD
+            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug $<TARGET_FILE:auoms> ${CMAKE_BINARY_DIR}/auoms.debug
+            COMMAND ${CMAKE_STRIP} -g $<TARGET_FILE:auoms>
+            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=auoms.debug $<TARGET_FILE:auoms>
+    )
+    install(FILES ${CMAKE_BINARY_DIR}/auoms.debug DESTINATION ${CMAKE_BINARY_DIR}/release/bin)
+endif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
 
 install(TARGETS
         auoms
@@ -208,6 +229,15 @@ target_link_libraries(auomsctl
         pthread
         rt
 )
+
+if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
+    ADD_CUSTOM_COMMAND(TARGET auomsctl POST_BUILD
+            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug $<TARGET_FILE:auomsctl> ${CMAKE_BINARY_DIR}/auomsctl.debug
+            COMMAND ${CMAKE_STRIP} -g $<TARGET_FILE:auomsctl>
+            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=auomsctl.debug $<TARGET_FILE:auomsctl>
+    )
+    install(FILES ${CMAKE_BINARY_DIR}/auomsctl.debug DESTINATION ${CMAKE_BINARY_DIR}/release/bin)
+endif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
 
 install(TARGETS
         auomsctl
