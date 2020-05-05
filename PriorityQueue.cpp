@@ -851,8 +851,6 @@ std::shared_ptr<QueueItemBucket> PriorityQueue::cycle_bucket(uint32_t priority) 
     _unsaved[priority].emplace(file->Sequence(), _UnsavedEntry(file, bucket));
     _max_file_seq[priority] = bucket->MaxSequence();
 
-    Logger::Info("Unsaved bucket (%d, %ld)", bucket->Priority(), bucket->MaxSequence());
-
     bucket = std::make_shared<QueueItemBucket>(priority);
     _current_buckets[priority] = bucket;
 
@@ -1059,7 +1057,6 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
 
     // Remove files that are not needed
     for (auto& f : to_remove) {
-        Logger::Info("Remove (%d, %ld)", f->Priority(), f->Sequence());
         if (f->Remove()) {
             removed.emplace_back(f);
             bytes_saved -= f->FileSize();
@@ -1078,7 +1075,6 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
         auto& ue = to_save[sidx];
         if (bytes_saved + ue._file->FileSize() > fs_bytes_allowed) {
             while (ridx < can_remove.size() && bytes_saved + ue._file->FileSize() > fs_bytes_allowed && can_remove[ridx]->Priority() >= ue._file->Priority()) {
-                Logger::Info("Remove (%d, %ld)", can_remove[ridx]->Priority(), can_remove[ridx]->Sequence());
                 if (can_remove[ridx]->Remove()) {
                     removed.emplace_back(can_remove[ridx]);
                     bytes_saved -= can_remove[ridx]->FileSize();
@@ -1092,7 +1088,6 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
         if (bytes_saved + ue._file->FileSize() > fs_bytes_allowed) {
             break;
         } else {
-            Logger::Info("Save (%d, %ld)", ue._file->Priority(), ue._file->Sequence());
             if (ue._file->Save()) {
                 saved.emplace_back(ue._file);
                 bytes_saved += ue._file->FileSize();
