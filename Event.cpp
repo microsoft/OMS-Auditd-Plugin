@@ -799,49 +799,80 @@ int Event::Validate() const {
     if (_size <= EVENT_RECORD_INDEX_OFFSET) {
         return 1;
     }
-    if (_size <= EVENT_RECORD_INDEX_OFFSET+EVENT_NUM_RECORDS(_data)*sizeof(uint32_t)) {
+
+    size_t offset = EVENT_RECORD_INDEX_OFFSET+EVENT_NUM_RECORDS(_data)*sizeof(uint32_t);
+
+    if (_size <= offset) {
         return 2;
     }
+
     for (int ridx = 0; ridx < EVENT_NUM_RECORDS(_data); ++ridx) {
         auto roffset = INDEX_VALUE(_data, EVENT_RECORD_INDEX_OFFSET, ridx);
-        if (_size <= roffset) {
+
+        if (offset != roffset) {
             return 3;
         }
+
+        offset += RECORD_FIELD_INDEX_OFFSET;
         if (_size <= roffset + RECORD_FIELD_INDEX_OFFSET) {
             return 4;
         }
-        if (_size <= roffset + RECORD_FIELD_INDEX_OFFSET+(RECORD_NUM_FIELDS(_data, roffset)*sizeof(uint32_t)*2)) {
+
+        offset += RECORD_NUM_FIELDS(_data, roffset)*sizeof(uint32_t)*2;
+        if (_size <= offset) {
             return 5;
         }
-        if (_size <= roffset + RECORD_TYPE_NAME_OFFSET(RECORD_NUM_FIELDS(_data, roffset)) + RECORD_NAME_SIZE(_data, roffset)) {
+
+        if (offset != roffset + RECORD_TYPE_NAME_OFFSET(RECORD_NUM_FIELDS(_data, roffset))) {
             return 6;
         }
-        if (_size <= roffset + RECORD_TEXT_OFFSET(RECORD_NUM_FIELDS(_data, roffset), RECORD_NAME_SIZE(_data, roffset)) + RECORD_TEXT_SIZE(_data, roffset)) {
+
+        offset += RECORD_NAME_SIZE(_data, roffset);
+
+        if (_size <= offset) {
+            return 6;
+        }
+
+        if (offset != roffset + RECORD_TEXT_OFFSET(RECORD_NUM_FIELDS(_data, roffset), RECORD_NAME_SIZE(_data, roffset))) {
+            return 7;
+        }
+
+        offset += RECORD_TEXT_SIZE(_data, roffset);
+
+        if (_size <= offset) {
             return 7;
         }
 
         for (int fidx = 0; fidx < RECORD_NUM_FIELDS(_data, roffset); ++fidx) {
             auto foffset = INDEX_VALUE(_data, roffset + RECORD_FIELD_INDEX_OFFSET, fidx);
-            if (_size <= foffset) {
+
+            if (offset != roffset + foffset) {
                 return 8;
             }
-            if (_size <= foffset + FIELD_INTERP_SIZE_OFFSET + FIELD_INTERP_SIZE_SIZE) {
+
+            offset += FIELD_INTERP_SIZE_OFFSET + FIELD_INTERP_SIZE_SIZE;
+            if (_size <= offset) {
                 return 9;
             }
-            if (_size <= foffset + FIELD_NAME_OFFSET + FIELD_NAME_SIZE(_data, roffset, foffset)) {
+
+            offset += FIELD_NAME_SIZE(_data, roffset, foffset);
+            if (_size < offset) {
                 return 10;
             }
-            if (_size <= foffset + FIELD_RAW_VALUE_OFFSET(FIELD_NAME_SIZE(_data, roffset, foffset)) + FIELD_RAW_SIZE(_data, roffset, foffset)) {
+
+            offset += FIELD_RAW_SIZE(_data, roffset, foffset);
+            if (_size < offset) {
                 return 11;
             }
-            if (_size <= foffset + FIELD_INTERP_VALUE_OFFSET(FIELD_NAME_SIZE(_data, roffset, foffset), FIELD_RAW_SIZE(_data, roffset, foffset)) + FIELD_INTERP_SIZE(_data, roffset, foffset)) {
+
+            offset += FIELD_INTERP_SIZE(_data, roffset, foffset);
+            if (_size < offset) {
                 return 12;
             }
         }
     }
     return 0;
 }
-
 
 std::string EventToRawText(const Event& event, bool include_interp) {
     std::string id;
