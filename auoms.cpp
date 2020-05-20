@@ -22,6 +22,7 @@
 #include "Config.h"
 #include "Logger.h"
 #include "EventQueue.h"
+#include "EventPrioritizer.h"
 #include "UserDB.h"
 #include "Inputs.h"
 #include "Outputs.h"
@@ -247,6 +248,17 @@ int main(int argc, char**argv) {
         lock_file = config.GetString("lock_file");
     }
 
+    uint64_t rss_limit = 512*1024*1024;
+    uint64_t virt_limit = 1536*1024*1024;
+
+    if (config.HasKey("rss_limit")) {
+        rss_limit = config.GetUint64("rss_limit");
+    }
+
+    if (config.HasKey("virt_limit")) {
+        virt_limit = config.GetUint64("virt_limit");
+    }
+
     bool use_syslog = true;
     if (config.HasKey("use_syslog")) {
         use_syslog = config.GetBool("use_syslog");
@@ -254,6 +266,11 @@ int main(int argc, char**argv) {
 
     if (use_syslog) {
         Logger::OpenSyslog("auoms", LOG_DAEMON);
+    }
+
+    auto event_prioritizer = std::make_shared<EventPrioritizer>(num_priorities-1);
+    if (!event_prioritizer->LoadFromConfig(config)) {
+        exit(1);
     }
 
     Logger::Info("Trying to acquire singleton lock");
@@ -300,7 +317,10 @@ int main(int argc, char**argv) {
     auto system_metrics = std::make_shared<SystemMetrics>(metrics);
     system_metrics->Start();
 
-    auto proc_metrics = std::make_shared<ProcMetrics>("auoms", metrics);
+    auto proc_metrics = std::make_shared<ProcMetrics>("auoms", metrics, rss_limit, virt_limit, []() {
+        Logger::Error("A memory limit was exceeded, exiting immediately");
+        exit(1);
+    });
     proc_metrics->Start();
 
     Inputs inputs(input_socket_path, operational_status);
@@ -388,7 +408,7 @@ int main(int argc, char**argv) {
     processNotify->Start();
 
     auto event_queue = std::make_shared<EventQueue>(queue);
-    auto builder = std::make_shared<EventBuilder>(event_queue);
+    auto builder = std::make_shared<EventBuilder>(event_queue, event_prioritizer);
 
     RawEventProcessor rep(builder, user_db, processTree, filtersEngine, metrics);
     inputs.Start();

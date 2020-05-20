@@ -14,38 +14,48 @@
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef AUOMS_PROCMETRICS_H
-#define AUOMS_PROCMETRICS_H
+#ifndef AUOMS_SPSCDATAQUEUE_H
+#define AUOMS_SPSCDATAQUEUE_H
 
-#include "RunBase.h"
-#include "Metrics.h"
+#include <cinttypes>
+#include <vector>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+#include <cstring>
+#include <list>
 
-#include <ctime>
-#include <functional>
+class Segment;
 
-class ProcMetrics: public RunBase {
+class SPSCDataQueue {
 public:
-    ProcMetrics(const std::string& nsname, const std::shared_ptr<Metrics> metrics, uint64_t rss_limit, uint64_t virt_limit, std::function<void()> limit_fn): _nsname(nsname), _metrics(metrics), _rss_limit(rss_limit), _virt_limit(virt_limit), _limit_fn(std::move(limit_fn)), _total_system_memory(0), _page_size(0), _clock(0) {}
+    SPSCDataQueue(size_t segment_size, size_t num_segments);
 
-protected:
-    void run() override;
+    uint8_t* Allocate(size_t size, size_t* loss_bytes);
+    inline uint8_t* Allocate(size_t size) { return Allocate(size, nullptr); }
+
+    void Commit(size_t size);
+
+    void Close();
+
+    ssize_t Get(uint8_t** ptr);
+
+    void Release();
+
+    bool IsClosed() { return _closed; }
+
+    uint64_t LossCount() { return _loss_count.load(); }
 
 private:
-    bool collect_metrics();
-
-    std::string _nsname;
-    std::shared_ptr<Metrics> _metrics;
-    uint64_t _rss_limit;
-    uint64_t _virt_limit;
-    std::function<void()> _limit_fn;
-    uint64_t _total_system_memory;
-    long _page_size;
-    clock_t _clock;
-    std::shared_ptr<Metric> _cpu_metric;
-    std::shared_ptr<Metric> _mem_pct_metric;
-    std::shared_ptr<Metric> _rss_metric;
-    std::shared_ptr<Metric> _virt_metric;
+    std::mutex _mutex;
+    std::condition_variable _cond;
+    std::list<Segment*> _free;
+    std::list<Segment*> _ready;
+    Segment* _current_in;
+    Segment* _current_out;
+    std::atomic<uint64_t> _loss_count;
+    std::atomic<bool> _closed;
 };
 
 
-#endif //AUOMS_PROCMETRICS_H
+#endif //AUOMS_SPSCDATAQUEUE_H

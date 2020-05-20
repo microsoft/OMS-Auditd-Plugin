@@ -14,38 +14,28 @@
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef AUOMS_PROCMETRICS_H
-#define AUOMS_PROCMETRICS_H
+#ifndef AUOMS_EVENTPRIORITIZER_H
+#define AUOMS_EVENTPRIORITIZER_H
 
-#include "RunBase.h"
-#include "Metrics.h"
+#include "Event.h"
+#include "Config.h"
+#include "RecordType.h"
 
-#include <ctime>
-#include <functional>
+#include <unordered_map>
 
-class ProcMetrics: public RunBase {
+class EventPrioritizer: public IEventPrioritizer {
 public:
-    ProcMetrics(const std::string& nsname, const std::shared_ptr<Metrics> metrics, uint64_t rss_limit, uint64_t virt_limit, std::function<void()> limit_fn): _nsname(nsname), _metrics(metrics), _rss_limit(rss_limit), _virt_limit(virt_limit), _limit_fn(std::move(limit_fn)), _total_system_memory(0), _page_size(0), _clock(0) {}
+    EventPrioritizer(uint16_t default_priority): _default_priority(default_priority)  {}
 
-protected:
-    void run() override;
+    bool LoadFromConfig(Config& config);
+
+    uint16_t Prioritize(const Event& event) override;
 
 private:
-    bool collect_metrics();
-
-    std::string _nsname;
-    std::shared_ptr<Metrics> _metrics;
-    uint64_t _rss_limit;
-    uint64_t _virt_limit;
-    std::function<void()> _limit_fn;
-    uint64_t _total_system_memory;
-    long _page_size;
-    clock_t _clock;
-    std::shared_ptr<Metric> _cpu_metric;
-    std::shared_ptr<Metric> _mem_pct_metric;
-    std::shared_ptr<Metric> _rss_metric;
-    std::shared_ptr<Metric> _virt_metric;
+    uint16_t _default_priority;
+    std::unordered_map<RecordType, uint16_t> _record_type_priorities;
+    std::unordered_map<int, uint16_t> _syscall_priorities;
 };
 
 
-#endif //AUOMS_PROCMETRICS_H
+#endif //AUOMS_EVENTPRIORITIZER_H

@@ -17,6 +17,7 @@
 #include "StdinReader.h"
 #include "UnixDomainWriter.h"
 #include "Signals.h"
+#include "SPSCDataQueue.h"
 #include "PriorityQueue.h"
 #include "Config.h"
 #include "Logger.h"
@@ -47,6 +48,7 @@
 
 #include "env_config.h"
 #include "LockFile.h"
+#include "EventPrioritizer.h"
 
 void usage()
 {
@@ -84,29 +86,34 @@ bool parsePath(std::vector<std::string>& dirs, const std::string& path_str) {
 }
 
 
-void DoStdinCollection(RawEventAccumulator& accumulator) {
+void DoStdinCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& bytes_metric, std::shared_ptr<Metric>& records_metric, std::shared_ptr<Metric>& lost_bytes_metric, std::shared_ptr<Metric>& lost_segments_metric) {
     StdinReader reader;
 
     try {
-        std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();
-
         for (;;) {
-            ssize_t nr = reader.ReadLine(record->Data(), RawEventRecord::MAX_RECORD_SIZE, 100, [] {
+            size_t loss_bytes = 0;
+            auto ptr = raw_queue.Allocate(RawEventRecord::MAX_RECORD_SIZE, &loss_bytes);
+            if (ptr == nullptr) {
+                return;
+            }
+            if (loss_bytes > 0) {
+                lost_bytes_metric->Add(loss_bytes);
+                lost_segments_metric->Add(1);
+                loss_bytes = 0;
+            }
+            *reinterpret_cast<RecordType*>(ptr) = RecordType::UNKNOWN;
+            ssize_t nr = reader.ReadLine(reinterpret_cast<char*>(ptr+sizeof(RecordType)), RawEventRecord::MAX_RECORD_SIZE-sizeof(RecordType), 100, [] {
                 return Signals::IsExit();
             });
             if (nr > 0) {
-                if (record->Parse(RecordType::UNKNOWN, nr)) {
-                    accumulator.AddRecord(std::move(record));
-                    record = std::make_unique<RawEventRecord>();
-                } else {
-                    Logger::Warn("Received unparsable event data: '%s'", std::string(record->Data(), nr).c_str());
-                }
+                raw_queue.Commit(nr+sizeof(RecordType));
+                bytes_metric->Add(nr);
+                records_metric->Add(1.0);
             } else if (nr == StdinReader::TIMEOUT) {
                 if (Signals::IsExit()) {
                     Logger::Info("Exiting input loop");
                     break;
                 }
-                accumulator.Flush(200);
             } else { // nr == StdinReader::CLOSED, StdinReader::FAILED or StdinReader::INTERRUPTED
                 if (nr == StdinReader::CLOSED) {
                     Logger::Info("STDIN closed, exiting input loop");
@@ -125,7 +132,7 @@ void DoStdinCollection(RawEventAccumulator& accumulator) {
     }
 }
 
-bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
+bool DoNetlinkCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& bytes_metric, std::shared_ptr<Metric>& records_metric, std::shared_ptr<Metric>& lost_bytes_metric, std::shared_ptr<Metric>& lost_segments_metric) {
     // Request that that this process receive a SIGTERM if the parent process (thread in parent) dies/exits.
     auto ret = prctl(PR_SET_PDEATHSIG, SIGTERM);
     if (ret != 0) {
@@ -146,19 +153,25 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
             {"/sbin", IN_CREATE|IN_MOVED_TO},
     });
 
-    std::function handler = [&accumulator](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
+    std::function handler = [&](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
         // Ignore AUDIT_REPLACE for now since replying to it doesn't actually do anything.
         if (type >= AUDIT_FIRST_USER_MSG && type != static_cast<uint16_t>(RecordType::REPLACE)) {
-            std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();
-            std::memcpy(record->Data(), data, len);
-            if (record->Parse(static_cast<RecordType>(type), len)) {
-                accumulator.AddRecord(std::move(record));
-            } else {
-                char cdata[len+1];
-                ::memcpy(cdata, data, len);
-                cdata[len] = 0;
-                Logger::Warn("Received unparsable event data (type = %d, flags = 0x%X, size=%ld:\n%s)", type, flags, len, cdata);
+            size_t loss_bytes = 0;
+            auto ptr = raw_queue.Allocate(len+sizeof(RecordType), &loss_bytes);
+            if (ptr == nullptr) {
+                _stop_gate.Open();
+                return false;
             }
+            if (loss_bytes > 0) {
+                lost_bytes_metric->Add(loss_bytes);
+                lost_segments_metric->Add(1);
+                loss_bytes = 0;
+            }
+            *reinterpret_cast<RecordType*>(ptr) = static_cast<RecordType>(type);
+            std::memcpy(ptr+sizeof(RecordType), data, len);
+            raw_queue.Commit(len+sizeof(RecordType));
+            bytes_metric->Add(len);
+            records_metric->Add(1.0);
         }
         return false;
     };
@@ -235,18 +248,8 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
 
     auto _last_pid_check = std::chrono::steady_clock::now();
     while(!Signals::IsExit()) {
-        if (_stop_gate.Wait(Gate::OPEN, 100)) {
+        if (_stop_gate.Wait(Gate::OPEN, 1000)) {
             return false;
-        }
-
-        try {
-            accumulator.Flush(200);
-        } catch (const std::exception &ex) {
-            Logger::Error("Unexpected exception while flushing input: %s", ex.what());
-            exit(1);
-        } catch (...) {
-            Logger::Error("Unexpected exception while flushing input");
-            exit(1);
         }
 
         auto now = std::chrono::steady_clock::now();
@@ -359,6 +362,9 @@ int main(int argc, char**argv) {
         exit(1);
     }
 
+    size_t raw_queue_segment_size = 1024*1024;
+    size_t num_raw_queue_segments = 10;
+
     int num_priorities = 8;
     size_t max_file_data_size = 1024*1024;
     size_t max_unsaved_files = 128;
@@ -366,6 +372,14 @@ int main(int argc, char**argv) {
     double max_fs_pct = 10;
     double min_fs_free_pct = 5;
     long save_delay = 250;
+
+    if (config.HasKey("raw_queue_segment_size")) {
+        num_priorities = config.GetUint64("raw_queue_segment_size");
+    }
+
+    if (config.HasKey("num_raw_queue_segments")) {
+        num_priorities = config.GetUint64("num_raw_queue_segments");
+    }
 
     if (config.HasKey("queue_num_priorities")) {
         num_priorities = config.GetUint64("queue_num_priorities");
@@ -401,6 +415,17 @@ int main(int argc, char**argv) {
         lock_file = config.GetString("lock_file");
     }
 
+    uint64_t rss_limit = 250*1024*1024;
+    uint64_t virt_limit = 1536*1024*1024;
+
+    if (config.HasKey("rss_limit")) {
+        rss_limit = config.GetUint64("rss_limit");
+    }
+
+    if (config.HasKey("virt_limit")) {
+        virt_limit = config.GetUint64("virt_limit");
+    }
+
     bool use_syslog = true;
     if (config.HasKey("use_syslog")) {
         use_syslog = config.GetBool("use_syslog");
@@ -408,6 +433,11 @@ int main(int argc, char**argv) {
 
     if (use_syslog) {
         Logger::OpenSyslog("auomscollect", LOG_DAEMON);
+    }
+
+    auto event_prioritizer = std::make_shared<EventPrioritizer>(num_priorities-1);
+    if (!event_prioritizer->LoadFromConfig(config)) {
+        exit(1);
     }
 
     Logger::Info("Trying to acquire singleton lock");
@@ -431,6 +461,8 @@ int main(int argc, char**argv) {
     // They will be handled once Signals::Start() is called.
     Signals::Init();
 
+    SPSCDataQueue raw_queue(raw_queue_segment_size, num_raw_queue_segments);
+
     Logger::Info("Opening queue: %s", queue_dir.c_str());
     auto queue = PriorityQueue::Open(queue_dir, num_priorities, max_file_data_size, max_unsaved_files, max_fs_bytes, max_fs_pct, min_fs_free_pct);
     if (!queue) {
@@ -439,12 +471,15 @@ int main(int argc, char**argv) {
     }
 
     auto event_queue = std::make_shared<EventQueue>(queue);
-    auto builder = std::make_shared<EventBuilder>(event_queue);
+    auto builder = std::make_shared<EventBuilder>(event_queue, event_prioritizer);
 
     auto metrics = std::make_shared<Metrics>(queue);
     metrics->Start();
 
-    auto proc_metrics = std::make_shared<ProcMetrics>("auomscollect", metrics);
+    auto proc_metrics = std::make_shared<ProcMetrics>("auomscollect", metrics, rss_limit, virt_limit, []() {
+        Logger::Error("A memory limit was exceeded, exiting immediately");
+        exit(1);
+    });
     proc_metrics->Start();
 
     RawEventAccumulator accumulator (builder, metrics);
@@ -469,6 +504,27 @@ int main(int argc, char**argv) {
         }
     });
 
+    auto ingest_bytes_metric = metrics->AddMetric("ingest", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    auto ingest_records_metric = metrics->AddMetric("ingest", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    auto lost_bytes_metric = metrics->AddMetric("ingest", "lost_bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    auto lost_segments_metric = metrics->AddMetric("ingest", "lost_segments", MetricPeriod::SECOND, MetricPeriod::HOUR);
+
+    std::thread proc_thread([&]() {
+        std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();
+        uint8_t* ptr;
+        ssize_t size;
+
+        while((size = raw_queue.Get(&ptr)) > 0) {
+            if (record->Parse(*reinterpret_cast<RecordType*>(ptr), size-sizeof(RecordType))) {
+                accumulator.AddRecord(std::move(record));
+                record = std::make_unique<RawEventRecord>();
+            } else {
+                Logger::Warn("Received unparsable event data: '%s'", std::string(record->Data(), size).c_str());
+            }
+            raw_queue.Release();
+        }
+    });
+
     // Start signal handling thread
     Signals::Start();
     output.Start();
@@ -476,15 +532,16 @@ int main(int argc, char**argv) {
     if (netlink_mode) {
         bool restart;
         do {
-            restart = DoNetlinkCollection(accumulator);
+            restart = DoNetlinkCollection(raw_queue, ingest_bytes_metric, ingest_records_metric, lost_bytes_metric, lost_segments_metric);
         } while (restart);
     } else {
-        DoStdinCollection(accumulator);
+        DoStdinCollection(raw_queue, ingest_bytes_metric, ingest_records_metric, lost_bytes_metric, lost_segments_metric);
     }
 
     Logger::Info("Exiting");
 
     try {
+        proc_thread.join();
         proc_metrics->Stop();
         metrics->Stop();
         accumulator.Flush(0);

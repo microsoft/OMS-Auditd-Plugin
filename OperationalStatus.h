@@ -52,7 +52,7 @@ class OperationalStatus: public RunBase {
 public:
     explicit OperationalStatus(const std::string socket_path, std::shared_ptr<PriorityQueue> queue):
             _listener(socket_path, [this]() -> std::string { return get_status_str();}),
-            _error_conditions(), _builder(std::make_shared<EventQueue>(std::move(queue))) {}
+            _error_conditions(), _builder(std::make_shared<EventQueue>(std::move(queue)), nullptr) {}
 
     bool Initialize();
 

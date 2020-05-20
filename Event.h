@@ -24,50 +24,7 @@
 #include <string_view>
 
 
-constexpr uint32_t EVENT_FLAG_IS_AUOMS_EVENT = 1;
-
-class IEventBuilderAllocator {
-public:
-    virtual bool Allocate(void** data, size_t size) = 0;
-    virtual bool Commit() = 0;
-    virtual bool Rollback() = 0;
-};
-
-class EventBuilder {
-public:
-    EventBuilder(std::shared_ptr<IEventBuilderAllocator> allocator): _allocator(allocator), _data(nullptr), _size(0)
-    {}
-
-    ~EventBuilder() {
-    }
-
-    bool BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint16_t num_records);
-    void SetEventFlags(uint32_t flags);
-    uint32_t GetEventFlags();
-    void SetEventPid(int32_t pid);
-    int32_t GetEventPid();
-    bool EndEvent();
-    bool CancelEvent();
-    bool BeginRecord(uint32_t record_type, const char* record_name, const char* record_text, uint16_t num_fields);
-    bool BeginRecord(uint32_t record_type, const std::string_view& record_name, const std::string_view& record_text, uint16_t num_fields);
-    bool EndRecord();
-    bool AddField(const char *field_name, const char* raw_value, const char* interp_value, field_type_t field_type);
-    bool AddField(const std::string_view& field_name, const std::string_view& raw_value, const std::string_view& interp_value, field_type_t field_type);
-    int GetFieldCount();
-
-private:
-    std::shared_ptr<IEventBuilderAllocator> _allocator;
-
-    uint8_t* _data;
-    size_t _size;
-    uint32_t _roffset;
-    uint32_t _fidxoffset;
-    uint32_t _fsortedidxoffset;
-    uint32_t _foffset;
-    uint32_t _record_idx;
-    uint16_t _num_fields;
-    uint32_t _field_idx;
-};
+constexpr uint16_t EVENT_FLAG_IS_AUOMS_EVENT = 1;
 
 class EventRecord;
 
@@ -262,7 +219,8 @@ public:
     uint32_t Milliseconds() const;
     uint64_t Serial() const;
 
-    uint32_t Flags() const;
+    uint16_t Priority() const;
+    uint16_t Flags() const;
     int32_t Pid() const;
 
     uint16_t NumRecords() const;
@@ -277,6 +235,56 @@ private:
 
     const uint8_t* _data;
     size_t _size;
+};
+
+class IEventBuilderAllocator {
+public:
+    virtual bool Allocate(void** data, size_t size) = 0;
+    virtual bool Commit() = 0;
+    virtual bool Rollback() = 0;
+};
+
+class IEventPrioritizer {
+public:
+    virtual uint16_t Prioritize(const Event& event) = 0;
+};
+
+class EventBuilder {
+public:
+    EventBuilder(std::shared_ptr<IEventBuilderAllocator> allocator, std::shared_ptr<IEventPrioritizer> prioritizer): _allocator(allocator), _prioritizer(prioritizer), _data(nullptr), _size(0)
+    {}
+
+    ~EventBuilder() = default;
+
+    bool BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint16_t num_records);
+    void SetEventPriority(uint16_t flags);
+    uint16_t GetEventPriority();
+    void SetEventFlags(uint16_t flags);
+    uint16_t GetEventFlags();
+    void SetEventPid(int32_t pid);
+    int32_t GetEventPid();
+    bool EndEvent();
+    bool CancelEvent();
+    bool BeginRecord(uint32_t record_type, const char* record_name, const char* record_text, uint16_t num_fields);
+    bool BeginRecord(uint32_t record_type, const std::string_view& record_name, const std::string_view& record_text, uint16_t num_fields);
+    bool EndRecord();
+    bool AddField(const char *field_name, const char* raw_value, const char* interp_value, field_type_t field_type);
+    bool AddField(const std::string_view& field_name, const std::string_view& raw_value, const std::string_view& interp_value, field_type_t field_type);
+    int GetFieldCount();
+
+private:
+    std::shared_ptr<IEventBuilderAllocator> _allocator;
+    std::shared_ptr<IEventPrioritizer> _prioritizer;
+
+    uint8_t* _data;
+    size_t _size;
+    uint32_t _roffset;
+    uint32_t _fidxoffset;
+    uint32_t _fsortedidxoffset;
+    uint32_t _foffset;
+    uint32_t _record_idx;
+    uint16_t _num_fields;
+    uint32_t _field_idx;
 };
 
 std::string EventToRawText(const Event& event, bool include_interp);

@@ -55,7 +55,9 @@ add_executable(auomscollect
         auomscollect.cpp
         IO.cpp
         Event.cpp
+        EventPrioritizer.cpp
         Signals.cpp
+        SPSCDataQueue.cpp
         PriorityQueue.cpp
         UnixDomainWriter.cpp
         Logger.cpp
@@ -71,7 +73,9 @@ add_executable(auomscollect
         FileWatcher.cpp
         Gate.h
         Defer.h
+        TranslateArch.cpp
         TranslateRecordType.cpp
+        TranslateSyscall.cpp
         FileUtils.cpp
         Retry.h
         Metrics.cpp
@@ -112,6 +116,7 @@ add_executable(auoms
         auoms_version.h
         IO.cpp
         Event.cpp
+        EventPrioritizer.cpp
         TextEventWriterConfig.cpp
         OMSEventWriter.cpp
         JSONEventWriter.cpp
@@ -339,7 +344,17 @@ add_executable(PriorityQueueTests
 
 target_link_libraries(PriorityQueueTests ${Boost_LIBRARIES} pthread)
 
-add_test(Queue ${CMAKE_BINARY_DIR}/PriorityQueueTests --log_sink=PriorityQueueTests.log --report_sink=PriorityQueueTests.report)
+add_test(PriorityQueue ${CMAKE_BINARY_DIR}/PriorityQueueTests --log_sink=PriorityQueueTests.log --report_sink=PriorityQueueTests.report)
+
+add_executable(SPSCDataQueueTests
+        Logger.cpp
+        SPSCDataQueue.cpp
+        SPSCDataQueueTests.cpp
+)
+
+target_link_libraries(SPSCDataQueueTests ${Boost_LIBRARIES} pthread)
+
+add_test(SPSCDataQueueTests ${CMAKE_BINARY_DIR}/SPSCDataQueueTests --log_sink=SPSCDataQueueTests.log --report_sink=SPSCDataQueueTests.report)
 
 add_executable(UserDBTests
         TempDir.cpp

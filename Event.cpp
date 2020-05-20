@@ -35,7 +35,8 @@
  *      uint32_t msec
  *      uint64_t serial
  *      uint16_t num_records
- *      uint32_t flags
+ *      uint16_t priority
+ *      uint16_t flags
  *      int32_t pid
  *      RecordIndex:
  *          uint32_t[] offsets (from start of event)
@@ -111,10 +112,15 @@ constexpr uint32_t EVENT_NUM_RECORDS_SIZE = sizeof(uint16_t);
 inline uint16_t& EVENT_NUM_RECORDS(uint8_t* data) { return *reinterpret_cast<uint16_t*>(data+EVENT_NUM_RECORDS_OFFSET); }
 inline uint16_t EVENT_NUM_RECORDS(const uint8_t* data) { return *reinterpret_cast<const uint16_t*>(data+EVENT_NUM_RECORDS_OFFSET); }
 
-constexpr uint32_t EVENT_FLAGS_OFFSET = EVENT_NUM_RECORDS_OFFSET + EVENT_NUM_RECORDS_SIZE;
-constexpr uint32_t EVENT_FLAGS_SIZE = sizeof(int32_t);
-inline uint32_t& EVENT_FLAGS(uint8_t* data) { return *reinterpret_cast<uint32_t*>(data+EVENT_FLAGS_OFFSET); }
-inline uint32_t EVENT_FLAGS(const uint8_t* data) { return *reinterpret_cast<const uint32_t*>(data+EVENT_FLAGS_OFFSET); }
+constexpr uint32_t EVENT_PRIORITY_OFFSET = EVENT_NUM_RECORDS_OFFSET + EVENT_NUM_RECORDS_SIZE;
+constexpr uint32_t EVENT_PRIORITY_SIZE = sizeof(uint16_t);
+inline uint16_t& EVENT_PRIORITY(uint8_t* data) { return *reinterpret_cast<uint16_t*>(data+EVENT_PRIORITY_OFFSET); }
+inline uint16_t EVENT_PRIORITY(const uint8_t* data) { return *reinterpret_cast<const uint16_t*>(data+EVENT_PRIORITY_OFFSET); }
+
+constexpr uint32_t EVENT_FLAGS_OFFSET = EVENT_PRIORITY_OFFSET + EVENT_PRIORITY_SIZE;
+constexpr uint32_t EVENT_FLAGS_SIZE = sizeof(uint16_t);
+inline uint16_t& EVENT_FLAGS(uint8_t* data) { return *reinterpret_cast<uint16_t*>(data+EVENT_FLAGS_OFFSET); }
+inline uint16_t EVENT_FLAGS(const uint8_t* data) { return *reinterpret_cast<const uint16_t*>(data+EVENT_FLAGS_OFFSET); }
 
 constexpr uint32_t EVENT_PID_OFFSET = EVENT_FLAGS_OFFSET + EVENT_FLAGS_SIZE;
 constexpr uint32_t EVENT_PID_SIZE = sizeof(int32_t);
@@ -267,12 +273,30 @@ bool EventBuilder::BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint
     EVENT_MSEC(_data) = msec;
     EVENT_SERIAL(_data) = serial;
     EVENT_NUM_RECORDS(_data) = num_records;
+    EVENT_PRIORITY(_data) = 0;
+    EVENT_FLAGS(_data) = 0;
     EVENT_PID(_data) = -1;
 
     return true;
 }
 
-void EventBuilder::SetEventFlags(uint32_t flags) {
+void EventBuilder::SetEventPriority(uint16_t priority) {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    EVENT_PRIORITY(_data) = priority;
+}
+
+uint16_t EventBuilder::GetEventPriority() {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    return EVENT_PRIORITY(_data);
+}
+
+void EventBuilder::SetEventFlags(uint16_t flags) {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
@@ -280,7 +304,7 @@ void EventBuilder::SetEventFlags(uint32_t flags) {
     EVENT_FLAGS(_data) = flags;
 }
 
-uint32_t EventBuilder::GetEventFlags() {
+uint16_t EventBuilder::GetEventFlags() {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
@@ -314,6 +338,11 @@ bool EventBuilder::EndEvent() {
     }
 
     SET_EVENT_SIZE(_data, static_cast<uint32_t>(_size));
+
+    if (_prioritizer) {
+        Event event(_data, _size);
+        SetEventPriority(_prioritizer->Prioritize(event));
+    }
 
     _data = nullptr;
     _size = 0;
@@ -764,7 +793,11 @@ uint16_t Event::NumRecords() const {
     return EVENT_NUM_RECORDS(_data);
 }
 
-uint32_t Event::Flags() const {
+uint16_t Event::Priority() const {
+    return EVENT_PRIORITY(_data);
+}
+
+uint16_t Event::Flags() const {
     return EVENT_FLAGS(_data);
 }
 

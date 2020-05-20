@@ -35,7 +35,8 @@ public:
     }
 
     bool Commit() override {
-        auto ret =  _queue->Put(0, _buffer.data(), _size);
+        Event event(_buffer.data(), _size);
+        auto ret =  _queue->Put(event.Priority(), _buffer.data(), _size);
         _size = 0;
         return ret;
     }
