@@ -233,7 +233,8 @@ pkg_add() {
     if [ "$INSTALLER" = "DPKG" ]; then
         dpkg --install --refuse-downgrade ${pkg_filename}.deb
     else
-        rpm --install ${pkg_filename}.rpm
+        [ -n "${forceFlag}" ] && FORCE="--replacefiles --replacepkgs"
+        rpm --upgrade $FORCE ${pkg_filename}.rpm
     fi
 }
 

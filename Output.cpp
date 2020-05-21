@@ -36,12 +36,7 @@ extern "C" {
  *
  ****************************************************************************/
 
-AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _head(0), _tail(0), _size(0) {
-    _ring.reserve(max_size);
-    for (size_t i = 0; i < max_size; i++) {
-        _ring.emplace_back(EventId(0, 0, 0), QueueCursor(0, 0));
-    }
-}
+AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _next_seq(0) {}
 
 void AckQueue::Close() {
     std::unique_lock<std::mutex> _lock(_mutex);
@@ -49,46 +44,59 @@ void AckQueue::Close() {
     _cond.notify_all();
 }
 
-bool AckQueue::Add(const EventId& event_id, const QueueCursor& cursor) {
+bool AckQueue::Add(const EventId& event_id, const QueueCursor& cursor, long timeout) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
-    _cond.wait(_lock, [this]() { return _closed || _size < _max_size; });
-    if (_size < _max_size) {
-        _ring[_head] = std::make_pair(event_id, cursor);
-        _size++;
-        _head++;
-        if (_head >= _max_size) {
-            _head = 0;
-        }
+    if (_cond.wait_for(_lock, std::chrono::milliseconds(timeout), [this]() { return _closed || _event_ids.size() < _max_size; })) {
+        auto seq = _next_seq++;
+        _event_ids.emplace(event_id, seq);
+        _cursors.emplace(seq, cursor);
         return true;
-    } else {
-        return false;
     }
+    return false;
+}
+
+void AckQueue::Remove(const EventId& event_id) {
+    std::unique_lock<std::mutex> _lock(_mutex);
+
+    auto eitr = _event_ids.find(event_id);
+    if (eitr == _event_ids.end()) {
+        return;
+    }
+    auto seq = eitr->second;
+    _event_ids.erase(eitr);
+
+    _cursors.erase(seq);
 }
 
 bool AckQueue::Wait(int millis) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
     auto now = std::chrono::steady_clock::now();
-    return _cond.wait_until(_lock, now + (std::chrono::milliseconds(1) * millis), [this] { return _size == 0; });
+    return _cond.wait_until(_lock, now + std::chrono::milliseconds(millis), [this] { return _event_ids.empty(); });
 }
 
 bool AckQueue::Ack(const EventId& event_id, QueueCursor& cursor) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
-    ssize_t last = -1;
-    while(_size > 0 && _ring[_tail].first <= event_id) {
-        last = _tail;
-        _tail++;
-        _size--;
-        if (_tail >= _max_size) {
-            _tail = 0;
-        }
-    }
-    if (last < 0) {
+    auto eitr = _event_ids.find(event_id);
+    if (eitr == _event_ids.end()) {
         return false;
     }
-    cursor = _ring[last].second;
+    auto seq = eitr->second;
+    _event_ids.erase(eitr);
+
+    auto citr = _cursors.find(seq);
+    if (citr == _cursors.end()) {
+        return false;
+    }
+    cursor = citr->second;
+
+    if (citr != _cursors.begin()) {
+        _cursors.erase(_cursors.begin(), citr);
+    }
+    _cursors.erase(citr);
+
     _cond.notify_all();
     return true;
 }
@@ -310,6 +318,20 @@ bool Output::Load(std::unique_ptr<Config>& config) {
             Logger::Error("Output(%s): Invalid ack_queue_size parameter value", _name.c_str());
             return false;
         }
+
+        if (_config->HasKey("ack_timeout")) {
+            try {
+                _ack_timeout = _config->GetInt64("ack_timeout");
+            } catch (std::exception) {
+                Logger::Error("Output(%s): Invalid ack_timeout parameter value", _name.c_str());
+                return false;
+            }
+        }
+        if (_ack_timeout == 0 || (_ack_timeout > 0 && _ack_timeout < MIN_ACK_TIMEOUT)) {
+            Logger::Warn("Output(%s): ack_timeout parameter value to small (%ld), using (%ld)", _name.c_str(), _ack_timeout, MIN_ACK_TIMEOUT);
+            _ack_timeout = MIN_ACK_TIMEOUT;
+        }
+
         if (!_ack_queue || _ack_queue->MaxSize() != ack_queue_size) {
             _ack_queue = std::make_shared<AckQueue>(ack_queue_size);
         }
@@ -400,21 +422,28 @@ bool Output::handle_events(bool checkOpen) {
         }
 
         if (ret == Queue::OK && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
+            _cursor = cursor;
             Event event(data.data(), size);
             bool filtered = _event_filter && _event_filter->IsEventFiltered(event);
             if (!filtered) {
+                if (_ack_mode) {
+                    // Avoid racing with receiver, add ack before sending event
+                    if (!_ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()), cursor,
+                                         _ack_timeout)) {
+                        Logger::Error("Output(%s): Timeout waiting for Acks", _name.c_str());
+                        break;
+                    }
+                }
+
                 auto ret = _event_writer->WriteEvent(event, _writer.get());
                 if (ret == IEventWriter::NOOP) {
-                    filtered = true;
+                    if (_ack_mode) {
+                        // The event was not sent, so remove it's ack
+                        _ack_queue->Remove(EventId(event.Seconds(), event.Milliseconds(), event.Serial()));
+                    }
                 } else if (ret != IWriter::OK) {
                     break;
                 }
-            }
-            _cursor = cursor;
-            if (_ack_mode && !filtered) {
-                _ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()), _cursor);
-            } else {
-                _cursor_writer->UpdateCursor(cursor);
             }
         }
     }

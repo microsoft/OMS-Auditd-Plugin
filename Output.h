@@ -44,7 +44,10 @@ public:
 
     void Close();
 
-    bool Add(const EventId& event_id, const QueueCursor& cursor);
+    // Return false if timeout, true of added
+    bool Add(const EventId& event_id, const QueueCursor& cursor, long timeout);
+
+    void Remove(const EventId& event_id);
 
     // Returns false on timeout, true is queue is empty
     bool Wait(int millis);
@@ -54,12 +57,11 @@ public:
 private:
     std::mutex _mutex;
     std::condition_variable _cond;
-    std::vector<std::pair<EventId, QueueCursor>> _ring;
+    std::unordered_map<EventId, uint64_t> _event_ids;
+    std::map<uint64_t, QueueCursor> _cursors;
     size_t _max_size;
     bool _closed;
-    size_t _head;
-    size_t _tail;
-    size_t _size;
+    uint64_t _next_seq;
 };
 
 /****************************************************************************
@@ -161,9 +163,10 @@ public:
     static constexpr int START_SLEEP_PERIOD = 1;
     static constexpr int MAX_SLEEP_PERIOD = 60;
     static constexpr int DEFAULT_ACK_QUEUE_SIZE = 1000;
+    static constexpr long MIN_ACK_TIMEOUT = 100;
 
     Output(const std::string& name, const std::string& cursor_path, const std::shared_ptr<Queue>& queue, const std::shared_ptr<IEventWriterFactory>& writer_factory, const std::shared_ptr<IEventFilterFactory>& filter_factory):
-            _name(name), _cursor_path(cursor_path), _queue(queue), _writer_factory(writer_factory), _filter_factory(filter_factory), _ack_mode(false)
+            _name(name), _cursor_path(cursor_path), _queue(queue), _writer_factory(writer_factory), _filter_factory(filter_factory), _ack_mode(false), _ack_timeout(10000)
     {
         _cursor_writer = std::make_shared<CursorWriter>(name, cursor_path);
         _ack_reader = std::unique_ptr<AckReader>(new AckReader(name));
@@ -198,6 +201,7 @@ protected:
     std::shared_ptr<IEventWriterFactory> _writer_factory;
     std::shared_ptr<IEventFilterFactory> _filter_factory;
     bool _ack_mode;
+    long _ack_timeout;
     std::unique_ptr<Config> _config;
     QueueCursor _cursor;
     std::shared_ptr<IEventWriter> _event_writer;
