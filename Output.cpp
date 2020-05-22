@@ -36,7 +36,7 @@ extern "C" {
  *
  ****************************************************************************/
 
-AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _next_seq(0) {}
+AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _have_auto_cursor(false), _next_seq(0), _auto_cursor_seq(0) {}
 
 void AckQueue::Close() {
     std::unique_lock<std::mutex> _lock(_mutex);
@@ -51,6 +51,25 @@ bool AckQueue::Add(const EventId& event_id, const QueueCursor& cursor, long time
         auto seq = _next_seq++;
         _event_ids.emplace(event_id, seq);
         _cursors.emplace(seq, cursor);
+        return true;
+    }
+    return false;
+}
+
+void AckQueue::SetAutoCursor(const QueueCursor& cursor) {
+    std::unique_lock<std::mutex> _lock(_mutex);
+
+    _auto_cursor_seq = _next_seq++;
+    _auto_cursor = cursor;
+    _have_auto_cursor = true;
+}
+
+bool AckQueue::GetAutoCursor(QueueCursor& cursor) {
+    std::unique_lock<std::mutex> _lock(_mutex);
+
+    if (_have_auto_cursor) {
+        cursor = _auto_cursor;
+        _have_auto_cursor = false;
         return true;
     }
     return false;
@@ -79,26 +98,42 @@ bool AckQueue::Wait(int millis) {
 bool AckQueue::Ack(const EventId& event_id, QueueCursor& cursor) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
+    bool found = false;
+    uint64_t seq = 0;
+
     auto eitr = _event_ids.find(event_id);
-    if (eitr == _event_ids.end()) {
-        return false;
-    }
-    auto seq = eitr->second;
-    _event_ids.erase(eitr);
+    if (eitr != _event_ids.end()) {
+        seq = eitr->second;
+        _event_ids.erase(eitr);
+        _cond.notify_all(); // _event_ids was modified, so notify any waiting Add calls
 
-    auto citr = _cursors.find(seq);
-    if (citr == _cursors.end()) {
-        return false;
+        auto citr = _cursors.find(seq);
+        if (citr != _cursors.end()) {
+            cursor = citr->second;
+            found = true;
+            if (citr != _cursors.begin()) {
+                _cursors.erase(_cursors.begin(), citr);
+            }
+            _cursors.erase(citr);
+        }
     }
-    cursor = citr->second;
 
-    if (citr != _cursors.begin()) {
-        _cursors.erase(_cursors.begin(), citr);
+    /*
+     * If the auto cursor is present return it instead if:
+     *      1) The acked event id isn't present or _auto_cursor_seq is newer than the acked seq
+     *      2) and, _cursors is empty or the oldesr seq in _cursors is > than _auto_cursor_seq
+     */
+    if (_have_auto_cursor) {
+        if (!found || _auto_cursor_seq > seq) {
+            if (_cursors.empty() || _cursors.begin()->first > _auto_cursor_seq) {
+                found = true;
+                cursor = _auto_cursor;
+                _have_auto_cursor = false;
+            }
+        }
     }
-    _cursors.erase(citr);
 
-    _cond.notify_all();
-    return true;
+    return found;
 }
 
 /****************************************************************************
@@ -228,6 +263,11 @@ void AckReader::run() {
     }
     // The connection is lost, Close writer here so that Output::handle_events will exit
     _writer->Close();
+
+    if (_queue->GetAutoCursor(cursor)) {
+        // There was still a pending auto cursor, so update the _cursor_writer
+        _cursor_writer->UpdateCursor(cursor);
+    }
 }
 
 /****************************************************************************
@@ -422,7 +462,6 @@ bool Output::handle_events(bool checkOpen) {
         }
 
         if (ret == Queue::OK && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
-            _cursor = cursor;
             Event event(data.data(), size);
             bool filtered = _event_filter && _event_filter->IsEventFiltered(event);
             if (!filtered) {
@@ -440,9 +479,23 @@ bool Output::handle_events(bool checkOpen) {
                     if (_ack_mode) {
                         // The event was not sent, so remove it's ack
                         _ack_queue->Remove(EventId(event.Seconds(), event.Milliseconds(), event.Serial()));
+                        // And update the auto cursor
+                        _ack_queue->SetAutoCursor(cursor);
                     }
                 } else if (ret != IWriter::OK) {
                     break;
+                }
+                _cursor = cursor;
+
+                if (!_ack_mode) {
+                    _cursor_writer->UpdateCursor(cursor);
+                }
+            } else {
+                _cursor = cursor;
+                if (_ack_mode) {
+                    _ack_queue->SetAutoCursor(cursor);
+                } else {
+                    _cursor_writer->UpdateCursor(cursor);
                 }
             }
         }

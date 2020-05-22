@@ -44,8 +44,14 @@ public:
 
     void Close();
 
-    // Return false if timeout, true of added
+    // Return false if timeout, true if added
     bool Add(const EventId& event_id, const QueueCursor& cursor, long timeout);
+
+    // Set (or update) auto cursor
+    void SetAutoCursor(const QueueCursor& cursor);
+
+    // Get and clear auto cursor
+    bool GetAutoCursor(QueueCursor& cursor);
 
     void Remove(const EventId& event_id);
 
@@ -61,7 +67,10 @@ private:
     std::map<uint64_t, QueueCursor> _cursors;
     size_t _max_size;
     bool _closed;
+    bool _have_auto_cursor;
     uint64_t _next_seq;
+    uint64_t _auto_cursor_seq;
+    QueueCursor _auto_cursor;
 };
 
 /****************************************************************************
