@@ -225,6 +225,8 @@ int main(int argc, char**argv) {
     }
 
     bool reset_queue = false;
+    bool reset_flagged = false;
+
     Logger::Info("Trying to acquire singleton lock");
     LockFile singleton_lock(lock_file);
     switch(singleton_lock.Lock()) {
@@ -232,6 +234,8 @@ int main(int argc, char**argv) {
             Logger::Error("Failed to acquire singleton lock (%s): %s", lock_file.c_str(), std::strerror(errno));
             exit(1);
             break;
+        case LockFile::FLAGGED:
+            reset_flagged = true;
         case LockFile::PREVIOUSLY_ABANDONED:
             reset_queue = true;
             break;
@@ -247,7 +251,11 @@ int main(int argc, char**argv) {
     Signals::Init();
 
     if (reset_queue) {
-        Logger::Warn("Previous instance may have crashed, resetting queue as a precaution.");
+        if (reset_flagged) {
+            Logger::Info("Resetting queue due to upgrade.");
+        } else {
+            Logger::Warn("Previous instance may have crashed, resetting queue as a precaution.");
+        }
         if (PathExists(queue_file)) {
             try {
                 RemoveFile(queue_file, true);
