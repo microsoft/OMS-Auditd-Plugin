@@ -13,46 +13,37 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_RAWEVENTRECORD_H
-#define AUOMS_RAWEVENTRECORD_H
 
-#include <array>
+#ifndef AUOMS_LOCKFILE_H
+#define AUOMS_LOCKFILE_H
+
 #include <string>
-#include <string_view>
-#include <vector>
 
-#include "Event.h"
-#include "EventId.h"
-#include "RecordType.h"
+#include <unistd.h>
 
-class RawEventRecord {
+class LockFile {
 public:
-    static constexpr size_t MAX_RECORD_SIZE = 9*1024; // MAX_AUDIT_MESSAGE_LENGTH in libaudit.h is 8970
+    static const int SUCCESS = 0;
+    static const int FAILED = 1;
+    static const int INTERRUPTED = 2;
+    static const int PREVIOUSLY_ABANDONED = 3;
+    static const int FLAGGED = 4;
 
-    explicit RawEventRecord(): _record_fields(128), _unparsable(false) {}
+    LockFile(const std::string& path): _path(path), _fd(-1) {}
+    ~LockFile() {
+        if (_fd > -1) {
+            close(_fd);
+            _fd = -1;
+        }
+    }
 
-    inline char* Data() { return _data.data(); };
+    int Lock();
+    void Unlock();
 
-    bool Parse(RecordType record_type, size_t size);
-    int AddRecord(EventBuilder& builder);
-
-    inline EventId GetEventId() { return _event_id; }
-    inline RecordType GetRecordType() { return _record_type; }
-    inline size_t GetSize() { return _size; }
-    inline bool IsEmpty() { return _record_fields.empty(); }
-
-private:
-    std::array<char, MAX_RECORD_SIZE> _data;
-    size_t _size;
-    RecordType _record_type;
-    std::string_view _node;
-    std::string _node_str;
-    std::string_view _type_name;
-    std::string _type_name_str;
-    EventId _event_id;
-    std::vector<std::string_view> _record_fields;
-    bool _unparsable;
+public:
+    std::string _path;
+    int _fd;
 };
 
 
-#endif //AUOMS_RAWEVENTRECORD_H
+#endif //AUOMS_LOCKFILE_H

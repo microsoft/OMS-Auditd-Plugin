@@ -1,0 +1,52 @@
+%Variables
+PACKAGE_TYPE: 'DPKG'
+
+%Dependencies
+
+%Preuninstall_100
+if [ "$1" = "remove" ]; then
+    /opt/microsoft/auoms/bin/auomsctl disable
+fi
+
+%Postuninstall_100
+if [ "$1" = "purge" ]; then
+    rm -f ${{AUOMS_AUDISP_CONF}}*
+    rm -f ${{AUOMS_AUDIT_CONF}}*
+    rm -rf ${{AUOMS_ETC}}
+    rm -rf ${{AUOMS_VAR}}
+fi
+
+%Preinstall_100
+if [ "$1" = "upgrade" ]; then
+    if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
+        if [ -e ${{AUOMS_AUDISP_CONF}}.auomssave ]; then
+            rm ${{AUOMS_AUDISP_CONF}}.auomssave
+        fi
+        cp -p ${{AUOMS_AUDISP_CONF}} ${{AUOMS_AUDISP_CONF}}.auomssave
+    fi
+    if [ -e ${{AUOMS_AUDIT_CONF}} ]; then
+        if [ -e ${{AUOMS_AUDIT_CONF}}.auomssave ]; then
+            rm ${{AUOMS_AUDIT_CONF}}.auomssave
+        fi
+        cp -p ${{AUOMS_AUDIT_CONF}} ${{AUOMS_AUDIT_CONF}}.auomssave
+    fi
+fi
+
+%Postinstall_100
+if [ "$1" = "configure" ]; then
+    if [ -e ${{AUOMS_AUDISP_CONF}}.auomssave ]; then
+        if [ -e ${{AUOMS_AUDISP_CONF}} ]; then
+            rm ${{AUOMS_AUDISP_CONF}}
+        fi
+        cp -p ${{AUOMS_AUDISP_CONF}}.auomssave ${{AUOMS_AUDISP_CONF}}
+    fi
+    if [ -e ${{AUOMS_AUDIT_CONF}}.auomssave ]; then
+        if [ -e ${{AUOMS_AUDIT_CONF}} ]; then
+            rm ${{AUOMS_AUDIT_CONF}}
+        fi
+        cp -p ${{AUOMS_AUDIT_CONF}}.auomssave ${{AUOMS_AUDIT_CONF}}
+    fi
+    /opt/microsoft/auoms/bin/auomsctl upgrade
+fi
+rm -f ${{AUOMS_AUDISP_CONF}}.*
+rm -f ${{AUOMS_AUDIT_CONF}}.*

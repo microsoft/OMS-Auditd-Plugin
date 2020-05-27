@@ -13,6 +13,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 bool PathExists(const std::string& path) {
     struct stat buf;
@@ -89,4 +90,18 @@ void WriteFile(const std::string& path, const std::vector<std::string>& lines) {
         out << line << std::endl;
     }
     out.close();
+}
+
+bool RemoveFile(const std::string& path, bool throw_on_error) {
+    auto ret = unlink(path.c_str());
+    if (ret != 0) {
+        if (errno == ENOENT) {
+            return false;
+        }
+        if (throw_on_error) {
+            throw std::system_error(errno, std::system_category(), "unlink("+path+")");
+        }
+        return false;
+    }
+    return true;
 }

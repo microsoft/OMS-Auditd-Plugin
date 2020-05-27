@@ -338,11 +338,11 @@ std::string get_service_util_path() {
     return path;
 }
 
-bool is_auditd_plugin_enabled() {
-    if (!PathExists(AUOMS_PLUGIN_FILE)) {
+bool is_auditd_plugin_enabled_in_file(const std::string& path) {
+    if (!PathExists(path)) {
         return false;
     }
-    auto lines = ReadFile(AUOMS_PLUGIN_FILE);
+    auto lines = ReadFile(path);
     for (auto& line: lines) {
         auto parts = split(line, '=');
         if (parts.size() == 2) {
@@ -353,6 +353,19 @@ bool is_auditd_plugin_enabled() {
     }
     return false;
 }
+
+bool is_auditd_plugin_enabled() {
+    bool audit = false;
+    if (PathExists("/etc/audit/plugins.d")) {
+        audit = is_auditd_plugin_enabled_in_file("/etc/audit/plugins.d/auoms.conf");
+    }
+    bool audisp = false;
+    if (PathExists("/etc/audisp/plugins.d")) {
+        return is_auditd_plugin_enabled_in_file("/etc/audisp/plugins.d/auoms.conf");
+    }
+    return audit && audisp;
+}
+
 void set_auditd_plugin_status(bool enabled) {
     std::vector<std::string> lines;
     lines.emplace_back("# This file controls the auoms plugin.");
@@ -368,8 +381,15 @@ void set_auditd_plugin_status(bool enabled) {
     lines.emplace_back("#args =");
     lines.emplace_back("format = string");
 
-    WriteFile(AUOMS_PLUGIN_FILE, lines);
-    chmod(AUOMS_PLUGIN_FILE, 0640);
+    if (PathExists("/etc/audit/plugins.d")) {
+        WriteFile("/etc/audit/plugins.d/auoms.conf", lines);
+        chmod("/etc/audit/plugins.d/auoms.conf", 0640);
+    }
+
+    if (PathExists("/etc/audisp/plugins.d")) {
+        WriteFile("/etc/audisp/plugins.d/auoms.conf", lines);
+        chmod("/etc/audisp/plugins.d/auoms.conf", 0640);
+    }
 }
 
 bool is_service_sysv_enabled() {
@@ -1272,9 +1292,20 @@ int load_rules() {
     return 0;
 }
 
+int flag_reset(const std::string& path) {
+    try {
+        unlink(path.c_str());
+        WriteFile(path, {{"flag"}});
+        return 0;
+    } catch (std::exception&) {
+        Logger::Error("Failed write flag to %s", path.c_str());
+    }
+    return 1;
+}
+
 int upgrade() {
     if (geteuid() != 0) {
-        std::cerr << "Must be root to enable auoms" << std::endl;
+        std::cerr << "Must be root to perform requested operation" << std::endl;
         return 1;
     }
 
@@ -1317,6 +1348,10 @@ int upgrade() {
                 kill_service_proc(AUOMSCOLLECT_COMM);
             }
 
+            // Trigger queue reset
+            flag_reset(std::string(AUOMS_DATA_DIR) + "/auoms.lock");
+            flag_reset(std::string(AUOMS_DATA_DIR) + "/auomscollect.lock");
+
             // Enable and start auoms service
             enable_service();
             start_service();
@@ -1329,6 +1364,10 @@ int upgrade() {
         } else {
             // Force reset of file to ensure all parameters are correct
             set_auditd_plugin_status(false);
+
+            // Trigger queue reset (just in case)
+            flag_reset(std::string(AUOMS_DATA_DIR) + "/auoms.lock");
+            flag_reset(std::string(AUOMS_DATA_DIR) + "/auomscollect.lock");
         }
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;

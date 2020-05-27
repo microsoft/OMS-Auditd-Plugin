@@ -636,11 +636,17 @@ int Queue::Get(QueueCursor last, void*ptr, size_t* size, QueueCursor *item_curso
     } else if (last.IsTail() || index > _data_size-sizeof(BlockHeader)) {
         index = _tail;
     } else {
-        BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+index);
-        if (hdr->id != last.id || hdr->state != ITEM) {
+        if (last.id >= _next_id) {
+            index = _head;
+        } else if (last.id < reinterpret_cast<BlockHeader*>(_ptr+_tail)->id) {
             index = _tail;
         } else {
-            index += sizeof(BlockHeader)+hdr->size;
+            BlockHeader *hdr = reinterpret_cast<BlockHeader *>(_ptr + index);
+            if (hdr->id != last.id || hdr->state != ITEM) {
+                index = _tail;
+            } else {
+                index += sizeof(BlockHeader) + hdr->size;
+            }
         }
     }
     BlockHeader* hdr = reinterpret_cast<BlockHeader*>(_ptr+index);
