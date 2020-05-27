@@ -1292,6 +1292,17 @@ int load_rules() {
     return 0;
 }
 
+int flag_reset(const std::string& path) {
+    try {
+        unlink(path.c_str());
+        WriteFile(path, {{"flag"}});
+        return 0;
+    } catch (std::exception&) {
+        Logger::Error("Failed write flag to %s", path.c_str());
+    }
+    return 1;
+}
+
 int upgrade() {
     if (geteuid() != 0) {
         std::cerr << "Must be root to perform requested operation" << std::endl;
@@ -1337,6 +1348,10 @@ int upgrade() {
                 kill_service_proc(AUOMSCOLLECT_COMM);
             }
 
+            // Trigger queue reset
+            flag_reset(std::string(AUOMS_DATA_DIR) + "/auoms.lock");
+            flag_reset(std::string(AUOMS_DATA_DIR) + "/auomscollect.lock");
+
             // Enable and start auoms service
             enable_service();
             start_service();
@@ -1349,6 +1364,10 @@ int upgrade() {
         } else {
             // Force reset of file to ensure all parameters are correct
             set_auditd_plugin_status(false);
+
+            // Trigger queue reset (just in case)
+            flag_reset(std::string(AUOMS_DATA_DIR) + "/auoms.lock");
+            flag_reset(std::string(AUOMS_DATA_DIR) + "/auomscollect.lock");
         }
     } catch (std::exception& ex) {
         std::cerr << ex.what() << std::endl;

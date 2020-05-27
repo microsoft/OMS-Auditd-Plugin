@@ -17,11 +17,13 @@
 #include "LockFile.h"
 
 #include "Logger.h"
+#include "StringUtils.h"
 
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <fcntl.h>
+#include <array>
 
 int LockFile::Lock() {
     // Open (and possibly create the file)
@@ -33,10 +35,10 @@ int LockFile::Lock() {
     if (flock(fd, LOCK_EX) != 0) {
         auto saved_errno = errno;
         close(fd);
-        if (saved_errno == EINTR) {
+        errno = saved_errno;
+        if (errno == EINTR) {
             return INTERRUPTED;
         }
-        errno = saved_errno;
         return FAILED;
     }
 
@@ -50,16 +52,34 @@ int LockFile::Lock() {
 
     int ret = SUCCESS;
     if (st.st_size != 0) {
-        ret = PREVIOUSLY_ABANDONED;
+        std::string flag;
+        flag.resize(st.st_size, 0);
+        int nr = read(fd, flag.data(), flag.size());
+        if (nr != st.st_size) {
+            auto saved_errno = errno;
+            close(fd);
+            if (nr < 0) {
+                errno = saved_errno;
+            } else {
+                errno = EIO;
+            }
+            return FAILED;
+        }
+        flag = trim_whitespace(flag);
+        if (starts_with(flag, "flag")) {
+            ret = FLAGGED;
+        } else {
+            ret = PREVIOUSLY_ABANDONED;
+        }
         ftruncate(fd, 0);
     }
 
     std::string pid = std::to_string(getpid());
-    int nr = write(fd, pid.data(), pid.size());
-    if (nr != pid.size()) {
-        if (nr < 0) {
-            auto saved_errno = errno;
-            close(fd);
+    int nw = pwrite(fd, pid.data(), pid.size(), 0);
+    if (nw != pid.size()) {
+        auto saved_errno = errno;
+        close(fd);
+        if (nw < 0) {
             errno = saved_errno;
         } else {
             errno = EIO;

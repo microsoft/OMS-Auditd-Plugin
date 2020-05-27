@@ -27,6 +27,7 @@ public:
     static const int FAILED = 1;
     static const int INTERRUPTED = 2;
     static const int PREVIOUSLY_ABANDONED = 3;
+    static const int FLAGGED = 4;
 
     LockFile(const std::string& path): _path(path), _fd(-1) {}
     ~LockFile() {
