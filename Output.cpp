@@ -36,11 +36,10 @@ extern "C" {
  *
  ****************************************************************************/
 
-AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _head(0), _tail(0), _size(0) {
-    _ring.reserve(max_size);
-    for (size_t i = 0; i < max_size; i++) {
-        _ring.emplace_back(EventId(0, 0, 0), 0, 0);
-    }
+AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _have_auto_cursor(false), _next_seq(0), _auto_cursor_seq(0) {}
+
+void AckQueue::Init(std::shared_ptr<QueueCursor> cursor) {
+    _cursor = cursor;
 }
 
 void AckQueue::Close() {
@@ -49,49 +48,108 @@ void AckQueue::Close() {
     _cond.notify_all();
 }
 
-bool AckQueue::Add(const EventId& event_id, uint32_t priority, uint64_t seq) {
+bool AckQueue::Add(const EventId& event_id, uint32_t priority, uint64_t seq, long timeout) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
-    _cond.wait(_lock, [this]() { return _closed || _size < _max_size; });
-    if (_size < _max_size) {
-        _ring[_head] = _RingEntry(event_id, priority, seq);
-        _size++;
-        _head++;
-        if (_head >= _max_size) {
-            _head = 0;
-        }
+    if (_cond.wait_for(_lock, std::chrono::milliseconds(timeout), [this]() { return _closed || _event_ids.size() < _max_size; })) {
+        auto seq = _next_seq++;
+        _event_ids.emplace(event_id, seq);
+        _cursors.emplace(seq, std::make_pair(priority, seq));
         return true;
-    } else {
-        return false;
     }
+    return false;
+}
+
+void AckQueue::SetAutoCursor(uint32_t priority, uint64_t seq) {
+    std::unique_lock<std::mutex> _lock(_mutex);
+
+    _auto_cursor_seq = _next_seq++;
+    _auto_cursors[priority] = seq;
+    _have_auto_cursor = true;
+}
+
+void AckQueue::ProcessAutoCursor() {
+    std::unique_lock<std::mutex> _lock(_mutex);
+
+    if (_have_auto_cursor) {
+        for (auto& c : _auto_cursors) {
+            _cursor->Commit(c.first, c.second);
+        }
+        _auto_cursors.clear();
+        _have_auto_cursor = false;
+    }
+}
+
+void AckQueue::Remove(const EventId& event_id) {
+    std::unique_lock<std::mutex> _lock(_mutex);
+
+    auto eitr = _event_ids.find(event_id);
+    if (eitr == _event_ids.end()) {
+        return;
+    }
+    auto seq = eitr->second;
+    _event_ids.erase(eitr);
+
+    _cursors.erase(seq);
 }
 
 bool AckQueue::Wait(int millis) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
     auto now = std::chrono::steady_clock::now();
-    return _cond.wait_until(_lock, now + (std::chrono::milliseconds(1) * millis), [this] { return _size == 0; });
+    return _cond.wait_until(_lock, now + std::chrono::milliseconds(millis), [this] { return _event_ids.empty(); });
 }
 
-bool AckQueue::Ack(const EventId& event_id, uint32_t& priority, uint64_t& seq) {
+void AckQueue::Ack(const EventId& event_id) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
-    ssize_t last = -1;
-    while(_size > 0 && _ring[_tail]._id <= event_id) {
-        last = _tail;
-        _tail++;
-        _size--;
-        if (_tail >= _max_size) {
-            _tail = 0;
+    std::unordered_map<uint32_t, uint64_t> cursors;
+
+    uint64_t seq = 0;
+
+    auto eitr = _event_ids.find(event_id);
+    if (eitr != _event_ids.end()) {
+        seq = eitr->second;
+        _event_ids.erase(eitr);
+        _cond.notify_all(); // _event_ids was modified, so notify any waiting Add calls
+
+        auto citr = _cursors.find(seq);
+        if (citr != _cursors.end()) {
+            auto xitr = cursors.find(citr->second.first);
+            if (xitr == cursors.end() || xitr->second < citr->second.second) {
+                cursors[citr->second.first] = citr->second.second;
+            }
+            if (citr != _cursors.begin()) {
+                for (auto itr = _cursors.begin(); itr != citr; ++itr) {
+                    auto xitr = cursors.find(citr->second.first);
+                    if (xitr == cursors.end() || xitr->second < citr->second.second) {
+                        cursors[citr->second.first] = citr->second.second;
+                    }
+                }
+                _cursors.erase(_cursors.begin(), citr);
+            }
+            _cursors.erase(citr);
         }
     }
-    if (last < 0) {
-        return false;
+
+    if (_have_auto_cursor) {
+        if (_auto_cursor_seq > seq) {
+            if (_cursors.empty() || _cursors.begin()->first > _auto_cursor_seq) {
+                for (auto& c : _auto_cursors) {
+                    auto itr = cursors.find(c.first);
+                    if (itr == cursors.end() || itr->second < c.second) {
+                        cursors[c.first] = c.second;
+                    }
+                }
+                _auto_cursors.clear();
+                _have_auto_cursor = false;
+            }
+        }
     }
-    priority = _ring[last]._priority;
-    seq = _ring[last]._seq;
-    _cond.notify_all();
-    return true;
+
+    for (auto& c : cursors) {
+        _cursor->Commit(c.first, c.second);
+    }
 }
 
 /****************************************************************************
@@ -99,25 +157,21 @@ bool AckQueue::Ack(const EventId& event_id, uint32_t& priority, uint64_t& seq) {
  ****************************************************************************/
 void AckReader::Init(std::shared_ptr<IEventWriter> event_writer,
                      std::shared_ptr<IOBase> writer,
-                     std::shared_ptr<QueueCursor> cursor,
                      std::shared_ptr<AckQueue> ack_queue) {
     _event_writer = event_writer;
     _writer = writer;
-    _cursor = cursor;
     _queue = ack_queue;
 }
 
 void AckReader::run() {
     EventId id;
-    uint32_t priority;
-    uint64_t seq;
     while(_event_writer->ReadAck(id, _writer.get()) == IO::OK) {
-        if (_queue->Ack(id, priority, seq)) {
-            _cursor->Commit(priority, seq);
-        }
+        _queue->Ack(id);
     }
     // The connection is lost, Close writer here so that Output::handle_events will exit
     _writer->Close();
+
+    _queue->ProcessAutoCursor();
 }
 
 /****************************************************************************
@@ -208,6 +262,20 @@ bool Output::Load(std::unique_ptr<Config>& config) {
             Logger::Error("Output(%s): Invalid ack_queue_size parameter value", _name.c_str());
             return false;
         }
+
+        if (_config->HasKey("ack_timeout")) {
+            try {
+                _ack_timeout = _config->GetInt64("ack_timeout");
+            } catch (std::exception) {
+                Logger::Error("Output(%s): Invalid ack_timeout parameter value", _name.c_str());
+                return false;
+            }
+        }
+        if (_ack_timeout == 0 || (_ack_timeout > 0 && _ack_timeout < MIN_ACK_TIMEOUT)) {
+            Logger::Warn("Output(%s): ack_timeout parameter value to small (%ld), using (%ld)", _name.c_str(), _ack_timeout, MIN_ACK_TIMEOUT);
+            _ack_timeout = MIN_ACK_TIMEOUT;
+        }
+
         if (!_ack_queue || _ack_queue->MaxSize() != ack_queue_size) {
             _ack_queue = std::make_shared<AckQueue>(ack_queue_size);
         }
@@ -262,29 +330,52 @@ bool Output::check_open()
 
 bool Output::handle_events(bool checkOpen) {
     if (_ack_mode) {
-        _ack_reader->Init(_event_writer, _writer, _cursor, _ack_queue);
+        _ack_queue->Init(_cursor);
+        _ack_reader->Init(_event_writer, _writer, _ack_queue);
         _ack_reader->Start();
     }
 
     while(!IsStopping() && (!checkOpen || _writer->IsOpen())) {
-        std::pair<std::shared_ptr<QueueItem>,bool> ret;
+        std::pair<std::shared_ptr<QueueItem>,bool> get_ret;
         do {
-            ret = _cursor->Get(100, !_ack_mode);
-        } while((!ret.first && !ret.second) && (!checkOpen || _writer->IsOpen()));
+            get_ret = _cursor->Get(100, !_ack_mode);
+        } while((!get_ret.first && !get_ret.second) && (!checkOpen || _writer->IsOpen()));
 
-        if (ret.first && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
-            Event event(ret.first->Data(), ret.first->Size());
+        if (get_ret.first && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
+            Event event(get_ret.first->Data(), get_ret.first->Size());
             bool filtered = _event_filter && _event_filter->IsEventFiltered(event);
             if (!filtered) {
+                if (_ack_mode) {
+                    // Avoid racing with receiver, add ack before sending event
+                    if (!_ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()),
+                                         get_ret.first->Priority(), get_ret.first->Sequence(),
+                                         _ack_timeout)) {
+                        Logger::Error("Output(%s): Timeout waiting for Acks", _name.c_str());
+                        break;
+                    }
+                }
+
                 auto ret = _event_writer->WriteEvent(event, _writer.get());
                 if (ret == IEventWriter::NOOP) {
-                    filtered = true;
+                    if (_ack_mode) {
+                        // The event was not sent, so remove it's ack
+                        _ack_queue->Remove(EventId(event.Seconds(), event.Milliseconds(), event.Serial()));
+                        // And update the auto cursor
+                        _ack_queue->SetAutoCursor(get_ret.first->Priority(), get_ret.first->Sequence());
+                    }
                 } else if (ret != IWriter::OK) {
                     break;
                 }
-            }
-            if (_ack_mode && !filtered) {
-                _ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()), ret.first->Priority(), ret.first->Sequence());
+
+                if (!_ack_mode) {
+                    _cursor->Commit(get_ret.first->Priority(), get_ret.first->Sequence());
+                }
+            } else {
+                if (_ack_mode) {
+                    _ack_queue->SetAutoCursor(get_ret.first->Priority(), get_ret.first->Sequence());
+                } else {
+                    _cursor->Commit(get_ret.first->Priority(), get_ret.first->Sequence());
+                }
             }
         }
     }
