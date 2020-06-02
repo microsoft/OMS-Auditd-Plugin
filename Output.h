@@ -63,14 +63,6 @@ public:
     void Ack(const EventId& event_id);
 
 private:
-    class _RingEntry {
-    public:
-        _RingEntry(EventId id, uint32_t p, uint64_t s): _id(id), _priority(p), _seq(s) {}
-        EventId _id;
-        uint32_t _priority;
-        uint64_t _seq;
-    };
-
     std::mutex _mutex;
     std::condition_variable _cond;
     std::unordered_map<EventId, uint64_t> _event_ids;

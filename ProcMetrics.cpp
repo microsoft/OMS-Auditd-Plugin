@@ -107,10 +107,12 @@ bool ProcMetrics::collect_metrics() {
 
     if (rss > _rss_limit) {
         Logger::Error("RSS Limit (%ld) exceeded (%ld)", _rss_limit, rss);
+        exit(1);
     }
 
     if (virt > _virt_limit) {
         Logger::Error("Virt Limit (%ld) exceeded (%ld)", _virt_limit, virt);
+        exit(1);
     }
 
     _mem_pct_metric->Set(mem_pct);

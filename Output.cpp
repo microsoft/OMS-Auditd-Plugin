@@ -52,9 +52,9 @@ bool AckQueue::Add(const EventId& event_id, uint32_t priority, uint64_t seq, lon
     std::unique_lock<std::mutex> _lock(_mutex);
 
     if (_cond.wait_for(_lock, std::chrono::milliseconds(timeout), [this]() { return _closed || _event_ids.size() < _max_size; })) {
-        auto seq = _next_seq++;
-        _event_ids.emplace(event_id, seq);
-        _cursors.emplace(seq, std::make_pair(priority, seq));
+        auto qseq = _next_seq++;
+        _event_ids.emplace(event_id, qseq);
+        _cursors.emplace(qseq, std::make_pair(priority, seq));
         return true;
     }
     return false;
@@ -133,17 +133,15 @@ void AckQueue::Ack(const EventId& event_id) {
     }
 
     if (_have_auto_cursor) {
-        if (_auto_cursor_seq > seq) {
-            if (_cursors.empty() || _cursors.begin()->first > _auto_cursor_seq) {
-                for (auto& c : _auto_cursors) {
-                    auto itr = cursors.find(c.first);
-                    if (itr == cursors.end() || itr->second < c.second) {
-                        cursors[c.first] = c.second;
-                    }
+        if (_cursors.empty() || _cursors.begin()->first > _auto_cursor_seq) {
+            for (auto& c : _auto_cursors) {
+                auto itr = cursors.find(c.first);
+                if (itr == cursors.end() || itr->second < c.second) {
+                    cursors[c.first] = c.second;
                 }
-                _auto_cursors.clear();
-                _have_auto_cursor = false;
             }
+            _auto_cursors.clear();
+            _have_auto_cursor = false;
         }
     }
 
