@@ -249,6 +249,22 @@ public:
     virtual uint16_t Prioritize(const Event& event) = 0;
 };
 
+class DefaultPrioritizer: public IEventPrioritizer {
+public:
+    static std::shared_ptr<IEventPrioritizer> Create(uint16_t default_priority) {
+        return std::shared_ptr<IEventPrioritizer>(new DefaultPrioritizer(default_priority));
+    }
+
+    DefaultPrioritizer(uint16_t default_priority): _default_priority(default_priority)  {}
+
+    uint16_t Prioritize(const Event& event) override {
+        return _default_priority;
+    }
+
+private:
+    uint16_t _default_priority;
+};
+
 class EventBuilder {
 public:
     EventBuilder(std::shared_ptr<IEventBuilderAllocator> allocator, std::shared_ptr<IEventPrioritizer> prioritizer): _allocator(allocator), _prioritizer(prioritizer), _data(nullptr), _size(0)

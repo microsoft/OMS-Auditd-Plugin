@@ -31,8 +31,9 @@
 BOOST_AUTO_TEST_CASE( basic_test ) {
     TestEventWriter writer;
     auto queue = new TestEventQueue();
+    auto prioritizer = DefaultPrioritizer::Create(0);
     auto allocator = std::shared_ptr<IEventBuilderAllocator>(queue);
-    auto builder = std::make_shared<EventBuilder>(allocator);
+    auto builder = std::make_shared<EventBuilder>(allocator, prioritizer);
 
     for (auto e : test_events) {
         e.Write(builder);

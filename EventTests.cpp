@@ -33,7 +33,7 @@ BOOST_AUTO_TEST_CASE( test )
 
     auto cursor = queue->OpenCursor("event_test");
 
-    EventBuilder builder(event_queue);
+    EventBuilder builder(event_queue, DefaultPrioritizer::Create(0));
 
     int ret = builder.BeginEvent(1, 3, 4, 2);
     if (ret != 1) {

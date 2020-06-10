@@ -173,13 +173,14 @@ std::vector<TestData> test_data = {
 BOOST_AUTO_TEST_CASE( basic_test ) {
     std::vector<std::string> actual_cmdlines;
 
+    auto prioritizer = DefaultPrioritizer::Create(0);
     auto raw_queue = new RawEventQueue(actual_cmdlines);
     auto raw_allocator = std::shared_ptr<IEventBuilderAllocator>(raw_queue);
-    auto raw_builder = std::make_shared<EventBuilder>(raw_allocator);
+    auto raw_builder = std::make_shared<EventBuilder>(raw_allocator, prioritizer);
 
     auto metrics_queue = new TestEventQueue();
     auto metrics_allocator = std::shared_ptr<IEventBuilderAllocator>(metrics_queue);
-    auto metrics_builder = std::make_shared<EventBuilder>(metrics_allocator);
+    auto metrics_builder = std::make_shared<EventBuilder>(metrics_allocator, prioritizer);
     auto metrics = std::make_shared<Metrics>(metrics_builder);
 
     RawEventAccumulator accumulator(raw_builder, metrics);
