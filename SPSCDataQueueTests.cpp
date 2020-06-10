@@ -35,7 +35,7 @@ BOOST_AUTO_TEST_CASE( queue_basic ) {
     for (int i = 0; i < 200; ++i) {
         data[0] = static_cast<uint8_t>(i);
         auto in_ptr = queue.Allocate(data.size());
-        BOOST_REQUIRE_NE(in_ptr, nullptr);
+        BOOST_REQUIRE(in_ptr != nullptr);
         ::memcpy(in_ptr, data.data(), data.size());
         queue.Commit(data.size());
 
@@ -58,7 +58,7 @@ BOOST_AUTO_TEST_CASE( queue_concurrent ) {
         for (int i = 0; i < 200; ++i) {
             data[0] = static_cast<uint8_t>(i);
             auto in_ptr = queue.Allocate(data.size());
-            BOOST_REQUIRE_NE(in_ptr, nullptr);
+            BOOST_REQUIRE(in_ptr != nullptr);
             ::memcpy(in_ptr, data.data(), data.size());
             queue.Commit(data.size());
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -129,7 +129,7 @@ BOOST_AUTO_TEST_CASE( queue_close ) {
     for (int i = 0; i < 6; ++i) {
         data[0] = static_cast<uint8_t>(i);
         auto in_ptr = queue.Allocate(data.size());
-        BOOST_REQUIRE_NE(in_ptr, nullptr);
+        BOOST_REQUIRE(in_ptr != nullptr);
         ::memcpy(in_ptr, data.data(), data.size());
         queue.Commit(data.size());
     }
@@ -138,7 +138,7 @@ BOOST_AUTO_TEST_CASE( queue_close ) {
 
     data[0] = static_cast<uint8_t>(6);
     auto in_ptr = queue.Allocate(data.size());
-    BOOST_REQUIRE_EQUAL(in_ptr, nullptr);
+    BOOST_REQUIRE(in_ptr == nullptr);
 
     for (int i = 0; i < 6; ++i) {
         uint8_t* out_ptr;
