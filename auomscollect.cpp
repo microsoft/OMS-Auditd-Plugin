@@ -32,6 +32,8 @@
 #include "FileUtils.h"
 #include "Metrics.h"
 #include "ProcMetrics.h"
+#include "CPULimits.h"
+#include "SchedPriority.h"
 
 #include <iostream>
 #include <fstream>
@@ -49,6 +51,7 @@
 #include "env_config.h"
 #include "LockFile.h"
 #include "EventPrioritizer.h"
+#include "CPULimits.h"
 
 void usage()
 {
@@ -426,6 +429,11 @@ int main(int argc, char**argv) {
         virt_limit = config.GetUint64("virt_limit");
     }
 
+    int cpu_nice = -20;
+    if (config.HasKey("cpu_nice")) {
+        cpu_nice = config.GetInt64("cpu_nice");
+    }
+
     bool use_syslog = true;
     if (config.HasKey("use_syslog")) {
         use_syslog = config.GetBool("use_syslog");
@@ -456,6 +464,21 @@ int main(int argc, char**argv) {
             break;
     }
     Logger::Info("Acquire singleton lock");
+
+    std::shared_ptr<CGroupCPU> cgcpu_root;
+    std::shared_ptr<CGroupCPU> cgcpu;
+    try {
+        cgcpu_root = CGroups::OpenCPU("");
+        cgcpu = CPULimits::CGFromConfig(config, "auomscollect");
+        cgcpu->AddSelf();
+    } catch (std::runtime_error& ex) {
+        Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
+        Logger::Warn("CPU Limits cannot be enforced");
+    }
+
+    if (!SetProcNice(cpu_nice)) {
+        Logger::Warn("Failed to set CPU nice value to %d: %s", cpu_nice, std::strerror(errno));
+    }
 
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
@@ -529,14 +552,22 @@ int main(int argc, char**argv) {
     Signals::Start();
     output.Start();
 
-    if (netlink_mode) {
-        bool restart;
-        do {
-            restart = DoNetlinkCollection(raw_queue, ingest_bytes_metric, ingest_records_metric, lost_bytes_metric, lost_segments_metric);
-        } while (restart);
-    } else {
-        DoStdinCollection(raw_queue, ingest_bytes_metric, ingest_records_metric, lost_bytes_metric, lost_segments_metric);
-    }
+    // The ingest tasks needs to run outside cgroup limits
+    std::thread ingest_thread([&]() {
+        // Move this thread back to the root cgroup (thus outside the auomscollect specific cgroup
+        cgcpu_root->AddSelfThread();
+        if (netlink_mode) {
+            bool restart;
+            do {
+                restart = DoNetlinkCollection(raw_queue, ingest_bytes_metric, ingest_records_metric, lost_bytes_metric,
+                                              lost_segments_metric);
+            } while (restart);
+        } else {
+            DoStdinCollection(raw_queue, ingest_bytes_metric, ingest_records_metric, lost_bytes_metric,
+                              lost_segments_metric);
+        }
+    });
+    ingest_thread.join();
 
     Logger::Info("Exiting");
 

@@ -20,6 +20,8 @@ std::vector<std::string> ReadFile(const std::string& path);
 
 void WriteFile(const std::string& path, const std::vector<std::string>& lines);
 
+void AppendFile(const std::string& path, const std::vector<std::string>& lines);
+
 // Return false if doesn't exist (or unlink fails and throw_on_error == false)
 bool RemoveFile(const std::string& path, bool throw_on_error);
 

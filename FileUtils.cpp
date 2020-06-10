@@ -92,6 +92,17 @@ void WriteFile(const std::string& path, const std::vector<std::string>& lines) {
     out.close();
 }
 
+void AppendFile(const std::string& path, const std::vector<std::string>& lines) {
+    std::ofstream out(path, std::ios::binary);
+    if (!out.is_open()) {
+        throw std::runtime_error("Failed to open '" + path + "'");
+    }
+    for (auto& line: lines) {
+        out << line << std::endl;
+    }
+    out.close();
+}
+
 bool RemoveFile(const std::string& path, bool throw_on_error) {
     auto ret = unlink(path.c_str());
     if (ret != 0) {

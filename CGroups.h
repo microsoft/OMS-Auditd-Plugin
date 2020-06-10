@@ -14,42 +14,39 @@
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef AUOMS_KERNELINFO_H
-#define AUOMS_KERNELINFO_H
+#ifndef AUOMS_CGROUPS_H
+#define AUOMS_CGROUPS_H
 
-#include <string>
+#include <vector>
+#include <memory>
 
-class KernelInfo {
+class CGroupCPU {
 public:
-    static KernelInfo GetKernelInfo() {
-        KernelInfo info;
-        info.load();
-        return info;
-    };
+    CGroupCPU(const std::string& path): _dir(path) {}
 
-    static std::string KernelVersion() { return ptr()->_kver; }
-    static bool Is64bit() { return ptr()->_is_64bit; };
-    static bool HasAuditSyscall() { return ptr()->_syscall; };
-    static bool HasAuditInterfieldCompare() { return ptr()->_compare; };
-    static bool HasAuditExeField() { return ptr()->_exe_field; };
-    static bool HasAuditSessionIdField() { return ptr()->_session_id_field; };
+    void AddSelf();
+    void AddSelfThread();
+
+    std::vector<uint64_t> GetProcs();
+    std::vector<uint64_t> GetTasks();
+
+    uint64_t GetShares();
+    void SetShares(uint64_t val);
+
+    uint64_t GetCFSPeriodUS();
+    void SetCFSPeriodUS(uint64_t val);
+
+    uint64_t GetCFSQuotaUS();
+    void SetCFSQuotaUS(uint64_t val);
 
 private:
-    KernelInfo(): _kver(), _is_64bit(false), _syscall(false), _compare(false), _exe_field(false), _session_id_field(false) {};
+    std::string _dir;
+};
 
-    static void init();
-    static KernelInfo* ptr();
-
-    void load() noexcept;
-
-    static KernelInfo* _info;
-    std::string _kver;
-    bool _is_64bit;
-    bool _syscall;
-    bool _compare;
-    bool _exe_field;
-    bool _session_id_field;
+class CGroups {
+public:
+    static std::shared_ptr<CGroupCPU> OpenCPU(const std::string& name);
 };
 
 
-#endif //AUOMS_KERNELINFO_H
+#endif //AUOMS_CGROUPS_H

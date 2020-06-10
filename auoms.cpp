@@ -37,6 +37,7 @@
 #include "SystemMetrics.h"
 #include "ProcMetrics.h"
 #include "FileUtils.h"
+#include "CPULimits.h"
 
 #include <iostream>
 #include <fstream>
@@ -289,6 +290,15 @@ int main(int argc, char**argv) {
             break;
     }
     Logger::Info("Acquire singleton lock");
+
+    std::shared_ptr<CGroupCPU> cgcpu;
+    try {
+        cgcpu = CPULimits::CGFromConfig(config, "auoms");
+        cgcpu->AddSelf();
+    } catch (std::runtime_error& ex) {
+        Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
+        Logger::Warn("CPU Limits cannot be enforced");
+    }
 
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.

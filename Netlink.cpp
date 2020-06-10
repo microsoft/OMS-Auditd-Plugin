@@ -46,6 +46,11 @@ int Netlink::Open(reply_fn_t&& default_msg_handler_fn) {
         return -saved_errno;
     }
 
+    int on = 1;
+    if (setsockopt(fd, SOL_NETLINK, NETLINK_NO_ENOBUFS, &on, sizeof(on)) != 0) {
+        Logger::Error("Cannot set NETLINK_NO_ENOBUFS option on audit NETLINK socket: %s", std::strerror(errno));
+    }
+
     _fd = fd;
     _default_msg_handler_fn = std::move(default_msg_handler_fn);
 

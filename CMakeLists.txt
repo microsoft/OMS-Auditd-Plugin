@@ -82,6 +82,9 @@ add_executable(auomscollect
         ProcMetrics.cpp
         Cache.h
         LockFile.cpp
+        CGroups.cpp
+        CPULimits.cpp
+        SchedPriority.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -169,6 +172,8 @@ add_executable(auoms
         SystemMetrics.cpp
         PriorityQueue.cpp PriorityQueue.h
         LockFile.cpp
+        CGroups.cpp
+        CPULimits.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html

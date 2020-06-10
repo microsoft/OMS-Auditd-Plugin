@@ -14,42 +14,19 @@
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#ifndef AUOMS_KERNELINFO_H
-#define AUOMS_KERNELINFO_H
+#ifndef AUOMS_CPULIMITS_H
+#define AUOMS_CPULIMITS_H
 
-#include <string>
+#include "Config.h"
+#include "CGroups.h"
 
-class KernelInfo {
+class CPULimits {
 public:
-    static KernelInfo GetKernelInfo() {
-        KernelInfo info;
-        info.load();
-        return info;
-    };
+    static constexpr double MAX_PCT = 100.0;
+    static constexpr double MIN_PCT = 1.0;
 
-    static std::string KernelVersion() { return ptr()->_kver; }
-    static bool Is64bit() { return ptr()->_is_64bit; };
-    static bool HasAuditSyscall() { return ptr()->_syscall; };
-    static bool HasAuditInterfieldCompare() { return ptr()->_compare; };
-    static bool HasAuditExeField() { return ptr()->_exe_field; };
-    static bool HasAuditSessionIdField() { return ptr()->_session_id_field; };
-
-private:
-    KernelInfo(): _kver(), _is_64bit(false), _syscall(false), _compare(false), _exe_field(false), _session_id_field(false) {};
-
-    static void init();
-    static KernelInfo* ptr();
-
-    void load() noexcept;
-
-    static KernelInfo* _info;
-    std::string _kver;
-    bool _is_64bit;
-    bool _syscall;
-    bool _compare;
-    bool _exe_field;
-    bool _session_id_field;
+    static std::shared_ptr<CGroupCPU> CGFromConfig(const Config& config, const std::string& default_cg_name);
 };
 
 
-#endif //AUOMS_KERNELINFO_H
+#endif //AUOMS_CPULIMITS_H
