@@ -28,11 +28,11 @@
 
 #define CGROUP_CPU_ROOT "/sys/fs/cgroup/cpu,cpuacct"
 
-#define CGROUP_PROCS_FILE "cgroup.procs"
-#define CGROUP_TASKS_FILE "tasks"
-#define CGROUP_CPU_SHARES_FILE "cpu.shares"
-#define CGROUP_CPU_QUOTA_US_FILE "cpu.cfs_quota_us"
-#define CGROUP_CPU_PERIOD_US_FILE "cpu.cfs_period_us"
+#define CGROUP_PROCS_FILE "/cgroup.procs"
+#define CGROUP_TASKS_FILE "/tasks"
+#define CGROUP_CPU_SHARES_FILE "/cpu.shares"
+#define CGROUP_CPU_QUOTA_US_FILE "/cpu.cfs_quota_us"
+#define CGROUP_CPU_PERIOD_US_FILE "/cpu.cfs_period_us"
 
 void AppendUint64(const std::string& path, uint64_t val) {
     AppendFile(path, {{std::to_string(val)}});
@@ -108,7 +108,7 @@ std::shared_ptr<CGroupCPU> CGroups::OpenCPU(const std::string& name) {
     std::string path = CGROUP_CPU_ROOT;
 
     if (!name.empty() && name != "/") {
-        path = std::string(CGROUP_CPU_ROOT) + "/" + path;
+        path = std::string(CGROUP_CPU_ROOT) + "/" + name;
     }
 
     if (!PathExists(path)) {

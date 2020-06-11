@@ -165,6 +165,7 @@ void SPSCDataQueue::Commit(size_t size) {
 void SPSCDataQueue::Close() {
     std::lock_guard<std::mutex> lock(_mutex);
     _closed = true;
+    _current_out->Seal();
     _cond.notify_all();
 }
 

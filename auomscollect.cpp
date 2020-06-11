@@ -330,6 +330,7 @@ int main(int argc, char**argv) {
 
     if (!config_file.empty()) {
         try {
+            Logger::Info("Opening config file %s", config_file.c_str());
             config.Load(config_file);
         } catch (std::runtime_error& ex) {
             Logger::Error("%s", ex.what());
@@ -340,8 +341,8 @@ int main(int argc, char**argv) {
     std::string data_dir = AUOMS_DATA_DIR;
     std::string run_dir = AUOMS_RUN_DIR;
 
-    if (config.HasKey("queue_dir")) {
-        data_dir = config.GetString("queue_dir");
+    if (config.HasKey("data_dir")) {
+        data_dir = config.GetString("data_dir");
     }
 
     if (config.HasKey("run_dir")) {
@@ -538,11 +539,19 @@ int main(int argc, char**argv) {
         ssize_t size;
 
         while((size = raw_queue.Get(&ptr)) > 0) {
-            if (record->Parse(*reinterpret_cast<RecordType*>(ptr), size-sizeof(RecordType))) {
-                accumulator.AddRecord(std::move(record));
-                record = std::make_unique<RawEventRecord>();
+            auto rt_ptr = reinterpret_cast<RecordType*>(ptr);
+            auto data_ptr = reinterpret_cast<char*>(ptr)+sizeof(RecordType);
+            auto data_size = size-sizeof(RecordType);
+            if (data_size <= RawEventRecord::MAX_RECORD_SIZE) {
+                memcpy(record->Data(), data_ptr, data_size);
+                if (record->Parse(*reinterpret_cast<RecordType*>(ptr), data_size)) {
+                    accumulator.AddRecord(std::move(record));
+                    record = std::make_unique<RawEventRecord>();
+                } else {
+                    Logger::Warn("Received unparsable event data: '%s'", std::string(record->Data(), size).c_str());
+                }
             } else {
-                Logger::Warn("Received unparsable event data: '%s'", std::string(record->Data(), size).c_str());
+                Logger::Warn("Received event data size (%ld) exceeded size limit (%ld)", data_size, RawEventRecord::MAX_RECORD_SIZE);
             }
             raw_queue.Release();
         }
@@ -555,7 +564,11 @@ int main(int argc, char**argv) {
     // The ingest tasks needs to run outside cgroup limits
     std::thread ingest_thread([&]() {
         // Move this thread back to the root cgroup (thus outside the auomscollect specific cgroup
-        cgcpu_root->AddSelfThread();
+        try {
+            cgcpu_root->AddSelfThread();
+        } catch (std::runtime_error& ex) {
+            Logger::Error("Failed to move ingest thread to root cgroup: %s", ex.what());
+        }
         if (netlink_mode) {
             bool restart;
             do {
@@ -572,6 +585,7 @@ int main(int argc, char**argv) {
     Logger::Info("Exiting");
 
     try {
+        raw_queue.Close();
         proc_thread.join();
         proc_metrics->Stop();
         metrics->Stop();
