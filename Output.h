@@ -55,6 +55,8 @@ public:
 
     void Remove(const EventId& event_id);
 
+    void Reset();
+
     // Returns false on timeout, true is queue is empty
     bool Wait(int millis);
 
