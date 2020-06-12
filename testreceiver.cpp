@@ -46,6 +46,7 @@ void usage()
     fprintf(stderr, "    -o <file>      - Path to output file (default stdout)\n");
     fprintf(stderr, "    -e             - Exit after first disconnect.\n");
     fprintf(stderr, "    -r             - Write raw events in raw form to output.\n");
+    fprintf(stderr, "    -x             - Drop connection after first event, without acking.\n");
     exit(1);
 }
 
@@ -110,7 +111,7 @@ bool write_text_ack(FILE* fp, const EventId& event_id) {
     return true;
 }
 
-void handle_oms_connection(int fd, int out_fd, bool ack) {
+void handle_oms_connection(int fd, int out_fd, bool ack, bool drop_ack) {
     FILE* fp = fdopen(fd, "r");
     auto out = fdopen(out_fd, "w");
     std::array<char, 4096> in_buffer;
@@ -141,6 +142,10 @@ void handle_oms_connection(int fd, int out_fd, bool ack) {
         d.Accept(w);
 
         if (ack) {
+            if (drop_ack) {
+                fclose(out);
+                return;
+            }
             if (!write_text_ack(fp, event_id)) {
                 fclose(out);
             }
@@ -148,7 +153,7 @@ void handle_oms_connection(int fd, int out_fd, bool ack) {
     }
 }
 
-void handle_raw_connection(int fd, int out_fd, bool ack, bool raw_out) {
+void handle_raw_connection(int fd, int out_fd, bool ack, bool drop_ack, bool raw_out) {
     std::array<uint8_t, 1024*256> data;
     auto out = fdopen(out_fd, "w");
     if (out == nullptr) {
@@ -212,6 +217,11 @@ void handle_raw_connection(int fd, int out_fd, bool ack, bool raw_out) {
         }
 
         if (ack) {
+            if (drop_ack) {
+                fclose(out);
+                return;
+            }
+
             std::array<uint8_t, 8+8+4> ack_data;
             *reinterpret_cast<uint64_t*>(ack_data.data()) = event.Seconds();
             *reinterpret_cast<uint32_t*>(ack_data.data()+8) = event.Milliseconds();
@@ -223,7 +233,6 @@ void handle_raw_connection(int fd, int out_fd, bool ack, bool raw_out) {
             }
         }
     }
-
 }
 
 void handle_pass_connection(int fd, int out_fd) {
@@ -251,9 +260,10 @@ int main(int argc, char**argv) {
     bool ack_mode = false;
     bool exit_mode = false;
     bool raw_out = false;
+    bool drop_ack = false;
 
     int opt;
-    while ((opt = getopt(argc, argv, "aeo:p:rs:")) != -1) {
+    while ((opt = getopt(argc, argv, "aeo:p:rs:x")) != -1) {
         switch (opt) {
             case 'a':
                 ack_mode = true;
@@ -272,6 +282,9 @@ int main(int argc, char**argv) {
                 break;
             case 's':
                 sock_path = optarg;
+                break;
+            case 'x':
+                drop_ack = true;
                 break;
             default:
                 usage();
@@ -324,9 +337,9 @@ int main(int argc, char**argv) {
             fprintf(stderr, "Connected\n");
 
             if (protocol == "oms") {
-                handle_oms_connection(fd, out_fd, ack_mode);
+                handle_oms_connection(fd, out_fd, ack_mode, drop_ack);
             } else if (protocol == "raw") {
-                handle_raw_connection(fd, out_fd, ack_mode, raw_out);
+                handle_raw_connection(fd, out_fd, ack_mode, drop_ack, raw_out);
             } else if (protocol == "pass") {
                 handle_pass_connection(fd, out_fd);
             } else {

@@ -88,6 +88,16 @@ void AckQueue::Remove(const EventId& event_id) {
     _cursors.erase(seq);
 }
 
+void AckQueue::Reset() {
+    std::unique_lock<std::mutex> _lock(_mutex);
+
+    _event_ids.clear();
+    _cursors.clear();
+    _next_seq = 0;
+    _have_auto_cursor = false;
+    _auto_cursor_seq = 0;
+}
+
 bool AckQueue::Wait(int millis) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
@@ -433,6 +443,7 @@ bool Output::handle_events(bool checkOpen) {
     if (_ack_mode) {
         _ack_reader->Init(_event_writer, _writer, _ack_queue, _cursor_writer);
         _ack_reader->Start();
+        _ack_queue->Reset();
     }
 
     while(!IsStopping() && (!checkOpen || _writer->IsOpen())) {
