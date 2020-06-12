@@ -25,6 +25,11 @@
 #include <fcntl.h>
 #include <poll.h>
 
+#ifndef SOL_NETLINIK
+// This isn't defined in older socket.h include files.
+#define SOL_NETLINK	270
+#endif
+
 int Netlink::Open(reply_fn_t&& default_msg_handler_fn) {
     std::unique_lock<std::mutex> _lock(_run_mutex);
 
@@ -44,6 +49,11 @@ int Netlink::Open(reply_fn_t&& default_msg_handler_fn) {
             Logger::Error("Error opening AUDIT NETLINK socket: %s", std::strerror(errno));
         }
         return -saved_errno;
+    }
+
+    int on = 1;
+    if (setsockopt(fd, SOL_NETLINK, NETLINK_NO_ENOBUFS, &on, sizeof(on)) != 0) {
+        Logger::Error("Cannot set NETLINK_NO_ENOBUFS option on audit NETLINK socket: %s", std::strerror(errno));
     }
 
     _fd = fd;

@@ -133,20 +133,31 @@ std::string OperationalStatus::get_json_status() {
     if (errors.empty()) {
         return std::string();
     } else {
+        bool first = true;
         str << "{";
         for (auto& error: errors) {
-            str << '"';
+            if (first) {
+                first = false;
+                str << '"';
+            } else {
+                str << ", \"";
+            }
             switch (error.first) {
                 case ErrorCategory::DATA_COLLECTION:
                     str << "DATA_COLLECTION";
+                    break;
                 case ErrorCategory::DESIRED_RULES:
                     str << "DESIRED_RULES";
+                    break;
                 case ErrorCategory::AUDIT_RULES_KERNEL:
                     str << "AUDIT_RULES_KERNEL";
+                    break;
                 case ErrorCategory::AUDIT_RULES_FILE:
                     str << "AUDIT_RULES_FILE";
+                    break;
                 default:
                     str << "UNKNOWN[" << std::to_string(static_cast<int>(error.first)) << "]";
+                    break;
             }
             str << "\":\"";
             std::string _tmp;
