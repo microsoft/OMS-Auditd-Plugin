@@ -69,7 +69,7 @@ bool ProcMetrics::collect_metrics() {
     auto cpu_pct = (static_cast<double>(used)/static_cast<double>(CLOCKS_PER_SEC))*100.0;
 
     if (!_cpu_metric) {
-        _cpu_metric = _metrics->AddMetric(_nsname, "cpu", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _cpu_metric = _metrics->AddMetric(_nsname, "%cpu", MetricPeriod::SECOND, MetricPeriod::HOUR);
     }
 
     _cpu_metric->Set(cpu_pct);
@@ -90,12 +90,24 @@ bool ProcMetrics::collect_metrics() {
     }
 
     if (!_mem_metric) {
-        _mem_metric = _metrics->AddMetric(_nsname, "rss", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _mem_metric = _metrics->AddMetric(_nsname, "%mem", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    }
+
+    if (!_rss_metric) {
+        _rss_metric = _metrics->AddMetric(_nsname, "rss", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    }
+
+    if (!_virt_metric) {
+        _virt_metric = _metrics->AddMetric(_nsname, "virt", MetricPeriod::SECOND, MetricPeriod::HOUR);
     }
 
     auto mem_pct = (static_cast<double>(resident*_page_size)/static_cast<double>(_total_system_memory))*100.0;
+    uint64_t rss = resident*_page_size;
+    uint64_t virt = total*_page_size;
 
     _mem_metric->Set(mem_pct);
+    _rss_metric->Set(static_cast<double>(rss));
+    _virt_metric->Set(static_cast<double>(virt));
 
     return true;
 }

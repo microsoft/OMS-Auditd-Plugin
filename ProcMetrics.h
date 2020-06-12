@@ -36,6 +36,8 @@ private:
     std::shared_ptr<Metrics> _metrics;
     std::shared_ptr<Metric> _cpu_metric;
     std::shared_ptr<Metric> _mem_metric;
+    std::shared_ptr<Metric> _rss_metric;
+    std::shared_ptr<Metric> _virt_metric;
     uint64_t _total_system_memory;
     long _page_size;
     clock_t _clock;
