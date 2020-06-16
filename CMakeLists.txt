@@ -430,3 +430,30 @@ target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}
 )
 
 add_test(OMSEventWriter ${CMAKE_BINARY_DIR}/OMSEventWriterTests --log_sink=OMSEventWriterTests.log --report_sink=OMSEventWriterTests.report)
+
+
+add_executable(OutputInputTests
+        OutputInputTests.cpp
+        TempDir.cpp
+        Event.cpp
+        Logger.cpp
+        Config.cpp
+        StringUtils.cpp
+        RunBase.cpp
+        Output.cpp
+        Inputs.cpp
+        Input.cpp
+        OperationalStatus.cpp
+        IO.cpp
+        Queue.cpp
+        UnixDomainListener.cpp
+        UnixDomainWriter.cpp
+        TranslateRecordType.cpp
+        Signals.cpp
+)
+
+target_link_libraries(OutputInputTests ${Boost_LIBRARIES}
+        pthread
+)
+
+add_test(OutputInputTests ${CMAKE_BINARY_DIR}/OutputInputTests --log_sink=OutputInputTests.log --report_sink=OutputInputTests.report)

@@ -18,10 +18,12 @@
 
 #include <string>
 #include <cstdarg>
+#include <functional>
 
 class Logger {
 public:
     static void OpenSyslog(const std::string& ident, int facility);
+    static void SetLogFunction(std::function<void(const char* ptr, size_t size)> fn) { _log_fn = fn; }
     static void Info(const char* fmt, ...) __attribute__ ((format (printf, 1, 2)));
     static void Warn(const char* fmt, ...) __attribute__ ((format (printf, 1, 2)));
     static void Error(const char* fmt, ...) __attribute__ ((format (printf, 1, 2)));
@@ -31,6 +33,7 @@ private:
 
     static std::string _ident;
     static bool _enable_syslog;
+    static std::function<void(const char* ptr, size_t size)> _log_fn;
 };
 
 

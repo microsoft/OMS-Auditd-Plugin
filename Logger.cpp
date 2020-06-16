@@ -24,6 +24,7 @@ extern "C" {
 
 std::string Logger::_ident;
 bool Logger::_enable_syslog = false;
+std::function<void(const char* ptr, size_t size)> Logger::_log_fn;
 
 void Logger::OpenSyslog(const std::string& ident, int facility)
 {
@@ -74,6 +75,9 @@ void Logger::_log_write(int level, const char* fmt, va_list ap)
             }
             buffer[nr] = 0;
             (void)write(2, buffer, nr);
+            if (_log_fn) {
+                _log_fn(buffer, nr);
+            }
         }
     }
 }
