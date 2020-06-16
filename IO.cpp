@@ -151,6 +151,9 @@ ssize_t IOBase::Read(void *buf, size_t size, const std::function<bool()>& fn)
     ssize_t nr = read(fd, buf, size);
     if (nr < 0) {
         if (errno != EINTR) {
+            if (errno == ECONNRESET) {
+                return CLOSED;
+            }
             return FAILED;
         } else if (fn && fn()) {
             return INTERRUPTED;
@@ -188,6 +191,9 @@ ssize_t IOBase::ReadAll(void *buf, size_t size, const std::function<bool()>& fn)
         ssize_t nr = read(fd, reinterpret_cast<char*>(buf) + (size - nleft), nleft);
         if (nr < 0) {
             if (errno != EINTR) {
+                if (errno == ECONNRESET) {
+                    return CLOSED;
+                }
                 return FAILED;
             } else if (fn && fn()) {
                 return INTERRUPTED;
