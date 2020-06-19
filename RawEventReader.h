@@ -20,6 +20,8 @@
 #include "IEventReader.h"
 #include "Logger.h"
 
+#include <cstring>
+
 class RawEventReader: public IEventReader {
 public:
     ssize_t ReadEvent(void *buf, size_t buf_size, IReader* reader, const std::function<bool()>& fn) override {
@@ -34,7 +36,7 @@ public:
         ssize_t ret = reader->ReadAll(&hdr, sizeof(uint32_t), fn);
         if (ret != IO::OK) {
             if (ret == IO::FAILED) {
-                Logger::Info("RawEventReader: Unexpected error while reading message header");
+                Logger::Info("RawEventReader: Unexpected error while reading message header: %s", std::strerror(errno));
             }
             return ret;
         }

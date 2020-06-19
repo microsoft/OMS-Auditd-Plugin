@@ -21,6 +21,8 @@
 bool Inputs::Initialize() {
     Logger::Info("Inputs initializing");
 
+    _op_status->SetErrorCondition(ErrorCategory::DATA_COLLECTION, "No collectors connected!");
+
     return _listener.Open();
 }
 
