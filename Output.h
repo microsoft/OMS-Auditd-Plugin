@@ -46,6 +46,8 @@ public:
 
     void Close();
 
+    bool IsClosed();
+
     // Return false if timeout, true if added
     bool Add(const EventId& event_id, uint32_t priority, uint64_t seq, long timeout);
 
@@ -63,10 +65,17 @@ public:
     void Ack(const EventId& event_id);
 
 private:
+    class _CursorEntry {
+    public:
+        _CursorEntry(EventId event_id, uint32_t priority, uint64_t seq): _event_id(event_id), _priority(priority), _seq(seq) {}
+        EventId _event_id;
+        uint32_t _priority;
+        uint64_t _seq;
+    };
     std::mutex _mutex;
     std::condition_variable _cond;
     std::unordered_map<EventId, uint64_t> _event_ids;
-    std::map<uint64_t, std::pair<uint32_t, uint64_t>> _cursors;
+    std::map<uint64_t, _CursorEntry> _cursors;
     size_t _max_size;
     std::shared_ptr<QueueCursor> _cursor;
     bool _closed;

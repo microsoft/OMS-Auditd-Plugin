@@ -14,6 +14,9 @@
 
 #include <sys/time.h>
 
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
+
 
 bool OperationalStatusListener::Initialize() {
     return _listener.Open();
@@ -127,37 +130,46 @@ std::string OperationalStatus::get_status_str() {
 }
 
 std::string OperationalStatus::get_json_status() {
-    std::stringstream str;
-
     auto errors = GetErrors();
     if (errors.empty()) {
         return std::string();
-    } else {
-        str << "{";
-        for (auto& error: errors) {
-            str << '"';
-            switch (error.first) {
-                case ErrorCategory::DATA_COLLECTION:
-                    str << "DATA_COLLECTION";
-                case ErrorCategory::DESIRED_RULES:
-                    str << "DESIRED_RULES";
-                case ErrorCategory::AUDIT_RULES_KERNEL:
-                    str << "AUDIT_RULES_KERNEL";
-                case ErrorCategory::AUDIT_RULES_FILE:
-                    str << "AUDIT_RULES_FILE";
-                default:
-                    str << "UNKNOWN[" << std::to_string(static_cast<int>(error.first)) << "]";
-            }
-            str << "\":\"";
-            std::string _tmp;
-            json_escape_string(_tmp, error.second.data(), error.second.size());
-            str << _tmp << std::endl;
-            str << '"';
-        }
-        str << "}";
     }
 
-    return str.str();
+
+    rapidjson::StringBuffer buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer;
+
+    buffer.Clear();
+    writer.Reset(buffer);
+    writer.StartObject();
+
+    for (auto& error: errors) {
+        std::string key;
+        switch (error.first) {
+            case ErrorCategory::DATA_COLLECTION:
+                key = "DATA_COLLECTION";
+                break;
+            case ErrorCategory::DESIRED_RULES:
+                key = "DESIRED_RULES";
+                break;
+            case ErrorCategory::AUDIT_RULES_KERNEL:
+                key = "AUDIT_RULES_KERNEL";
+                break;
+            case ErrorCategory::AUDIT_RULES_FILE:
+                key = "AUDIT_RULES_FILE";
+                break;
+            default:
+                key = "UNKNOWN[" + std::to_string(static_cast<int>(error.first)) + "]";
+                break;
+        }
+        writer.Key(key.data(), key.length(), true);
+        writer.String(error.second.data(), error.second.size(), true);
+    }
+
+
+    writer.EndObject();
+
+    return std::string(buffer.GetString(), buffer.GetSize());
 }
 
 bool OperationalStatus::send_status() {

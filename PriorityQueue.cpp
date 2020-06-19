@@ -393,6 +393,19 @@ start:
     return std::make_pair(item, false);
 }
 
+void QueueCursor::Rollback() {
+    std::unique_lock<std::mutex> lock(_mutex);
+
+    for (uint32_t p = 0; p < _committed.size(); p++) {
+        if (_cursors[p] != _committed[p]) {
+            _cursors[p] = _committed[p];
+            if (_buckets[p]) {
+                _buckets[p] = _queue->get_next_bucket(p, _cursors[p]);
+            }
+        }
+    }
+}
+
 void QueueCursor::Commit(uint32_t priority, uint64_t seq) {
     std::unique_lock<std::mutex> lock(_mutex);
 

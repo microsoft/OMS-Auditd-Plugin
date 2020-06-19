@@ -512,7 +512,7 @@ int main(int argc, char**argv) {
         {"output_format","raw"},
         {"output_socket", socket_path},
         {"enable_ack_mode", "true"},
-        {"ack_queue_size", "10"}
+        {"ack_queue_size", "100"}
     }));
     auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
     Output output("output", queue, writer_factory, nullptr);

@@ -40,6 +40,13 @@ AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _have_
 
 void AckQueue::Init(std::shared_ptr<QueueCursor> cursor) {
     _cursor = cursor;
+    _closed = false;
+    _event_ids.clear();
+    _cursors.clear();
+    _auto_cursors.clear();
+    _next_seq = 0;
+    _have_auto_cursor = false;
+    _auto_cursor_seq = 0;
 }
 
 void AckQueue::Close() {
@@ -48,13 +55,18 @@ void AckQueue::Close() {
     _cond.notify_all();
 }
 
+bool AckQueue::IsClosed() {
+    std::unique_lock<std::mutex> _lock(_mutex);
+    return _closed;
+}
+
 bool AckQueue::Add(const EventId& event_id, uint32_t priority, uint64_t seq, long timeout) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
     if (_cond.wait_for(_lock, std::chrono::milliseconds(timeout), [this]() { return _closed || _event_ids.size() < _max_size; })) {
         auto qseq = _next_seq++;
         _event_ids.emplace(event_id, qseq);
-        _cursors.emplace(qseq, std::make_pair(priority, seq));
+        _cursors.emplace(qseq, _CursorEntry(event_id, priority, seq));
         return true;
     }
     return false;
@@ -103,41 +115,33 @@ bool AckQueue::Wait(int millis) {
 void AckQueue::Ack(const EventId& event_id) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
-    std::unordered_map<uint32_t, uint64_t> cursors;
-
-    uint64_t seq = 0;
+    std::unordered_map<uint32_t, uint64_t> found_seq;
 
     auto eitr = _event_ids.find(event_id);
     if (eitr != _event_ids.end()) {
-        seq = eitr->second;
+        auto seq = eitr->second;
         _event_ids.erase(eitr);
         _cond.notify_all(); // _event_ids was modified, so notify any waiting Add calls
 
-        auto citr = _cursors.find(seq);
-        if (citr != _cursors.end()) {
-            auto xitr = cursors.find(citr->second.first);
-            if (xitr == cursors.end() || xitr->second < citr->second.second) {
-                cursors[citr->second.first] = citr->second.second;
+        // Find and remove all from cursors that are <= seq
+        while (!_cursors.empty() && _cursors.begin()->first <= seq) {
+            auto& entry = _cursors.begin()->second;
+            // Make sure to remove any associated event ids from _event_ids.
+            _event_ids.erase(entry._event_id);
+            auto itr = found_seq.find(entry._priority);
+            if (itr == found_seq.end() || itr->second < entry._seq) {
+                found_seq[entry._priority] = entry._seq;
             }
-            if (citr != _cursors.begin()) {
-                for (auto itr = _cursors.begin(); itr != citr; ++itr) {
-                    auto xitr = cursors.find(citr->second.first);
-                    if (xitr == cursors.end() || xitr->second < citr->second.second) {
-                        cursors[citr->second.first] = citr->second.second;
-                    }
-                }
-                _cursors.erase(_cursors.begin(), citr);
-            }
-            _cursors.erase(citr);
+            _cursors.erase(_cursors.begin());
         }
     }
 
     if (_have_auto_cursor) {
         if (_cursors.empty() || _cursors.begin()->first > _auto_cursor_seq) {
             for (auto& c : _auto_cursors) {
-                auto itr = cursors.find(c.first);
-                if (itr == cursors.end() || itr->second < c.second) {
-                    cursors[c.first] = c.second;
+                auto itr = found_seq.find(c.first);
+                if (itr == found_seq.end() || itr->second < c.second) {
+                    found_seq[c.first] = c.second;
                 }
             }
             _auto_cursors.clear();
@@ -145,7 +149,7 @@ void AckQueue::Ack(const EventId& event_id) {
         }
     }
 
-    for (auto& c : cursors) {
+    for (auto& c : found_seq) {
         _cursor->Commit(c.first, c.second);
     }
 }
@@ -170,6 +174,9 @@ void AckReader::run() {
     _writer->Close();
 
     _queue->ProcessAutoCursor();
+
+    // Make sure any waiting AckQueue::Add() returns immediately instead of waiting for the timeout.
+    _queue->Close();
 }
 
 /****************************************************************************
@@ -327,6 +334,8 @@ bool Output::check_open()
 }
 
 bool Output::handle_events(bool checkOpen) {
+    _cursor->Rollback();
+
     if (_ack_mode) {
         _ack_queue->Init(_cursor);
         _ack_reader->Init(_event_writer, _writer, _ack_queue);
@@ -348,7 +357,9 @@ bool Output::handle_events(bool checkOpen) {
                     if (!_ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()),
                                          get_ret.first->Priority(), get_ret.first->Sequence(),
                                          _ack_timeout)) {
-                        Logger::Error("Output(%s): Timeout waiting for Acks", _name.c_str());
+                        if (!_ack_queue->IsClosed()) {
+                            Logger::Error("Output(%s): Timeout waiting for Acks", _name.c_str());
+                        }
                         break;
                     }
                 }

@@ -102,6 +102,57 @@ BOOST_AUTO_TEST_CASE( queue_simple ) {
     }
 }
 
+BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
+    TempDir dir("/tmp/PriorityQueueTests");
+
+    auto queue = PriorityQueue::Open(dir.Path(), 8, 4096, 16, 0, 0, 0);
+    if (!queue) {
+        BOOST_FAIL("Failed to open queue");
+    }
+
+    auto cursor = queue->OpenCursor("test");
+
+    std::array<uint8_t, 1024> data;
+    data.fill(0);
+
+    for (uint8_t i = 1; i <= 10; i++) {
+        data[0] = i;
+        if (!queue->Put(0, data.data(), data.size())) {
+            BOOST_FAIL("queue->Put() failed!");
+        }
+    }
+
+    for (uint8_t i = 1; i <= 10; i++) {
+        auto val = cursor->Get(0);
+        if (val.second) {
+            BOOST_FAIL("cursor->Get() returned closed==true!");
+        }
+        if (!val.first) {
+            BOOST_FAIL("cursor->Get() returned nullptr!");
+        }
+        auto x = reinterpret_cast<uint8_t*>(val.first->Data())[0];
+        BOOST_REQUIRE_EQUAL(i, x);
+    }
+
+    auto val = cursor->Get(0);
+    if (val.second) {
+        BOOST_FAIL("cursor->Get() returned closed==true!");
+    }
+    if (val.first) {
+        BOOST_FAIL("cursor->Get() did not return nullptr!");
+    }
+
+    queue->Close();
+
+    val = cursor->Get(0);
+    if (!val.second) {
+        BOOST_FAIL("cursor->Get() returned closed!=true!");
+    }
+    if (val.first) {
+        BOOST_FAIL("cursor->Get() did not return nullptr!");
+    }
+}
+
 BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
     TempDir dir("/tmp/PriorityQueueTests");
 

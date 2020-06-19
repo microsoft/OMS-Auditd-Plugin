@@ -185,6 +185,7 @@ public:
     // If queue is close, <nullptr, true>
     // If timeout, <nullptr, false>
     std::pair<std::shared_ptr<QueueItem>,bool> Get(long timeout, bool auto_commit = true);
+    void Rollback();
     void Commit(uint32_t priority, uint64_t seq);
 
 private:

@@ -481,3 +481,30 @@ target_link_libraries(FluentEventWriterTests ${Boost_LIBRARIES}
 )
 
 add_test(FluentEventWriter ${CMAKE_BINARY_DIR}/FluentEventWriterTests --log_sink=FluentEventWriterTests.log --report_sink=FluentEventWriterTests.report)
+
+add_executable(OutputInputTests
+        OutputInputTests.cpp
+        TempDir.cpp
+        Event.cpp
+        Logger.cpp
+        Config.cpp
+        StringUtils.cpp
+        RunBase.cpp
+        Output.cpp
+        Inputs.cpp
+        Input.cpp
+        OperationalStatus.cpp
+        IO.cpp
+        PriorityQueue.cpp
+        UnixDomainListener.cpp
+        UnixDomainWriter.cpp
+        TranslateRecordType.cpp
+        Signals.cpp
+        FileUtils.cpp
+)
+
+target_link_libraries(OutputInputTests ${Boost_LIBRARIES}
+        pthread
+)
+
+add_test(OutputInputTests ${CMAKE_BINARY_DIR}/OutputInputTests --log_sink=OutputInputTests.log --report_sink=OutputInputTests.report)
