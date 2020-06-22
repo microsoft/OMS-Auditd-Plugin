@@ -146,12 +146,6 @@ bool AckQueue::Ack(const EventId& event_id, QueueCursor& cursor) {
     return found;
 }
 
-void AckQueue::Dump() {
-    for (auto& e : _event_ids) {
-        Logger::Info("AckQueue: EventId(%ld, %d, %ld), Seq (%ld)", e.first.Seconds(), e.first.Milliseconds(), e.first.Serial(), e.second);
-    }
-}
-
 /****************************************************************************
  *
  ****************************************************************************/
@@ -491,7 +485,6 @@ bool Output::handle_events(bool checkOpen) {
                                          _ack_timeout)) {
                         if (_writer->IsOpen()) {
                             Logger::Error("Output(%s): Timeout waiting for Acks", _name.c_str());
-                            _ack_queue->Dump();
                         }
                         break;
                     }

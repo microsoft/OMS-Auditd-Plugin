@@ -62,7 +62,6 @@ public:
 
     bool Ack(const EventId& event_id, QueueCursor& cursor);
 
-    void Dump();
 private:
     std::mutex _mutex;
     std::condition_variable _cond;
