@@ -83,10 +83,17 @@ int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t&& repl
     nlmsghdr *nl = reinterpret_cast<nlmsghdr*>(_data.data());
     nl->nlmsg_type = type;
     nl->nlmsg_flags = NLM_F_REQUEST|NLM_F_ACK;
-    nl->nlmsg_seq = _sequence++;
-    if (_sequence == 0) {
-        _sequence = 1;
-    }
+
+    // Make sure the seq is unique and not in use
+    uint32_t seq = 0;
+    do {
+        seq = _sequence++;
+        if (_sequence == 0) {
+            _sequence = 1;
+        }
+    } while (_replies.count(seq) > 0 || _known_seq.count(seq) > 0);
+
+    nl->nlmsg_seq = seq;
 
     if (data != nullptr && len > 0) {
         nl->nlmsg_len = static_cast<uint32_t>(NLMSG_SPACE(len));
@@ -102,9 +109,10 @@ int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t&& repl
     addr.nl_groups = 0;
 
     std::future<int> future;
-    auto rep = _replies.emplace(nl->nlmsg_seq, std::make_unique<ReplyRec>(std::move(reply_fn)));
-    future = rep.first->second->_promise.get_future();
-    _known_seq.emplace(nl->nlmsg_seq, rep.first->second->_req_time);
+    auto reply_rec = std::make_shared<ReplyRec>(std::move(reply_fn));
+    future = reply_rec->_promise.get_future();
+    _known_seq.emplace(nl->nlmsg_seq, reply_rec->_req_age);
+    auto rep = _replies.emplace(nl->nlmsg_seq, reply_rec);
 
     _lock.unlock();
 
@@ -125,6 +133,7 @@ int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t&& repl
 
     _lock.unlock();
 
+    future.wait();
     auto retval = future.get();
     return retval;
 }
@@ -216,11 +225,17 @@ int wait_readable(int fd, long timeout) {
 void Netlink::flush_replies(bool is_exit) {
     std::lock_guard<std::mutex> _lock(_run_mutex);
 
+    if (is_exit) {
+        Logger::Info("Flush: Exit");
+    }
+
     auto now = std::chrono::steady_clock::now();
     for (auto itr = _replies.begin(); itr != _replies.end();) {
-        if (is_exit || itr->second->_req_time < now - std::chrono::milliseconds(5000)) {
+        if (is_exit || itr->second->_req_age < now - std::chrono::milliseconds(1000)) {
             // Set promise value if it has not already been set
             if (!itr->second->_done) {
+                auto age = std::chrono::duration_cast<std::chrono::milliseconds>(now - itr->second->_req_age).count();
+                Logger::Info("Flush[NOT DONE]: Seq = %d, age = %ld ms", itr->first, age);
                 itr->second->_done = true;
                 try {
                     if (is_exit) {
@@ -232,6 +247,8 @@ void Netlink::flush_replies(bool is_exit) {
                     Logger::Error("Unexpected exception while trying to set promise value for NETLINK reply: %s",
                                   ex.what());
                 }
+            } else {
+                Logger::Info("Flush[DONE]: Seq = %d", itr->first);
             }
             itr = _replies.erase(itr);
         } else {
@@ -243,6 +260,7 @@ void Netlink::flush_replies(bool is_exit) {
     // This should avoid "Unexpected seq" log messages in the rare case where the req timed out before all reply messages could be received
     for (auto itr = _known_seq.begin(); itr != _known_seq.end();) {
         if (is_exit || itr->second < now - std::chrono::seconds(10)) {
+            Logger::Info("Flush: Known = %d", itr->first);
             itr = _known_seq.erase(itr);
         } else {
             ++itr;
@@ -343,14 +361,19 @@ void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq
     reply_fn_t* fn_ptr = nullptr;
     bool done = false;
 
+    std::shared_ptr<ReplyRec> reply;
+
     if (msg_seq != 0) {
         // The seq is non-zero so this message should be a reply to a request
         // look for the reply_fn associates with this seq #
         std::lock_guard<std::mutex> _lock(_run_mutex);
         auto itr = _replies.find(msg_seq);
         if (itr != _replies.end()) {
-            fn_ptr = &itr->second->_fn;
-            done = itr->second->_done;
+            reply = itr->second;
+            fn_ptr = &reply->_fn;
+            done = reply->_done;
+            reply->_req_age = std::chrono::steady_clock::now();
+            _known_seq[msg_seq] = reply->_req_age;
         } else {
             // No ReplyRec found for the seq #
             done = true;
@@ -371,17 +394,16 @@ void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq
         }
     }
 
-    // If the request hasn't been marked done, has a valid reply_fn associated, and and the message is not of type NLMSG_ERRROR or NLMSG_DONE
+    // If the request hasn't been marked done, has a valid reply_fn associated, and the message is not of type NLMSG_ERRROR or NLMSG_DONE
     // then call the reply_fn
     if (!done && fn_ptr != nullptr && *fn_ptr && msg_type != NLMSG_ERROR && msg_type != NLMSG_DONE) {
         try {
             if (!(*fn_ptr)(msg_type, msg_flags, payload_data, payload_len) && msg_seq > 0) {
                 // The reply_fn returned false, so mark the request as complete.
                 std::lock_guard<std::mutex> _lock(_run_mutex);
-                auto itr = _replies.find(msg_seq);
-                if (itr != _replies.end()) {
-                    itr->second->_done = true;
-                    itr->second->_promise.set_value(0);
+                if (reply) {
+                    reply->_done = true;
+                    reply->_promise.set_value(0);
                 }
                 return;
             }
@@ -389,17 +411,16 @@ void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq
             if (msg_seq > 0) {
                 // The reply_fn threw an exception, try to propagate the exception through the request promise
                 std::lock_guard<std::mutex> _lock(_run_mutex);
-                auto itr = _replies.find(msg_seq);
-                if (itr != _replies.end()) {
+                if (reply) {
                     try {
-                        itr->second->_promise.set_exception(std::current_exception());
-                        itr->second->_done = true;
+                        reply->_promise.set_exception(std::current_exception());
+                        reply->_done = true;
                     } catch (const std::exception &ex) {
                         Logger::Error(
                                 "Unexpected exception while trying to set exception in NETLINK msg reply promise: %s",
                                 ex.what());
                     }
-                    _replies.erase(itr);
+                    _replies.erase(msg_seq);
                 }
             }
             return;
@@ -413,25 +434,23 @@ void Netlink::handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq
             // If the request failed, or the request succeeded but no response is expected then set the value to err->error
             // If !fn then no response is expected and the return value is err->error (typically == 0)
             if (err->error != 0 || fn_ptr == nullptr || !(*fn_ptr)) {
-                auto itr = _replies.find(msg_seq);
-                if (itr != _replies.end()) {
-                    if (!itr->second->_done) {
-                        itr->second->_done = true;
-                        itr->second->_promise.set_value(err->error);
+                if (reply) {
+                    if (!reply->_done) {
+                        reply->_done = true;
+                        reply->_promise.set_value(err->error);
                     }
-                    _replies.erase(itr);
+                    _replies.erase(msg_seq);
                 }
                 _known_seq.erase(msg_seq);
             }
         } else if ((msg_flags & NLM_F_MULTI) == 0 || msg_type == NLMSG_DONE) {
             std::lock_guard<std::mutex> _lock(_run_mutex);
-            auto itr = _replies.find(msg_seq);
-            if (itr != _replies.end()) {
-                if (!itr->second->_done) {
-                    itr->second->_promise.set_value(0);
-                    itr->second->_done = true;
+            if (reply) {
+                if (!reply->_done) {
+                    reply->_promise.set_value(0);
+                    reply->_done = true;
                 }
-                _replies.erase(itr);
+                _replies.erase(msg_seq);
             }
             _known_seq.erase(msg_seq);
         }
