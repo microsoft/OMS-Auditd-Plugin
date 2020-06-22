@@ -86,13 +86,13 @@ private:
 
     class ReplyRec {
     public:
-        explicit ReplyRec(reply_fn_t&& fn): _req_time(std::chrono::steady_clock::now()), _done(false), _fn(std::move(fn)), _promise() {}
+        explicit ReplyRec(reply_fn_t&& fn): _req_age(std::chrono::steady_clock::now()), _done(false), _fn(std::move(fn)), _promise() {}
         ReplyRec(const ReplyRec& other) = delete;
         ReplyRec(ReplyRec&& other) = delete;
         ReplyRec& operator=(const ReplyRec& other) = delete;
         ReplyRec& operator=(ReplyRec&& other) = delete;
 
-        std::chrono::steady_clock::time_point _req_time;
+        std::chrono::steady_clock::time_point _req_age;
         bool _done;
         reply_fn_t _fn;
         std::promise<int> _promise;
@@ -102,11 +102,11 @@ private:
     void handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq, const void* payload_data, size_t payload_len);
 
     int _fd;
-    uint32_t _sequence;
+    volatile uint32_t _sequence;
     reply_fn_t _default_msg_handler_fn;
     bool _quite;
     std::unordered_map<uint32_t, std::chrono::steady_clock::time_point> _known_seq;
-    std::unordered_map<uint32_t, std::unique_ptr<ReplyRec>> _replies;
+    std::unordered_map<uint32_t, std::shared_ptr<ReplyRec>> _replies;
     std::array<uint8_t, 16*1024> _data;
 };
 

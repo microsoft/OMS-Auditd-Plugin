@@ -30,12 +30,11 @@ public:
     static constexpr int COLLECTOR_RESTART_WINDOW = 30;
     static constexpr int MAX_COLLECTOR_RESTARTS = 15; // The maximum times the collector will be restarted within COLLECTOR_RESTART_WINDOW seconds before restarts are disabled.
 
-    CollectionMonitor(Netlink& netlink,
-                      std::shared_ptr<Queue> queue,
+    CollectionMonitor(std::shared_ptr<Queue> queue,
                       const std::string& auditd_path,
                       const std::string& collector_path,
                       const std::string& collector_config_path)
-            : _netlink(netlink), _builder(std::make_shared<EventQueue>(std::move(queue))),
+            : _builder(std::make_shared<EventQueue>(std::move(queue))),
               _auditd_path(auditd_path), _collector_path(collector_path), _collector_config_path(collector_config_path),
               _collector(collector_path, collector_args(collector_config_path), Cmd::PIPE_STDIN), _audit_pid(0), _disable_collector_check(false), _last_audit_pid_report(), _collector_restarts() {}
 
@@ -63,7 +62,7 @@ private:
     bool is_collector_alive();
     void send_audit_pid_report(int pid);
 
-    Netlink& _netlink;
+    Netlink _netlink;
     EventBuilder _builder;
     std::string _auditd_path;
     std::string _collector_path;

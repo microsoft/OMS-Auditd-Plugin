@@ -25,8 +25,8 @@
 
 class AuditRulesMonitor: public RunBase {
 public:
-    AuditRulesMonitor(Netlink& netlink, const std::string& audit_rules_dir, std::shared_ptr<OperationalStatus> op_status):
-            _netlink(netlink), _audit_rules_dir(audit_rules_dir), _op_status(op_status), _last_audit_file_check(), _last_auoms_file_check(), _desired_rules(), _rules_immutable(false) {}
+    AuditRulesMonitor(const std::string& audit_rules_dir, std::shared_ptr<OperationalStatus> op_status):
+            _audit_rules_dir(audit_rules_dir), _op_status(op_status), _last_audit_file_check(), _last_auoms_file_check(), _desired_rules(), _rules_immutable(false) {}
 
 protected:
     void run() override;
@@ -38,7 +38,7 @@ private:
     bool check_kernel_rules();
     void check_audit_status();
 
-    Netlink& _netlink;
+    Netlink _netlink;
     std::string _audit_rules_dir;
     std::shared_ptr<OperationalStatus> _op_status;
     std::chrono::steady_clock::time_point _last_audit_file_check;
