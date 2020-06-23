@@ -142,6 +142,7 @@ bool DoNetlinkCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& byte
         Logger::Warn("prctl(PR_SET_PDEATHSIG, SIGTERM) failed: %s", std::strerror(errno));
     }
 
+    Netlink data_netlink;
     Netlink netlink;
     Gate _stop_gate;
 
@@ -180,7 +181,14 @@ bool DoNetlinkCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& byte
     };
 
     Logger::Info("Connecting to AUDIT NETLINK socket");
-    ret = netlink.Open(std::move(handler));
+    ret = data_netlink.Open(std::move(handler));
+    if (ret != 0) {
+        Logger::Error("Failed to open AUDIT NETLINK connection: %s", std::strerror(-ret));
+        return false;
+    }
+    Defer _close_data_netlink([&data_netlink]() { data_netlink.Close(); });
+
+    ret = netlink.Open(nullptr);
     if (ret != 0) {
         Logger::Error("Failed to open AUDIT NETLINK connection: %s", std::strerror(-ret));
         return false;
@@ -213,7 +221,7 @@ bool DoNetlinkCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& byte
         if (retry_count > 5) {
             Logger::Error("Failed to set audit pid: Max retried exceeded");
         }
-        ret = netlink.AuditSetPid(our_pid);
+        ret = data_netlink.AuditSetPid(our_pid);
         if (ret == -ETIMEDOUT) {
             // If setpid timedout, it may have still succeeded, so re-fetch pid
             ret = NetlinkRetry([&]() { return netlink.AuditGetPid(pid); });

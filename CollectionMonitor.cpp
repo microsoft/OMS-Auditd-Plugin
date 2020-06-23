@@ -37,6 +37,11 @@
 void CollectionMonitor::run() {
     Logger::Info("CollectionMonitor started");
 
+    if (_netlink.Open(nullptr) != 0) {
+        Logger::Error("AuditRulesMonitor: Could not open NETLINK connect, exiting");
+        return;
+    }
+
     do {
         auto now = std::chrono::steady_clock::now();
 
@@ -108,6 +113,7 @@ void CollectionMonitor::on_stop() {
         }
         check_child(true);
     }
+    _netlink.Close();
     Logger::Info("CollectionMonitor stopped");
 }
 

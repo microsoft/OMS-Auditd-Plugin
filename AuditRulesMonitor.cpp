@@ -24,6 +24,11 @@
 void AuditRulesMonitor::run() {
     Logger::Info("AuditRulesMonitor: Starting");
 
+    if (_netlink.Open(nullptr) != 0) {
+        Logger::Error("AuditRulesMonitor: Could not open NETLINK connect, exiting");
+        return;
+    }
+
     check_audit_status();
 
     while(!_sleep(15000)) {
@@ -47,7 +52,8 @@ void AuditRulesMonitor::run() {
 }
 
 void AuditRulesMonitor::on_stop() {
-
+    _netlink.Close();
+    Logger::Info("AuditRulesMonitor stopped");
 }
 
 void AuditRulesMonitor::get_desired_rules() {

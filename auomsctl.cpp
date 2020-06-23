@@ -1590,6 +1590,59 @@ int upgrade() {
 /**********************************************************************************************************************
  **
  *********************************************************************************************************************/
+int spam_netlink(const std::string& dur_str, const std::string& num_str) {
+    if (geteuid() != 0) {
+        std::cerr << "Must be root to request audit rules" << std::endl;
+        return 1;
+    }
+
+    auto dur = stol(dur_str);
+    auto num_threads = stol(num_str);
+
+    std::vector<std::thread> threads;
+
+    auto fn = [&](){
+        Logger::Info("Thread started");
+        Netlink netlink;
+
+        auto ret = netlink.Open(nullptr);
+        if (ret != 0) {
+            Logger::Error("Failed to open Netlink socket: %s", strerror(-ret));
+            return 1;
+        }
+
+        auto end_time = std::chrono::steady_clock::now() + std::chrono::seconds(dur);
+        while (end_time > std::chrono::steady_clock::now()) {
+            auto ret = netlink.Send(AUDIT_LIST_RULES, nullptr, 0, [](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
+                if (type == AUDIT_LIST_RULES) {
+                    if (!AuditRule::IsDataValid(data, len)) {
+                        Logger::Warn("Received invalid audit rule");
+                    }
+                }
+                return true;
+            });
+            if (ret != 0) {
+                Logger::Error("AuditListRules failed: %s", std::strerror(-ret));
+            }
+        }
+        netlink.Close();
+    };
+
+    for (int i = 0; i < num_threads; i++) {
+        threads.emplace_back(fn);
+    }
+
+    for (int i = 0; i < num_threads; i++) {
+        threads[i].join();
+    }
+
+    return 0;
+}
+
+
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int main(int argc, char**argv) {
     if (argc < 2 || strlen(argv[1]) < 2) {
         usage();
@@ -1710,6 +1763,12 @@ int main(int argc, char**argv) {
         return load_rules();
     } else if (strcmp(argv[1], "upgrade") == 0) {
         return upgrade();
+    } else if (strcmp(argv[1], "spam_netlink") == 0) {
+        if (argc < 4) {
+            usage();
+            exit(1);
+        }
+        return spam_netlink(argv[2], argv[3]);
     }
 
     usage();
