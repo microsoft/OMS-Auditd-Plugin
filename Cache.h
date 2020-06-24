@@ -80,11 +80,11 @@ public:
         return false;
     }
 
-    bool on(const K& key, const std::function<CacheEntryOP(const std::chrono::steady_clock::time_point& last_touched, V& value)>& fn) {
+    bool on(const K& key, const std::function<CacheEntryOP(size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, V& value)>& fn) {
         auto itr = _entries.find(key);
         if (itr != _entries.end()) {
             auto entry = itr->second;
-            auto op = fn(entry->_last_touched, entry->_item);
+            auto op = fn(_entries.size(), entry->_last_touched, entry->_item);
             if (op == CacheEntryOP::TOUCH) {
                 touch(entry);
             } else if (op == CacheEntryOP::REMOVE) {
@@ -95,11 +95,11 @@ public:
         return false;
     }
 
-    void for_all_oldest_first(const std::function<CacheEntryOP(const std::chrono::steady_clock::time_point& last_touched, const K& key, V& value)>& fn) {
+    void for_all_oldest_first(const std::function<CacheEntryOP(size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const K& key, V& value)>& fn) {
         auto now = std::chrono::steady_clock::now();
         while (_oldest._newer != &_newest) {
             auto entry = _oldest._newer;
-            auto op = fn(entry->_last_touched, entry->_key, entry->_item);
+            auto op = fn(_entries.size(), entry->_last_touched, entry->_key, entry->_item);
             switch (op) {
                 case CacheEntryOP::TOUCH:
                     touch(entry);
@@ -113,11 +113,11 @@ public:
         }
     }
 
-    void for_all_newest_first(const std::function<CacheEntryOP(const std::chrono::steady_clock::time_point& last_touched, const K& key, V& value)>& fn) {
+    void for_all_newest_first(const std::function<CacheEntryOP(size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const K& key, V& value)>& fn) {
         auto now = std::chrono::steady_clock::now();
         while (_newest._older != &_oldest) {
             auto entry = _newest._older;
-            auto op = fn(entry->_last_touched, entry->_key, entry->_item);
+            auto op = fn(_entries.size(), entry->_last_touched, entry->_key, entry->_item);
             switch (op) {
                 case CacheEntryOP::TOUCH:
                     touch(entry);
