@@ -69,9 +69,7 @@ BOOST_AUTO_TEST_CASE( queue_simple ) {
         if (!queue->Put(0, data.data(), data.size())) {
             BOOST_FAIL("queue->Put() failed!");
         }
-    }
 
-    for (uint8_t i = 1; i <= 10; i++) {
         auto val = cursor->Get(0);
         if (val.second) {
             BOOST_FAIL("cursor->Get() returned closed==true!");
@@ -121,6 +119,20 @@ BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
+
+    for (uint8_t i = 1; i <= 10; i++) {
+        auto val = cursor->Get(0, false);
+        if (val.second) {
+            BOOST_FAIL("cursor->Get() returned closed==true!");
+        }
+        if (!val.first) {
+            BOOST_FAIL("cursor->Get() returned nullptr!");
+        }
+        auto x = reinterpret_cast<uint8_t*>(val.first->Data())[0];
+        BOOST_REQUIRE_EQUAL(i, x);
+    }
+
+    cursor->Rollback();
 
     for (uint8_t i = 1; i <= 10; i++) {
         auto val = cursor->Get(0);
@@ -406,6 +418,58 @@ BOOST_AUTO_TEST_CASE( queue_simple_priority ) {
         }
         auto actual = static_cast<int>(reinterpret_cast<uint8_t*>(val.first->Data())[0]);
         BOOST_REQUIRE_EQUAL(expected, actual);
+    }
+
+    auto val = cursor->Get(0);
+    if (val.second) {
+        BOOST_FAIL("cursor->Get() returned closed==true!");
+    }
+    if (val.first) {
+        BOOST_FAIL("cursor->Get() did not return nullptr!");
+    }
+
+    queue->Close();
+
+    val = cursor->Get(0);
+    if (!val.second) {
+        BOOST_FAIL("cursor->Get() returned closed!=true!");
+    }
+    if (val.first) {
+        BOOST_FAIL("cursor->Get() did not return nullptr!");
+    }
+}
+
+BOOST_AUTO_TEST_CASE( queue_simple_priority2 ) {
+    TempDir dir("/tmp/PriorityQueueTests");
+
+    auto queue = PriorityQueue::Open(dir.Path(), 8, 4096, 16, 4096*1024, 100, 0);
+    if (!queue) {
+        BOOST_FAIL("Failed to open queue");
+    }
+
+    auto cursor = queue->OpenCursor("test");
+
+    std::array<uint8_t, 1024> data;
+    data.fill(0);
+
+    for (uint8_t p = 0; p < 8; p++) {
+        for (uint8_t i = 0; i < 2; i++) {
+            auto expected = (p*2)+i;
+            data[0] = expected;
+            if (!queue->Put(p, data.data(), data.size())) {
+                BOOST_FAIL("queue->Put() failed!");
+            }
+
+            auto val = cursor->Get(0);
+            if (val.second) {
+                BOOST_FAIL("cursor->Get() returned closed==true!");
+            }
+            if (!val.first) {
+                BOOST_FAIL("cursor->Get() returned nullptr!");
+            }
+            auto actual = reinterpret_cast<uint8_t *>(val.first->Data())[0];
+            BOOST_REQUIRE_EQUAL(expected, actual);
+        }
     }
 
     auto val = cursor->Get(0);
