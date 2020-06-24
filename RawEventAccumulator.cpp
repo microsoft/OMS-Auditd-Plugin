@@ -62,13 +62,7 @@ bool RawEvent::AddRecord(std::unique_ptr<RawEventRecord> record) {
         }
     }
 
-    if (rtype < RecordType::FIRST_EVENT ||
-        rtype >= RecordType::FIRST_ANOM_MSG ||
-        rtype == RecordType::KERNEL) {
-        return true;
-    }
-
-    return false;
+    return IsSingleRecordEvent(rtype);
 }
 
 int RawEvent::AddEvent(EventBuilder& builder) {
@@ -140,13 +134,14 @@ int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
     _bytes_metric->Add(static_cast<double>(record->GetSize()));
     _record_metric->Add(1.0);
 
-    if (record->IsEmpty()) {
+    // Drop empty records unless it is the EOE record.
+    if (record->IsEmpty() && record->GetRecordType() != RecordType::EOE) {
         return 0;
     }
 
     auto event_id = record->GetEventId();
     int ret = 0;
-    auto found = _events.on(event_id, [this,&record,&ret](const std::chrono::steady_clock::time_point& last_touched, std::shared_ptr<RawEvent>& event) {
+    auto found = _events.on(event_id, [this,&record,&ret](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, std::shared_ptr<RawEvent>& event) {
         if (event->AddRecord(std::move(record))) {
             ret = event->AddEvent(*_builder);
             return CacheEntryOP::REMOVE;
@@ -163,6 +158,15 @@ int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
             _events.add(event_id, event);
         }
     }
+    // Don't wait for Flush to be called, preemptively flush oldest if the cache size limit is exceeded
+    _events.for_all_oldest_first([this](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
+        if (entry_count > MAX_CACHE_ENTRY) {
+            event->AddEvent(*_builder);
+            _event_metric->Add(1.0);
+            return CacheEntryOP::REMOVE;
+        }
+        return CacheEntryOP::STOP;
+    });
     return 1;
 }
 
@@ -171,8 +175,8 @@ void RawEventAccumulator::Flush(long milliseconds) {
         auto now = std::chrono::steady_clock::now();
         std::lock_guard<std::mutex> lock(_mutex);
 
-        _events.for_all_oldest_first([this,now,milliseconds](const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
-            if (std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()-last_touched.time_since_epoch()) > std::chrono::milliseconds(milliseconds)) {
+        _events.for_all_oldest_first([this,now,milliseconds](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
+            if (entry_count > MAX_CACHE_ENTRY || std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()-last_touched.time_since_epoch()) > std::chrono::milliseconds(milliseconds)) {
                 event->AddEvent(*_builder);
                 _event_metric->Add(1.0);
                 return CacheEntryOP::REMOVE;
@@ -180,7 +184,7 @@ void RawEventAccumulator::Flush(long milliseconds) {
             return CacheEntryOP::STOP;
         });
     } else {
-        _events.for_all_oldest_first([this](const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
+        _events.for_all_oldest_first([this](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
             event->AddEvent(*_builder);
             _event_metric->Add(1.0);
             return CacheEntryOP::REMOVE;
