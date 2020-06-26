@@ -50,7 +50,7 @@ bool AckQueue::Add(const EventId& event_id, const QueueCursor& cursor, long time
     if (_cond.wait_for(_lock, std::chrono::milliseconds(timeout), [this]() { return _closed || _event_ids.size() < _max_size; })) {
         auto seq = _next_seq++;
         _event_ids.emplace(event_id, seq);
-        _cursors.emplace(seq, cursor);
+        _cursors.emplace(seq, std::make_pair(event_id, cursor));
         return true;
     }
     return false;
@@ -88,6 +88,17 @@ void AckQueue::Remove(const EventId& event_id) {
     _cursors.erase(seq);
 }
 
+void AckQueue::Reset() {
+    std::unique_lock<std::mutex> _lock(_mutex);
+
+    _closed = false;
+    _event_ids.clear();
+    _cursors.clear();
+    _next_seq = 0;
+    _have_auto_cursor = false;
+    _auto_cursor_seq = 0;
+}
+
 bool AckQueue::Wait(int millis) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
@@ -107,21 +118,20 @@ bool AckQueue::Ack(const EventId& event_id, QueueCursor& cursor) {
         _event_ids.erase(eitr);
         _cond.notify_all(); // _event_ids was modified, so notify any waiting Add calls
 
-        auto citr = _cursors.find(seq);
-        if (citr != _cursors.end()) {
-            cursor = citr->second;
+        // Find and remove all from cursors that are <= seq
+        while (!_cursors.empty() && _cursors.begin()->first <= seq) {
+            cursor = _cursors.begin()->second.second;
             found = true;
-            if (citr != _cursors.begin()) {
-                _cursors.erase(_cursors.begin(), citr);
-            }
-            _cursors.erase(citr);
+            // Make sure to remove any associated event ids from _event_ids.
+            _event_ids.erase(_cursors.begin()->second.first);
+            _cursors.erase(_cursors.begin());
         }
     }
 
     /*
      * If the auto cursor is present return it instead if:
      *      1) The acked event id isn't present or _auto_cursor_seq is newer than the acked seq
-     *      2) and, _cursors is empty or the oldesr seq in _cursors is > than _auto_cursor_seq
+     *      2) and, _cursors is empty or the oldest seq in _cursors is > than _auto_cursor_seq
      */
     if (_have_auto_cursor) {
         if (!found || _auto_cursor_seq > seq) {
@@ -268,6 +278,9 @@ void AckReader::run() {
         // There was still a pending auto cursor, so update the _cursor_writer
         _cursor_writer->UpdateCursor(cursor);
     }
+
+    // Make sure any waiting AckQueue::Add() returns immediately instead of waiting for the timeout.
+    _queue->Close();
 }
 
 /****************************************************************************
@@ -433,6 +446,7 @@ bool Output::handle_events(bool checkOpen) {
     if (_ack_mode) {
         _ack_reader->Init(_event_writer, _writer, _ack_queue, _cursor_writer);
         _ack_reader->Start();
+        _ack_queue->Reset();
     }
 
     while(!IsStopping() && (!checkOpen || _writer->IsOpen())) {
@@ -451,17 +465,17 @@ bool Output::handle_events(bool checkOpen) {
         if (ret == Queue::BUFFER_TOO_SMALL) {
             Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
             _queue->Reset();
-            continue;
-        }
-
-        auto vs = Event::GetVersionAndSize(data.data());
-        if (vs.second != size) {
-            Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
-            _queue->Reset();
-            continue;
+            break;
         }
 
         if (ret == Queue::OK && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
+            auto vs = Event::GetVersionAndSize(data.data());
+            if (vs.second != size) {
+                Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
+                _queue->Reset();
+                break;
+            }
+
             Event event(data.data(), size);
             bool filtered = _event_filter && _event_filter->IsEventFiltered(event);
             if (!filtered) {
@@ -469,7 +483,9 @@ bool Output::handle_events(bool checkOpen) {
                     // Avoid racing with receiver, add ack before sending event
                     if (!_ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()), cursor,
                                          _ack_timeout)) {
-                        Logger::Error("Output(%s): Timeout waiting for Acks", _name.c_str());
+                        if (_writer->IsOpen()) {
+                            Logger::Error("Output(%s): Timeout waiting for Acks", _name.c_str());
+                        }
                         break;
                     }
                 }

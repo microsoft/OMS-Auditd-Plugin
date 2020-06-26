@@ -267,7 +267,9 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
 
     RawEventAccumulator accumulator(actual_raw_builder, metrics);
 
-    for (auto raw_event : raw_test_events) {
+    for (int i = 0; i < raw_test_events.size(); i++) {
+        auto raw_event = raw_test_events[i];
+        auto do_flush = raw_events_do_flush[i];
         std::string event_txt = raw_event;
         auto lines = split(event_txt, '\n');
         for (auto& line: lines) {
@@ -279,7 +281,9 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
                 Logger::Warn("Received unparsable event data: %s", line.c_str());
             }
         }
-        accumulator.Flush(0);
+        if (do_flush) {
+            accumulator.Flush(0);
+        }
     }
 
     BOOST_REQUIRE_EQUAL(expected_queue->GetEventCount(), actual_queue->GetEventCount());

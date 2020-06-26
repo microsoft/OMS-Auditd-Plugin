@@ -308,14 +308,10 @@ int main(int argc, char**argv) {
         exit(1);
     }
 
-    Netlink netlink;
-    netlink.Open(nullptr);
-
-
-    CollectionMonitor collection_monitor(netlink, queue, auditd_path, collector_path, collector_config_path);
+    CollectionMonitor collection_monitor(queue, auditd_path, collector_path, collector_config_path);
     collection_monitor.Start();
 
-    AuditRulesMonitor rules_monitor(netlink, rules_dir, operational_status);
+    AuditRulesMonitor rules_monitor(rules_dir, operational_status);
     rules_monitor.Start();
 
     auto user_db = std::make_shared<UserDB>();

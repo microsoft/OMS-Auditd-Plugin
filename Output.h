@@ -55,6 +55,8 @@ public:
 
     void Remove(const EventId& event_id);
 
+    void Reset();
+
     // Returns false on timeout, true is queue is empty
     bool Wait(int millis);
 
@@ -64,7 +66,7 @@ private:
     std::mutex _mutex;
     std::condition_variable _cond;
     std::unordered_map<EventId, uint64_t> _event_ids;
-    std::map<uint64_t, QueueCursor> _cursors;
+    std::map<uint64_t, std::pair<EventId,QueueCursor>> _cursors;
     size_t _max_size;
     bool _closed;
     bool _have_auto_cursor;
