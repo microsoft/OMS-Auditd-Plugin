@@ -392,6 +392,7 @@ target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
 add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=EventProcessorTests.log --report_sink=EventProcessorTests.report)
 
 add_executable(ExecveConverterTests
+        auoms_version.h
         ExecveConverterTests.cpp
         ExecveConverter.cpp
         Event.cpp
@@ -457,6 +458,7 @@ target_link_libraries(FluentEventWriterTests ${Boost_LIBRARIES}
 add_test(FluentEventWriter ${CMAKE_BINARY_DIR}/FluentEventWriterTests --log_sink=FluentEventWriterTests.log --report_sink=FluentEventWriterTests.report)
 
 add_executable(OutputInputTests
+        auoms_version.h
         OutputInputTests.cpp
         TempDir.cpp
         Event.cpp
