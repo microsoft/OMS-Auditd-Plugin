@@ -53,6 +53,7 @@ add_custom_command(
 add_executable(auomscollect
         env_config.h
         auomscollect.cpp
+        auoms_version.h
         IO.cpp
         Event.cpp
         Signals.cpp
