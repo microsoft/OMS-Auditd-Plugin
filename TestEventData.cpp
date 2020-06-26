@@ -64,6 +64,7 @@ type=EOE msg=audit(1521757638.392:262334):
 )event",
         R"event(type=SYSCALL msg=audit(1563459621.014:574): arch=c000003e syscall=159 success=yes exit=0 a0=7ffc9aa65d80 a1=0 a2=270b a3=7ffc9aa65e40 items=0 ppid=1 pid=1655 auid=4294967295 uid=123 gid=132 euid=123 suid=123 fsuid=123 egid=132 sgid=132 fsgid=132 tty=(none) ses=4294967295 comm="chronyd" exe="/usr/sbin/chronyd" key="time-change"
 type=PROCTITLE msg=audit(1563459621.014:574): proctitle="/usr/sbin/chronyd"
+type=EOE msg=audit(1563459621.014:574):
 )event",
         R"event(type=SYSCALL msg=audit(1563470055.872:7605215): arch=c000003e syscall=59 success=yes exit=0 a0=ad1150 a1=ad03d0 a2=ad0230 a3=fc2c9fc5 items=2 ppid=16244 pid=91098 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="iptables" exe="/usr/sbin/xtables-multi" key="auoms"
 type=EXECVE msg=audit(1563470055.872:7605215): argc=5 a0="iptables" a1="-w" a2="-t" a3="security" a4="--flush"
@@ -71,6 +72,7 @@ type=CWD msg=audit(1563470055.872:7605215):  cwd="/var/lib/waagent"
 type=PATH msg=audit(1563470055.872:7605215): item=0 name="/usr/sbin/iptables" inode=1579593 dev=08:02 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL
 type=PATH msg=audit(1563470055.872:7605215): item=1 name="/lib64/ld-linux-x86-64.so.2" inode=1048670 dev=08:02 mode=0100755 ouid=0 ogid=0 rdev=00:00 nametype=NORMAL
 type=UNKNOWN[1327] msg=audit(1563470055.872:7605215): proctitle=2F62696E2F7368002D630069707461626C6573202D77202D74207365637572697479202D2D666C757368
+type=EOE msg=audit(1563470055.872:7605215):
 )event",
         R"event(type=NETFILTER_CFG msg=audit(1563470055.876:7605216): table=security family=2 entries=4
 type=SYSCALL msg=audit(1563470055.876:7605216): arch=c000003e syscall=54 success=yes exit=0 a0=4 a1=0 a2=40 a3=c31600 items=0 ppid=16244 pid=91098 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="iptables" exe="/usr/sbin/xtables-multi" key=(null)
@@ -79,6 +81,18 @@ type=UNKNOWN[1327] msg=audit(1563470055.876:7605216): proctitle=2F62696E2F736800
         R"event(type=SYSCALL audit(1572298453.690:5717): arch=c00000b7 syscall=222 success=yes exit=281129964019712 a0=0 a1=16a048 a2=5 a3=802 items=0 ppid=1 pid=1450 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="agetty" exe="/usr/sbin/agetty" key=(null)
 type=INTEGRITY_POLICY_RULE audit(1572298453.690:5717): IPE=ctx ( op: [execute] dmverity_verified: [false] boot_verified: [true] audit_pathname: [/usr/lib/libc-2.28.so] )  [ action = allow ] [ boot_verified = true ]
 )event",
+};
+const std::vector<bool> raw_events_do_flush {
+    false,
+    false,
+    false,
+    true,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
 };
 
 const std::vector<TestEvent> test_events {
@@ -131,6 +145,30 @@ const std::vector<TestEvent> test_events {
                 {"containerid", "", nullptr, field_type_t::UNCLASSIFIED},
             }}}
         },
+        {1521757638, 392, 262334, 1, -1, {
+            {static_cast<uint32_t>(RecordType::AUOMS_SYSCALL_FRAGMENT), "AUOMS_SYSCALL_FRAGMENT", "", {
+                // CWD
+                {"cwd", "\"/\"", nullptr, field_type_t::ESCAPED},
+                // PATH
+                {"name", "\"/usr/bin/logger\"", nullptr, field_type_t::ESCAPED},
+                {"inode", "312545", nullptr, field_type_t::UNCLASSIFIED},
+                {"dev", "00:13", nullptr, field_type_t::UNCLASSIFIED},
+                {"mode", "0100755", "file,755", field_type_t::MODE},
+                {"ouid", "0", "root", field_type_t::UID},
+                {"ogid", "0", "root", field_type_t::GID},
+                {"rdev", "00:00", nullptr, field_type_t::UNCLASSIFIED},
+                {"nametype", "NORMAL", nullptr, field_type_t::UNCLASSIFIED},
+                {"path_name", "[\"/usr/bin/logger\",\"/lib64/ld-linux-x86-64.so.2\"]", nullptr, field_type_t::UNCLASSIFIED},
+                {"path_nametype", "[\"NORMAL\",\"NORMAL\"]", nullptr, field_type_t::UNCLASSIFIED},
+                {"path_mode", "[\"0100755\",\"0100755\"]", nullptr, field_type_t::UNCLASSIFIED},
+                {"path_ouid", "[\"0\",\"0\"]", nullptr, field_type_t::UNCLASSIFIED},
+                {"path_ogid", "[\"0\",\"0\"]", nullptr, field_type_t::UNCLASSIFIED},
+                // EXECVE
+                {"argc", "6", nullptr, field_type_t::UNCLASSIFIED},
+                {"cmdline", "logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \"", nullptr, field_type_t::UNESCAPED},
+                {"containerid", "", nullptr, field_type_t::UNCLASSIFIED},
+            }}}
+        },
         {1521757638, 392, 262333, 1, 26918, {
             {static_cast<uint32_t>(RecordType::AUOMS_EXECVE), "AUOMS_EXECVE", "", {
                 // SYSCALL
@@ -158,30 +196,6 @@ const std::vector<TestEvent> test_events {
                 {"comm", "\"logger\"", nullptr, field_type_t::ESCAPED},
                 {"exe", "\"/usr/bin/logger\"", nullptr, field_type_t::ESCAPED},
                 {"key", "(null)", nullptr, field_type_t::ESCAPED_KEY},
-                // EXECVE
-                {"argc", "6", nullptr, field_type_t::UNCLASSIFIED},
-                {"cmdline", "logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \"", nullptr, field_type_t::UNESCAPED},
-                {"containerid", "", nullptr, field_type_t::UNCLASSIFIED},
-            }}}
-        },
-        {1521757638, 392, 262334, 1, -1, {
-            {static_cast<uint32_t>(RecordType::AUOMS_SYSCALL_FRAGMENT), "AUOMS_SYSCALL_FRAGMENT", "", {
-                // CWD
-                {"cwd", "\"/\"", nullptr, field_type_t::ESCAPED},
-                // PATH
-                {"name", "\"/usr/bin/logger\"", nullptr, field_type_t::ESCAPED},
-                {"inode", "312545", nullptr, field_type_t::UNCLASSIFIED},
-                {"dev", "00:13", nullptr, field_type_t::UNCLASSIFIED},
-                {"mode", "0100755", "file,755", field_type_t::MODE},
-                {"ouid", "0", "root", field_type_t::UID},
-                {"ogid", "0", "root", field_type_t::GID},
-                {"rdev", "00:00", nullptr, field_type_t::UNCLASSIFIED},
-                {"nametype", "NORMAL", nullptr, field_type_t::UNCLASSIFIED},
-                {"path_name", "[\"/usr/bin/logger\",\"/lib64/ld-linux-x86-64.so.2\"]", nullptr, field_type_t::UNCLASSIFIED},
-                {"path_nametype", "[\"NORMAL\",\"NORMAL\"]", nullptr, field_type_t::UNCLASSIFIED},
-                {"path_mode", "[\"0100755\",\"0100755\"]", nullptr, field_type_t::UNCLASSIFIED},
-                {"path_ouid", "[\"0\",\"0\"]", nullptr, field_type_t::UNCLASSIFIED},
-                {"path_ogid", "[\"0\",\"0\"]", nullptr, field_type_t::UNCLASSIFIED},
                 // EXECVE
                 {"argc", "6", nullptr, field_type_t::UNCLASSIFIED},
                 {"cmdline", "logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \"", nullptr, field_type_t::UNESCAPED},

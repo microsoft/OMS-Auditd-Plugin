@@ -62,13 +62,7 @@ bool RawEvent::AddRecord(std::unique_ptr<RawEventRecord> record) {
         }
     }
 
-    if (rtype < RecordType::FIRST_EVENT ||
-        rtype >= RecordType::FIRST_ANOM_MSG ||
-        rtype == RecordType::KERNEL) {
-        return true;
-    }
-
-    return false;
+    return IsSingleRecordEvent(rtype);
 }
 
 int RawEvent::AddEvent(EventBuilder& builder) {
@@ -140,7 +134,8 @@ int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
     _bytes_metric->Add(static_cast<double>(record->GetSize()));
     _record_metric->Add(1.0);
 
-    if (record->IsEmpty()) {
+    // Drop empty records unless it is the EOE record.
+    if (record->IsEmpty() && record->GetRecordType() != RecordType::EOE) {
         return 0;
     }
 
@@ -163,6 +158,7 @@ int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
             _events.add(event_id, event);
         }
     }
+    // Don't wait for Flush to be called, preemptively flush oldest if the cache size limit is exceeded
     _events.for_all_oldest_first([this](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
         if (entry_count > MAX_CACHE_ENTRY) {
             event->AddEvent(*_builder);

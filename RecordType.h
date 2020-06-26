@@ -259,4 +259,8 @@ enum class RecordType: int {
     AUOMS_EXECVE              = 14688,
 };
 
+constexpr bool IsSingleRecordEvent(RecordType rtype) {
+    return rtype != RecordType::EOE && (rtype < RecordType::FIRST_EVENT || rtype >= RecordType::FIRST_ANOM_MSG || rtype == RecordType::KERNEL);
+}
+
 #endif //AUOMS_RECORDTYPE_H
