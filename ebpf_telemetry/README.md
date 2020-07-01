@@ -6,16 +6,16 @@ here to permit collaboration and to share developments.
 # Build
 From the ebpf_telemetry directory:
 
-$ mkdir build
-$ cd build
-$ cmake ..
-$ make
+- mkdir build
+- cd build
+- cmake ..
+- make
 
 # Run
 From the ebpf_telemetry/build directory:
 
-$ cd ebpf_loader
-$ sudo ../ebpf_telemetry
+- cd ebpf_loader
+- sudo ../ebpf_telemetry
 
 # Licenses
 The main executable, ebpf_telemetry, is licensed under MIT.
