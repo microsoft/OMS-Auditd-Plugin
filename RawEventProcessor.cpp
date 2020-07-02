@@ -271,7 +271,6 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                         unsigned int numNodeFields = 0;
                         for (auto& f: rec) {
                             if (f.FieldName() == SV_ITEM && f.RawValue() == SV_ZERO) {
-//                                num_fields += rec.NumFields()-1; // exclude item
                                 isItemZero = true;
                                 path_rec = rec;
                             } else if (f.FieldName() == SV_NODE) {
@@ -468,7 +467,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     if (path_rec) {
         for (auto &f : path_rec) {
             auto fname = f.FieldName();
-            if ((fname != SV_ITEM) && (fname != SV_NODE)) {
+            if (fname != SV_ITEM && fname != SV_NODE) {
                 if (!process_field(path_rec, f, false)) {
                     cancel_event();
                     return false;
