@@ -126,6 +126,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     static auto SV_TYPE = "type"sv;
     static auto SV_ITEMS = "items"sv;
     static auto SV_ITEM = "item"sv;
+    static auto SV_NODE = "node"sv;
     static auto SV_ARGC = "argc"sv;
     static auto SV_CWD = "cwd"sv;
     static auto SV_SADDR = "saddr"sv;
@@ -266,12 +267,19 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                     num_path += 1;
                     path_recs.emplace_back(rec);
                     if (!path_rec) {
+                        bool isItemZero = false;
+                        unsigned int numNodeFields = 0;
                         for (auto& f: rec) {
                             if (f.FieldName() == SV_ITEM && f.RawValue() == SV_ZERO) {
-                                num_fields += rec.NumFields()-1; // exclude item
+//                                num_fields += rec.NumFields()-1; // exclude item
+                                isItemZero = true;
                                 path_rec = rec;
-                                break;
+                            } else if (f.FieldName() == SV_NODE) {
+                                numNodeFields++;
                             }
+                        }
+                        if (isItemZero) {
+                            num_fields += rec.NumFields() - 1 - numNodeFields; // exclude item and node fields
                         }
                     }
                 }
@@ -460,7 +468,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     if (path_rec) {
         for (auto &f : path_rec) {
             auto fname = f.FieldName();
-            if (fname != SV_ITEM) {
+            if ((fname != SV_ITEM) && (fname != SV_NODE)) {
                 if (!process_field(path_rec, f, false)) {
                     cancel_event();
                     return false;
