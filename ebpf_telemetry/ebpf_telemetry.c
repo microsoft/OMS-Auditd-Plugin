@@ -58,7 +58,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
          (event->code_bytes == CODE_BYTES) && // garbage check...
          (event->version    == VERSION) )     // version check...
     {   
-        printf("PID:%u SYS:%llu RET:%lld ", event->pid, event->syscall_id, event->return_code);
+        printf("PID:%u SYS:%lu RET:%ld PPID:%u ", event->pid, event->syscall_id, event->return_code, event->ppid);
 
         switch(event->syscall_id)
         {    

@@ -51,9 +51,10 @@ typedef struct e_socket {
 typedef struct e_rec {
     unsigned long int  code_bytes; //Always 0xdeadbeef = 3735928559
     unsigned int       version;
-    unsigned long long syscall_id;
+    unsigned long      syscall_id;
     unsigned int       pid;
-    long long int      return_code;
+    long int           return_code;
+    int                ppid;
     union e_data {
         event_openat_s openat;
         event_execve_s execve;
@@ -63,7 +64,45 @@ typedef struct e_rec {
 
 // configuration
 typedef struct conf {
-    unsigned int pid;
+    unsigned int userland_pid;
+    unsigned int timesec[8];
+    unsigned int timensec[8];
+    unsigned int serial[8];
+    unsigned int arch[8];
+    unsigned int arg0[8];
+    unsigned int arg1[8];
+    unsigned int arg2[8];
+    unsigned int arg3[8];
+    unsigned int ppid[8];
+    unsigned int auid[8];
+    unsigned int uid[8];
+    unsigned int gid[8];
+    unsigned int euid[8];
+    unsigned int suid[8];
+    unsigned int fsuid[8];
+    unsigned int egid[8];
+    unsigned int sgid[8];
+    unsigned int fsgid[8];
+    unsigned int ses[8];
+    unsigned int comm[8];
+    unsigned int cwd[8];
+    unsigned int proctitle[8];
+    unsigned int name_count[8];
+    unsigned int names_head[8];
+    unsigned int names_name[8];
+    unsigned int names_namelen[8];
+    unsigned int names_ino[8];
+    unsigned int names_dev[8];
+    unsigned int names_mode[8];
+    unsigned int names_ouid[8];
+    unsigned int names_ogid[8];
+    unsigned int names_rdev[8];
+    unsigned int names_type[8];
+    unsigned int names_cap_fp[8];
+    unsigned int names_cap_fi[8];
+    unsigned int names_cap_fe[8];
+    unsigned int names_cap_fver[8];
+    unsigned int names_cap_frootid[8];
 } config_s;
 
 #endif

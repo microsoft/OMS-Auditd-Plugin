@@ -27,6 +27,21 @@
 // 	__u64 args[0];
 // };
 
+static inline u64 deref(void *base, unsigned int *refs)
+{
+    unsigned int i;
+    void *ref = base;
+    u64 result = 0;
+
+    #pragma unroll
+    for (i=0; i<8 && refs[i] != 0xffffffff; i++) {
+        bpf_probe_read(&result, sizeof(result), ref + refs[i]);
+        ref = (void *)result;
+    }
+
+    return result;
+}
+
 SEC("raw_tracepoint/sys_enter")
 int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 {
@@ -36,6 +51,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     u32 config_id = 0;
     config_s *config;
     u32 userland_pid = 0;
+    void *task;
 
     // bail early for syscalls we aren't interested in
     unsigned long long syscall = ctx->args[1];
@@ -52,7 +68,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     if (!config)
         return 0;
 
-    userland_pid = config->pid;
+    userland_pid = config->userland_pid;
 
     if ((pid_tid >> 32) == userland_pid)
         return 0;
@@ -66,6 +82,12 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     event->version = VERSION;
     event->syscall_id = ctx->args[1];
     event->pid = pid_tid >> 32;
+
+    // get the task struct
+    task = (void *)bpf_get_current_task();
+
+    // get the ppid
+    event->ppid = (u32)deref(task, config->ppid);
 
     volatile struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
     
@@ -176,7 +198,7 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
     if (!config)
         return 0;
 
-    userland_pid = config->pid;
+    userland_pid = config->userland_pid;
 
     if ((pid_tid >> 32) == userland_pid)
         return 0;

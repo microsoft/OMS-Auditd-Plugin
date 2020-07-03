@@ -106,6 +106,15 @@ void ebpf_telemetry_close_all(){
     bpf_object__close(bpf_obj);
 }
 
+void populate_config_offsets(config_s *c)
+{
+    c->ppid[0] = 2256; c->ppid[1] = 2244; c->ppid[2] = 0xffffffff;
+
+
+
+}
+
+
 int ebpf_telemetry_start(void (*event_cb)(void *ctx, int cpu, void *data, __u32 size), void (*events_lost_cb)(void *ctx, int cpu, __u64 lost_cnt))
 {
     unsigned int major = 0, minor = 0;
@@ -205,7 +214,8 @@ int ebpf_telemetry_start(void (*event_cb)(void *ctx, int cpu, void *data, __u32 
     //update the config with the userland pid
     unsigned int config_entry = 0;
     config_s config;
-    config.pid = getpid();
+    config.userland_pid = getpid();
+    populate_config_offsets(&config);
     if (bpf_map_update_elem(config_map_fd, &config_entry, &config, BPF_ANY)) {
         fprintf(stderr, "ERROR: failed to set config: '%s'\n", strerror(errno));
         return 1;
