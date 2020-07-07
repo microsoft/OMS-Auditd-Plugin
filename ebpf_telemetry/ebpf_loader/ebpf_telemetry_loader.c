@@ -21,30 +21,7 @@
 */
 
 
-#include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <string.h>
-#include <fcntl.h>
-#include <poll.h>
-#include <linux/compiler_types.h>
-#include <errno.h>
-#include <assert.h>
-#include <sys/syscall.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <time.h>
-#include <signal.h>
-#include <libbpf.h>
-#include <sys/resource.h>
-#include <bpf.h>
-#include <perf-sys.h>
-#include <libbpf.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <types.h>
-#include <sys/utsname.h>
+#include "ebpf_telemetry_loader.h"
 #include "../event_defs.h"
 
 //Notes:
@@ -59,8 +36,8 @@
 #define MAP_PAGE_SIZE 1024
 #define DEBUGFS "/sys/kernel/debug/tracing/"
 
-#define KERN_TRACEPOINT_OBJ "ebpf_telemetry_kern_tp.o"
-#define KERN_RAW_TRACEPOINT_OBJ "ebpf_telemetry_kern_raw_tp.o"
+#define KERN_TRACEPOINT_OBJ "ebpf_loader/ebpf_telemetry_kern_tp.o"
+#define KERN_RAW_TRACEPOINT_OBJ "ebpf_loader/ebpf_telemetry_kern_raw_tp.o"
 
 static int    event_map_fd          = 0;
 static int    config_map_fd         = 0;
@@ -253,8 +230,9 @@ int ebpf_telemetry_start(void (*event_cb)(void *ctx, int cpu, void *data, __u32 
 
     fprintf(stderr, "Running...\n");
 
+    int i = 0;
     while ((ret = perf_buffer__poll(pb, 1000)) >= 0 ) {
-        // go forever
+        if (i++ > 10) break;
     }
 
     ebpf_telemetry_close_all();

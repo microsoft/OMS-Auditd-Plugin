@@ -96,6 +96,7 @@ target_include_directories(ebpf_loader PUBLIC
                            "${LINUX_SRC}/arch/x86/include/generated/uapi"
                            "${LINUX_SRC}/include/uapi"
                            "${LINUX_SRC}/include"
+                           "${LINUX_SRC}/include/x86_64-linux-gnu/"
                            "${LINUX_SRC}/include/generated/uapi"
                            "/usr/include"
                            )
