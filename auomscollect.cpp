@@ -339,35 +339,17 @@ int main(int argc, char**argv) {
         }
     }
 
-    std::string data_dir = AUOMS_DATA_DIR;
-    std::string run_dir = AUOMS_RUN_DIR;
+    std::string data_dir = config.GetString("data_dir", AUOMS_DATA_DIR);
+    std::string run_dir = config.GetString("run_dir", AUOMS_RUN_DIR);
 
-    if (config.HasKey("data_dir")) {
-        data_dir = config.GetString("data_dir");
-    }
+    std::string socket_path = config.GetString("socket_path", run_dir + "/input.socket");
 
-    if (config.HasKey("run_dir")) {
-        run_dir = config.GetString("run_dir");
-    }
-
-    std::string socket_path = run_dir + "/input.socket";
-
-    std::string cursor_path = data_dir + "/collect.cursor";
-    std::string queue_file = data_dir + "/collect_queue.dat";
-
-    if (config.HasKey("socket_path")) {
-        socket_path = config.GetString("socket_path");
-    }
-
-    if (config.HasKey("cursor_path")) {
-        cursor_path = config.GetString("cursor_path");
-    }
+    std::string cursor_path = config.GetString("cursor_path", data_dir + "/collect.cursor");
+    std::string queue_file = config.GetString("queue_file", data_dir + "/collect_queue.dat");
 
     size_t queue_size = 10*1024*1024;
-
-    if (config.HasKey("queue_file")) {
-        queue_file = config.GetString("queue_file");
-    }
+    size_t queue_min_save = 2*1024*1024;
+    size_t queue_max_delay = 1000;
 
     if (queue_file.empty()) {
         Logger::Error("Invalid 'queue_file' value");
@@ -383,21 +365,35 @@ int main(int argc, char**argv) {
         }
     }
 
-    std::string lock_file = data_dir + "/auomscollect.lock";
-
-    if (config.HasKey("lock_file")) {
-        lock_file = config.GetString("lock_file");
+    if (config.HasKey("queue_min_save")) {
+        try {
+            queue_min_save = config.GetUint64("queue_min_save");
+            if (queue_min_save > queue_size/2) {
+                queue_min_save = queue_size/2;
+            }
+        } catch(std::exception& ex) {
+            Logger::Error("Invalid 'queue_min_save' value: %s", config.GetString("queue_min_save").c_str());
+            exit(1);
+        }
     }
+
+    if (config.HasKey("queue_max_delay")) {
+        try {
+            queue_max_delay = config.GetUint64("queue_max_delay");
+        } catch(std::exception& ex) {
+            Logger::Error("Invalid 'queue_max_delay' value: %s", config.GetString("queue_max_delay").c_str());
+            exit(1);
+        }
+    }
+
+    std::string lock_file = config.GetString("lock_file", data_dir + "/auomscollect.lock");
 
     if (queue_size < Queue::MIN_QUEUE_SIZE) {
         Logger::Warn("Value for 'queue_size' (%ld) is smaller than minimum allowed. Using minimum (%ld).", queue_size, Queue::MIN_QUEUE_SIZE);
         exit(1);
     }
 
-    bool use_syslog = true;
-    if (config.HasKey("use_syslog")) {
-        use_syslog = config.GetBool("use_syslog");
-    }
+    bool use_syslog = config.GetBool("use_syslog", true);
 
     if (use_syslog) {
         Logger::OpenSyslog("auomscollect", LOG_DAEMON);
@@ -485,7 +481,7 @@ int main(int argc, char**argv) {
     std::thread autosave_thread([&]() {
         Signals::InitThread();
         try {
-            queue->Autosave(128*1024, 250);
+            queue->Autosave(queue_min_save, queue_max_delay);
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
             exit(1);

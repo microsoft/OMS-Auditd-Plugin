@@ -25,23 +25,55 @@
 class Config {
 public:
     Config() = default;
-    explicit Config(std::unordered_map<std::string, std::string> map): _map(map) {}
+    explicit Config(const std::unordered_set<std::string>& allowed_overrides): _allowed_overrides(allowed_overrides) {}
+    explicit Config(const std::unordered_map<std::string, std::string>& map): _map(map) {}
 
     void Load(const std::string& path);
 
     bool HasKey(const std::string& name) const;
+
     bool GetBool(const std::string& name) const;
+    bool GetBool(const std::string& name, bool default_value) const {
+        if (HasKey(name)) {
+            return GetBool(name);
+        }
+        return default_value;
+    }
+
     int64_t GetInt64(const std::string& name) const;
+    int64_t GetInt64(const std::string& name, int64_t default_value) const {
+        if (HasKey(name)) {
+            return GetInt64(name);
+        }
+        return default_value;
+    }
+
     uint64_t GetUint64(const std::string& name) const;
+    uint64_t GetUint64(const std::string& name, uint64_t default_value) const {
+        if (HasKey(name)) {
+            return GetUint64(name);
+        }
+        return default_value;
+    }
+
     std::string GetString(const std::string& name) const;
+    std::string GetString(const std::string& name, const std::string& default_value) const {
+        if (HasKey(name)) {
+            return GetString(name);
+        }
+        return default_value;
+    }
+
     rapidjson::Document GetJSON(const std::string& name) const;
 
     bool operator==(const Config& other) { return _map == other._map; }
     bool operator!=(const Config& other) { return _map != other._map; }
 
 private:
+    void read_file(const std::string& path, std::unordered_map<std::string, std::string>& map);
+
+    std::unordered_set<std::string> _allowed_overrides;
     std::unordered_map<std::string, std::string> _map;
 };
-
 
 #endif //AUOMS_CONFIG_H

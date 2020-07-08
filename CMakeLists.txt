@@ -293,6 +293,8 @@ include_directories (${Boost_INCLUDE_DIRS})
 
 add_executable(ConfigTests
         TempFile.cpp
+        TempDir.cpp
+        FileUtils.cpp
         Config.cpp
         ConfigTests.cpp
 )

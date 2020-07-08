@@ -19,6 +19,8 @@
 #include <boost/test/unit_test.hpp>
 
 #include "TempFile.h"
+#include "TempDir.h"
+#include "FileUtils.h"
 #include <stdexcept>
 
 BOOST_AUTO_TEST_CASE( unquoted_value )
@@ -148,4 +150,39 @@ BOOST_AUTO_TEST_CASE( multi_line_json_value )
     }
 
     BOOST_CHECK_EQUAL(doc.FindMember("key")->value.GetString(), "value");
+}
+
+BOOST_AUTO_TEST_CASE( config_override )
+{
+
+    TempDir dir("/tmp/ConfigTests");
+    std::string conf_file = dir.Path()+"test.conf";
+    std::string override_file = conf_file+".override";
+
+    std::vector<std::string> lines;
+    lines.emplace_back("key1=value1");
+    lines.emplace_back("key2=value2");
+    lines.emplace_back("key3=value3");
+    WriteFile(conf_file, lines);
+
+    lines.clear();
+    lines.emplace_back("key2=override2");
+    lines.emplace_back("key3=override3");
+
+    WriteFile(override_file, lines);
+
+    std::unordered_set<std::string> allowed_overrides;
+    allowed_overrides.emplace("key1");
+    allowed_overrides.emplace("key2");
+
+    Config config(allowed_overrides);
+
+    config.Load(conf_file);
+
+    // Override is allowed, but no override present
+    BOOST_CHECK_EQUAL( config.GetString("key1"), "value1");
+    // Override is allowed, and override present
+    BOOST_CHECK_EQUAL( config.GetString("key2"), "override2");
+    // Override is not allowed, and override present
+    BOOST_CHECK_EQUAL( config.GetString("key3"), "value3");
 }

@@ -19,6 +19,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <sys/stat.h>
 
 std::string trim(const std::string& str)
 {
@@ -31,8 +32,7 @@ std::string trim(const std::string& str)
     return str.substr(sidx, eidx-sidx);
 }
 
-void Config::Load(const std::string& path)
-{
+void Config::read_file(const std::string& path, std::unordered_map<std::string, std::string>& map) {
     std::ifstream fs(path);
 
     int line_num = 1;
@@ -49,7 +49,7 @@ void Config::Load(const std::string& path)
         }
 
         std::string key = trim(line.substr(0, idx));
-        std::string val = trim(line.substr(idx+1));
+        std::string val = trim(line.substr(idx + 1));
 
         if (val[0] == '"') {
             std::string nval;
@@ -79,7 +79,8 @@ void Config::Load(const std::string& path)
             rapidjson::Document doc;
             while (doc.Parse(nval.c_str()).HasParseError()) {
                 if (!std::getline(fs, line)) {
-                    throw std::runtime_error("Incomplete or invalid JSON value: Line " + std::to_string(start_line_num));
+                    throw std::runtime_error(
+                            "Incomplete or invalid JSON value: Line " + std::to_string(start_line_num));
                 }
                 nval.append(line);
             }
@@ -90,14 +91,40 @@ void Config::Load(const std::string& path)
                 auto cidx = val.find_first_not_of(" \t", eidx);
                 if (cidx != std::string::npos) {
                     if (val[cidx] != '#') {
-                        throw std::runtime_error("White space in value (may need to be quoted with '\"'): Line " + std::to_string(line_num));
+                        throw std::runtime_error("White space in value (may need to be quoted with '\"'): Line " +
+                                                 std::to_string(line_num));
                     }
                 }
                 val = val.substr(0, eidx);
             }
         }
 
-        _map.insert(std::make_pair(key, val));
+        map.insert(std::make_pair(key, val));
+    }
+}
+
+void Config::Load(const std::string& path)
+{
+    read_file(path, _map);
+
+    std::string override_file = path+".override";
+
+    struct stat buf;
+    auto ret = stat(override_file.c_str(), &buf);
+    if (ret != 0 || !S_ISREG(buf.st_mode)) {
+        return;
+    }
+
+    try {
+        std::unordered_map<std::string, std::string> ovmap;
+        read_file(override_file, ovmap);
+        for (auto e : ovmap) {
+            if (_allowed_overrides.count(e.first)) {
+                _map[e.first] = e.second;
+            }
+        }
+    } catch (std::exception&) {
+        // Ignore any errors while reading override file.
     }
 }
 
