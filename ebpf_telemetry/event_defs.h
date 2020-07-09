@@ -23,6 +23,8 @@
 #define VERSION 1
 #define CODE_BYTES 0xdeadbeef
 
+#define CONFIG_FILE "../ebpf_telemetry.conf"
+
 #define TOTAL_MAX_ARGS 128
 #define ARGSIZE  128
 #define FULL_MAX_ARGS_ARR (TOTAL_MAX_ARGS * ARGSIZE)
@@ -109,8 +111,8 @@ typedef struct conf {
     unsigned int tty[NUM_REDIRECTS];
     unsigned int comm[NUM_REDIRECTS];
     unsigned int exe_dentry[NUM_REDIRECTS];
-    unsigned int dentry_parent;
-    unsigned int dentry_name;
+    unsigned int dentry_parent[NUM_REDIRECTS];
+    unsigned int dentry_name[NUM_REDIRECTS];
     unsigned int cwd[NUM_REDIRECTS];
     unsigned int proctitle[NUM_REDIRECTS];
     unsigned int name_count[NUM_REDIRECTS];

@@ -106,29 +106,112 @@ void ebpf_telemetry_close_all(){
     bpf_object__close(bpf_obj);
 }
 
-void populate_config_offsets(config_s *c)
+unsigned int *find_config_item(config_s *c, char *param)
 {
-    c->ppid[0] = 2256; c->ppid[1] = 2244; c->ppid[2] = -1;
-    c->auid[0] = 2920; c->auid[1] = -1;
-    c->ses[0] = 2924; c->ses[1] = -1;
-
-    c->cred[0] = 2712; c->cred[1] = -1;
-    c->cred_uid[0] = 4; c->cred_uid[1] = -1;
-    c->cred_gid[0] = 8; c->cred_gid[1] = -1;
-    c->cred_euid[0] = 20; c->cred_euid[1] = -1;
-    c->cred_suid[0] = 12; c->cred_suid[1] = -1;
-    c->cred_fsuid[0] = 28; c->cred_fsuid[1] = -1;
-    c->cred_egid[0] = 24; c->cred_egid[1] = -1;
-    c->cred_sgid[0] = 16; c->cred_sgid[1] = -1;
-    c->cred_fsgid[0] = 32; c->cred_fsgid[1] = -1;
-
-    c->tty[0] = 2816; c->tty[1] = 408; c->tty[2] = 368; c->tty[3] = -1;
-    c->comm[0] = 2728; c->comm[1] = -1;
-    c->exe_dentry[0] = 2064; c->exe_dentry[1] = 928; c->exe_dentry[2] = -1;
-    c->dentry_parent = 24;
-    c->dentry_name = 40;
+    if (!strcmp(param, "ppid"))
+        return c->ppid;
+    else if (!strcmp(param, "auid"))
+        return c->auid;
+    else if (!strcmp(param, "ses"))
+        return c->ses;
+    else if (!strcmp(param, "cred"))
+        return c->cred;
+    else if (!strcmp(param, "cred_uid"))
+        return c->cred_uid;
+    else if (!strcmp(param, "cred_gid"))
+        return c->cred_gid;
+    else if (!strcmp(param, "cred_euid"))
+        return c->cred_euid;
+    else if (!strcmp(param, "cred_suid"))
+        return c->cred_suid;
+    else if (!strcmp(param, "cred_fsuid"))
+        return c->cred_fsuid;
+    else if (!strcmp(param, "cred_egid"))
+        return c->cred_egid;
+    else if (!strcmp(param, "cred_sgid"))
+        return c->cred_sgid;
+    else if (!strcmp(param, "cred_fsgid"))
+        return c->cred_fsgid;
+    else if (!strcmp(param, "tty"))
+        return c->tty;
+    else if (!strcmp(param, "comm"))
+        return c->comm;
+    else if (!strcmp(param, "exe_dentry"))
+        return c->exe_dentry;
+    else if (!strcmp(param, "dentry_parent"))
+        return c->dentry_parent;
+    else if (!strcmp(param, "dentry_name"))
+        return c->dentry_name;
 }
 
+bool insert_config_offsets(unsigned int *item, char *value)
+{
+    char *offset = NULL;
+    unsigned int i;
+    char *inner_strtok = NULL;
+
+    offset = strtok_r(value, " ,", &inner_strtok);
+    if (!offset) {
+        item[0] = -1;
+        return false;
+    }
+
+    i = 0;
+
+    while (offset && i<NUM_REDIRECTS) {
+        item[i] = atoi(offset);
+        offset = strtok_r(NULL, " ,", &inner_strtok);
+        i++;
+    }
+    item[i] = -1;
+
+    return true;
+}
+
+
+bool populate_config_offsets(config_s *c)
+{
+    FILE *config;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read_len;
+    char *param = NULL;
+    char *value = NULL;
+    char *whitespace = NULL;
+    unsigned int *item = NULL;
+    char *outer_strtok = NULL;
+
+    config = fopen(CONFIG_FILE, "r");
+    if (!config)
+        return false;
+
+    while ((read_len = getline(&line, &len, config)) >= 0) {
+        if (read_len > 0 && line[0] == '#')
+            continue;
+        whitespace = line;
+        while (*whitespace == ' ')
+            whitespace++;
+        param = strtok_r(whitespace, " =", &outer_strtok);
+        if (!param)
+            continue;
+        value = strtok_r(NULL, "\n", &outer_strtok);
+        if (!value)
+            continue;
+        whitespace = value;
+        while (*whitespace == ' ' || *whitespace == '=')
+            whitespace++;
+        value = whitespace;
+
+        item = find_config_item(c, param);
+
+        insert_config_offsets(item, value);
+    }
+
+    free(line);
+    fclose(config);
+
+    return true;
+}
 
 int ebpf_telemetry_start(void (*event_cb)(void *ctx, int cpu, void *data, __u32 size), void (*events_lost_cb)(void *ctx, int cpu, __u64 lost_cnt))
 {

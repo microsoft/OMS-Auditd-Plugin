@@ -60,7 +60,7 @@ static inline bool deref_string_into(char *dest, unsigned int size, void *base, 
         return false;
 }
 
-static inline bool deref_filepath_into(char dest[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE], unsigned int size, void *base, unsigned int *refs, unsigned int dentry_name, unsigned int dentry_parent)
+static inline bool deref_filepath_into(char dest[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE], unsigned int size, void *base, unsigned int *refs, unsigned int *dentry_name, unsigned int *dentry_parent)
 {
     char *pathtemp = NULL;
     char *dtemp = NULL;
@@ -85,7 +85,7 @@ static inline bool deref_filepath_into(char dest[FILEPATH_NUMDIRS][FILEPATH_DIRS
     if (!dtemp)
         return false;
 
-    bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent);
+    bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent[0]);
 
     if (dentry == newdentry) {
         return false;
@@ -95,10 +95,10 @@ static inline bool deref_filepath_into(char dest[FILEPATH_NUMDIRS][FILEPATH_DIRS
 
     #pragma unroll
     for (i=0; i<FILEPATH_NUMDIRS; i++) {
-        bpf_probe_read(&dname, sizeof(dname), dentry + dentry_name);
+        bpf_probe_read(&dname, sizeof(dname), dentry + dentry_name[0]);
         dlen = bpf_probe_read_str(dest[i], FILEPATH_DIRSIZE, dname);
 
-        bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent);
+        bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent[0]);
 
         if (dentry == newdentry) {
             max_entries = i;
