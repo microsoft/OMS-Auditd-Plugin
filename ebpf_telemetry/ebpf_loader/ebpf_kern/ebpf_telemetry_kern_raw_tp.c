@@ -34,12 +34,92 @@ static inline u64 deref(void *base, unsigned int *refs)
     u64 result = 0;
 
     #pragma unroll
-    for (i=0; i<8 && refs[i] != 0xffffffff; i++) {
+    for (i=0; i<8 && ref && refs[i] != 0xffffffff; i++) {
         bpf_probe_read(&result, sizeof(result), ref + refs[i]);
         ref = (void *)result;
     }
 
     return result;
+}
+
+static inline bool deref_string_into(char *dest, unsigned int size, void *base, unsigned int *refs)
+{
+    unsigned int i;
+    void *ref = base;
+    u64 result = 0;
+
+    #pragma unroll
+    for (i=0; i<8 && ref && refs[i] != 0xffffffff && refs[i+1] != 0xffffffff; i++) {
+        bpf_probe_read(&result, sizeof(result), ref + refs[i]);
+        ref = (void *)result;
+    }
+
+    if (ref && refs[i] != 0xffffffff && bpf_probe_read_str(dest, size, ref + refs[i]) > 0)
+        return true;
+    else
+        return false;
+}
+
+static inline bool deref_filepath_into(char *dest, unsigned int size, void *base, unsigned int *refs, unsigned int dentry_name, unsigned int dentry_parent)
+{
+    char *pathtemp = NULL;
+    char *dtemp = NULL;
+    u32 temp_id = 0;
+    char *pathtemp_ptr = NULL;
+    char *pathtemp_end = NULL;
+    int dlen;
+    unsigned int dlen2;
+    char *dname = NULL;
+    unsigned int i;
+    unsigned int pathlen = 0;
+
+    void *dentry = (void *)deref(base, refs);
+    void *newdentry = NULL;
+
+    pathtemp = bpf_map_lookup_elem(&filepath_temp, &temp_id);
+    if (!pathtemp)
+        return false;
+    pathtemp_ptr = pathtemp + (PATH_MAX * 2) - 1;
+    pathtemp_end = pathtemp_ptr;
+//    *pathtemp_ptr = 0x00;
+
+    dtemp = bpf_map_lookup_elem(&d_temp, &temp_id);
+    if (!dtemp)
+        return false;
+
+    #pragma unroll
+    for (i=0; i<PATH_MAX && pathlen < PATH_MAX; i++) {
+        bpf_probe_read(&dname, sizeof(dname), dentry + dentry_name);
+        dlen = bpf_probe_read_str(dtemp, 1024, dname);
+
+        if (dlen <= 0)
+            return false;
+        dlen2 = dlen;
+        dlen2 = dlen2 & 1023;
+
+        pathlen += dlen2;
+
+        if (pathlen > PATH_MAX)
+            return false;
+
+//        bpf_probe_read(pathtemp_ptr - dlen - 1, dlen, dtemp);
+        bpf_probe_read(pathtemp_end - (pathlen - 1), dlen2, dtemp);
+        *pathtemp_ptr = '/';
+        pathtemp_ptr = pathtemp_ptr - dlen2;
+
+        bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent);
+
+        if (dentry == newdentry) {
+            *pathtemp_ptr = '/';
+            pathtemp[(PATH_MAX * 2) - 1] = 0x00;
+            bpf_probe_read_str(dest, size, pathtemp_ptr);
+            return true;
+        }
+
+        dentry = newdentry;
+    }
+
+    return false;
 }
 
 SEC("raw_tracepoint/sys_enter")
@@ -51,16 +131,18 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     u32 config_id = 0;
     config_s *config;
     u32 userland_pid = 0;
-    void *task;
+//    void *task;
 
     // bail early for syscalls we aren't interested in
     unsigned long long syscall = ctx->args[1];
-    if ( (syscall != __NR_open)    &&
-         (syscall != __NR_openat)  && 
-         (syscall != __NR_execve)  &&
-         (syscall != __NR_accept)  && 
-         (syscall != __NR_accept4) && 
-         (syscall != __NR_connect) )
+    if ( 
+         (syscall != __NR_execve)
+         && (syscall != __NR_open)
+         && (syscall != __NR_openat)
+         && (syscall != __NR_accept)
+         && (syscall != __NR_accept4)
+         && (syscall != __NR_connect)
+       )
         return 0;
 
     // retrieve config
@@ -83,11 +165,10 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     event->syscall_id = ctx->args[1];
     event->pid = pid_tid >> 32;
 
+/*
     // get the task struct
     task = (void *)bpf_get_current_task();
-
-    // get the ppid
-    event->ppid = (u32)deref(task, config->ppid);
+*/
 
     volatile struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
     
@@ -192,6 +273,9 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
     u32 config_id = 0;
     config_s *config;
     u32 userland_pid = 0;
+    void *task;
+    void *cred;
+    char notty[] = "(none)";
     
     // retrieve config
     config = bpf_map_lookup_elem(&config_map, &config_id);
@@ -213,6 +297,34 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
 
     //event->return_code = ctx->ret;
     bpf_probe_read(&event->return_code, sizeof(s64), (void *)&PT_REGS_RC(regs));
+
+    // get the task struct
+    task = (void *)bpf_get_current_task();
+
+    // get the ppid
+    event->ppid = (u32)deref(task, config->ppid);
+
+    // get the session
+    event->auid = (u32)deref(task, config->auid);
+    event->ses = (u32)deref(task, config->ses);
+    if (!deref_string_into(event->tty, sizeof(event->tty), task, config->tty))
+        bpf_probe_read_str(event->tty, sizeof(event->tty), notty);
+
+    // get the creds
+    cred = (void *)deref(task, config->cred);
+    event->uid = (u32)deref(cred, config->cred_uid);
+    event->gid = (u32)deref(cred, config->cred_gid);
+    event->euid = (u32)deref(cred, config->cred_euid);
+    event->suid = (u32)deref(cred, config->cred_suid);
+    event->fsuid = (u32)deref(cred, config->cred_fsuid);
+    event->egid = (u32)deref(cred, config->cred_egid);
+    event->sgid = (u32)deref(cred, config->cred_sgid);
+    event->fsgid = (u32)deref(cred, config->cred_fsgid);
+
+    // get the comm, etc
+    deref_string_into(event->comm, sizeof(event->comm), task, config->comm);
+//    deref_filepath_into(event->exe, sizeof(event->exe), task, config->exe_dentry, config->dentry_name, config->dentry_parent);
+//static inline bool deref_filepath_into(char *dest, unsigned int size, void *base, unsigned int *refs, unsigned int dentry_name, unsigned int dentry_parent)
 
     switch(event->syscall_id)
     {

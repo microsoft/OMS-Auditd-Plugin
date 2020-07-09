@@ -109,9 +109,24 @@ void ebpf_telemetry_close_all(){
 void populate_config_offsets(config_s *c)
 {
     c->ppid[0] = 2256; c->ppid[1] = 2244; c->ppid[2] = 0xffffffff;
+    c->auid[0] = 2920; c->auid[1] = 0xffffffff;
+    c->ses[0] = 2924; c->ses[1] = 0xffffffff;
 
+    c->cred[0] = 2712; c->cred[1] = 0xffffffff;
+    c->cred_uid[0] = 4; c->cred_uid[1] = 0xffffffff;
+    c->cred_gid[0] = 8; c->cred_gid[1] = 0xffffffff;
+    c->cred_euid[0] = 20; c->cred_euid[1] = 0xffffffff;
+    c->cred_suid[0] = 12; c->cred_suid[1] = 0xffffffff;
+    c->cred_fsuid[0] = 28; c->cred_fsuid[1] = 0xffffffff;
+    c->cred_egid[0] = 24; c->cred_egid[1] = 0xffffffff;
+    c->cred_sgid[0] = 16; c->cred_sgid[1] = 0xffffffff;
+    c->cred_fsgid[0] = 32; c->cred_fsgid[1] = 0xffffffff;
 
-
+    c->tty[0] = 2816; c->tty[1] = 408; c->tty[2] = 368; c->tty[3] = 0xffffffff;
+    c->comm[0] = 2728; c->comm[1] = 0xffffffff;
+    c->exe_dentry[0] = 2064; c->exe_dentry[1] = 928; c->exe_dentry[2] = 0xffffffff;
+    c->dentry_parent = 24;
+    c->dentry_name = 40;
 }
 
 
