@@ -59,8 +59,8 @@
 #define MAP_PAGE_SIZE 1024
 #define DEBUGFS "/sys/kernel/debug/tracing/"
 
-#define KERN_TRACEPOINT_OBJ "ebpf_telemetry_kern_tp.o"
-#define KERN_RAW_TRACEPOINT_OBJ "ebpf_telemetry_kern_raw_tp.o"
+#define KERN_TRACEPOINT_OBJ "ebpf_loader/ebpf_telemetry_kern_tp.o"
+#define KERN_RAW_TRACEPOINT_OBJ "ebpf_loader/ebpf_telemetry_kern_raw_tp.o"
 
 static int    event_map_fd          = 0;
 static int    config_map_fd         = 0;
@@ -108,23 +108,23 @@ void ebpf_telemetry_close_all(){
 
 void populate_config_offsets(config_s *c)
 {
-    c->ppid[0] = 2256; c->ppid[1] = 2244; c->ppid[2] = 0xffffffff;
-    c->auid[0] = 2920; c->auid[1] = 0xffffffff;
-    c->ses[0] = 2924; c->ses[1] = 0xffffffff;
+    c->ppid[0] = 2256; c->ppid[1] = 2244; c->ppid[2] = -1;
+    c->auid[0] = 2920; c->auid[1] = -1;
+    c->ses[0] = 2924; c->ses[1] = -1;
 
-    c->cred[0] = 2712; c->cred[1] = 0xffffffff;
-    c->cred_uid[0] = 4; c->cred_uid[1] = 0xffffffff;
-    c->cred_gid[0] = 8; c->cred_gid[1] = 0xffffffff;
-    c->cred_euid[0] = 20; c->cred_euid[1] = 0xffffffff;
-    c->cred_suid[0] = 12; c->cred_suid[1] = 0xffffffff;
-    c->cred_fsuid[0] = 28; c->cred_fsuid[1] = 0xffffffff;
-    c->cred_egid[0] = 24; c->cred_egid[1] = 0xffffffff;
-    c->cred_sgid[0] = 16; c->cred_sgid[1] = 0xffffffff;
-    c->cred_fsgid[0] = 32; c->cred_fsgid[1] = 0xffffffff;
+    c->cred[0] = 2712; c->cred[1] = -1;
+    c->cred_uid[0] = 4; c->cred_uid[1] = -1;
+    c->cred_gid[0] = 8; c->cred_gid[1] = -1;
+    c->cred_euid[0] = 20; c->cred_euid[1] = -1;
+    c->cred_suid[0] = 12; c->cred_suid[1] = -1;
+    c->cred_fsuid[0] = 28; c->cred_fsuid[1] = -1;
+    c->cred_egid[0] = 24; c->cred_egid[1] = -1;
+    c->cred_sgid[0] = 16; c->cred_sgid[1] = -1;
+    c->cred_fsgid[0] = 32; c->cred_fsgid[1] = -1;
 
-    c->tty[0] = 2816; c->tty[1] = 408; c->tty[2] = 368; c->tty[3] = 0xffffffff;
-    c->comm[0] = 2728; c->comm[1] = 0xffffffff;
-    c->exe_dentry[0] = 2064; c->exe_dentry[1] = 928; c->exe_dentry[2] = 0xffffffff;
+    c->tty[0] = 2816; c->tty[1] = 408; c->tty[2] = 368; c->tty[3] = -1;
+    c->comm[0] = 2728; c->comm[1] = -1;
+    c->exe_dentry[0] = 2064; c->exe_dentry[1] = 928; c->exe_dentry[2] = -1;
     c->dentry_parent = 24;
     c->dentry_name = 40;
 }

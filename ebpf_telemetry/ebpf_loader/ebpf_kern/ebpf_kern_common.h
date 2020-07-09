@@ -86,6 +86,14 @@ struct bpf_map_def SEC("maps") filepath_temp = {
     .max_entries = 1,
 };
 
+// create a map to hold the temporary d_names as they're read in
+struct bpf_map_def SEC("maps") d_entry_temp = {
+    .type = BPF_MAP_TYPE_ARRAY,
+    .key_size = sizeof(u32),
+    .value_size = 256,
+    .max_entries = 128,
+};
+
 // create a map to hold a temporary d_name as it's being constructed
 struct bpf_map_def SEC("maps") d_temp = {
     .type = BPF_MAP_TYPE_ARRAY,

@@ -34,7 +34,7 @@ static inline u64 deref(void *base, unsigned int *refs)
     u64 result = 0;
 
     #pragma unroll
-    for (i=0; i<8 && ref && refs[i] != 0xffffffff; i++) {
+    for (i=0; i<NUM_REDIRECTS && ref && refs[i] != -1; i++) {
         bpf_probe_read(&result, sizeof(result), ref + refs[i]);
         ref = (void *)result;
     }
@@ -49,18 +49,18 @@ static inline bool deref_string_into(char *dest, unsigned int size, void *base, 
     u64 result = 0;
 
     #pragma unroll
-    for (i=0; i<8 && ref && refs[i] != 0xffffffff && refs[i+1] != 0xffffffff; i++) {
+    for (i=0; i<NUM_REDIRECTS && ref && refs[i] != -1 && refs[i+1] != -1; i++) {
         bpf_probe_read(&result, sizeof(result), ref + refs[i]);
         ref = (void *)result;
     }
 
-    if (ref && refs[i] != 0xffffffff && bpf_probe_read_str(dest, size, ref + refs[i]) > 0)
+    if (ref && refs[i] != -1 && bpf_probe_read_str(dest, size, ref + refs[i]) > 0)
         return true;
     else
         return false;
 }
 
-static inline bool deref_filepath_into(char *dest, unsigned int size, void *base, unsigned int *refs, unsigned int dentry_name, unsigned int dentry_parent)
+static inline bool deref_filepath_into(char dest[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE], unsigned int size, void *base, unsigned int *refs, unsigned int dentry_name, unsigned int dentry_parent)
 {
     char *pathtemp = NULL;
     char *dtemp = NULL;
@@ -72,6 +72,7 @@ static inline bool deref_filepath_into(char *dest, unsigned int size, void *base
     char *dname = NULL;
     unsigned int i;
     unsigned int pathlen = 0;
+    unsigned int max_entries;
 
     void *dentry = (void *)deref(base, refs);
     void *newdentry = NULL;
@@ -79,47 +80,35 @@ static inline bool deref_filepath_into(char *dest, unsigned int size, void *base
     pathtemp = bpf_map_lookup_elem(&filepath_temp, &temp_id);
     if (!pathtemp)
         return false;
-    pathtemp_ptr = pathtemp + (PATH_MAX * 2) - 1;
-    pathtemp_end = pathtemp_ptr;
-//    *pathtemp_ptr = 0x00;
 
     dtemp = bpf_map_lookup_elem(&d_temp, &temp_id);
     if (!dtemp)
         return false;
 
+    bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent);
+
+    if (dentry == newdentry) {
+        return false;
+    }
+
+    dentry = newdentry;
+
     #pragma unroll
-    for (i=0; i<PATH_MAX && pathlen < PATH_MAX; i++) {
+    for (i=0; i<FILEPATH_NUMDIRS; i++) {
         bpf_probe_read(&dname, sizeof(dname), dentry + dentry_name);
-        dlen = bpf_probe_read_str(dtemp, 1024, dname);
-
-        if (dlen <= 0)
-            return false;
-        dlen2 = dlen;
-        dlen2 = dlen2 & 1023;
-
-        pathlen += dlen2;
-
-        if (pathlen > PATH_MAX)
-            return false;
-
-//        bpf_probe_read(pathtemp_ptr - dlen - 1, dlen, dtemp);
-        bpf_probe_read(pathtemp_end - (pathlen - 1), dlen2, dtemp);
-        *pathtemp_ptr = '/';
-        pathtemp_ptr = pathtemp_ptr - dlen2;
+        dlen = bpf_probe_read_str(dest[i], FILEPATH_DIRSIZE, dname);
 
         bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent);
 
         if (dentry == newdentry) {
-            *pathtemp_ptr = '/';
-            pathtemp[(PATH_MAX * 2) - 1] = 0x00;
-            bpf_probe_read_str(dest, size, pathtemp_ptr);
-            return true;
+            max_entries = i;
+            break;
         }
 
         dentry = newdentry;
     }
 
-    return false;
+    return true;
 }
 
 SEC("raw_tracepoint/sys_enter")
@@ -323,8 +312,7 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
 
     // get the comm, etc
     deref_string_into(event->comm, sizeof(event->comm), task, config->comm);
-//    deref_filepath_into(event->exe, sizeof(event->exe), task, config->exe_dentry, config->dentry_name, config->dentry_parent);
-//static inline bool deref_filepath_into(char *dest, unsigned int size, void *base, unsigned int *refs, unsigned int dentry_name, unsigned int dentry_parent)
+    deref_filepath_into(event->exe, sizeof(event->exe), task, config->exe_dentry, config->dentry_name, config->dentry_parent);
 
     switch(event->syscall_id)
     {
