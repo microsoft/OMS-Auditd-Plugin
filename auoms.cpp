@@ -335,7 +335,7 @@ int main(int argc, char**argv) {
     std::thread autosave_thread([&]() {
         Signals::InitThread();
         try {
-            queue->Autosave(128*1024, 250);
+            queue->Autosave(1024*1024, 4000);
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
             exit(1);
