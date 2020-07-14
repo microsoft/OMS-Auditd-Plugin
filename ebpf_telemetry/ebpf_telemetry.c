@@ -17,6 +17,7 @@
 #include "ebpf_telemetry_config.h"
 #include "ebpf_loader/ebpf_telemetry_loader.h"
 #include "event_defs.h"
+#include <assert.h>
 
 //Notes:
 //https://github.com/vmware/p4c-xdp/issues/58
