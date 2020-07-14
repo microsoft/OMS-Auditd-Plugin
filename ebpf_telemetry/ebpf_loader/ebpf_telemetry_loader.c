@@ -56,7 +56,9 @@
 //https://elixir.free-electrons.com/linux/latest/source/samples/bpf/bpf_load.c#L339
 //https://stackoverflow.com/questions/57628432/ebpf-maps-for-one-element-map-type-and-kernel-user-space-communication
 
-#define MAP_PAGE_SIZE 1024
+#define MAP_PAGE_SIZE (16 * 1024)
+//#define MAP_PAGE_SIZE 256
+//#define MAP_PAGE_SIZE 1024
 #define DEBUGFS "/sys/kernel/debug/tracing/"
 
 #define KERN_TRACEPOINT_OBJ "ebpf_loader/ebpf_telemetry_kern_tp.o"
@@ -138,10 +140,13 @@ unsigned int *find_config_item(config_s *c, char *param)
         return c->comm;
     else if (!strcmp(param, "exe_dentry"))
         return c->exe_dentry;
+    else if (!strcmp(param, "pwd_dentry"))
+        return c->pwd_dentry;
     else if (!strcmp(param, "dentry_parent"))
         return c->dentry_parent;
     else if (!strcmp(param, "dentry_name"))
         return c->dentry_name;
+    else return NULL;
 }
 
 bool insert_config_offsets(unsigned int *item, char *value)
@@ -204,7 +209,8 @@ bool populate_config_offsets(config_s *c)
 
         item = find_config_item(c, param);
 
-        insert_config_offsets(item, value);
+        if (item)
+            insert_config_offsets(item, value);
     }
 
     free(line);

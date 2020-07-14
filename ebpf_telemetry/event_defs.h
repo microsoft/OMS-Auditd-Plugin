@@ -69,6 +69,7 @@ typedef struct e_rec {
     char               tty[TTYSIZE];
     char               comm[COMMSIZE];
     char               exe[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE]; 
+    char               pwd[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE]; 
     unsigned int       auid;
     unsigned int       uid;
     unsigned int       gid;
@@ -111,6 +112,7 @@ typedef struct conf {
     unsigned int tty[NUM_REDIRECTS];
     unsigned int comm[NUM_REDIRECTS];
     unsigned int exe_dentry[NUM_REDIRECTS];
+    unsigned int pwd_dentry[NUM_REDIRECTS];
     unsigned int dentry_parent[NUM_REDIRECTS];
     unsigned int dentry_name[NUM_REDIRECTS];
     unsigned int cwd[NUM_REDIRECTS];

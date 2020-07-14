@@ -60,48 +60,30 @@ static inline bool deref_string_into(char *dest, unsigned int size, void *base, 
         return false;
 }
 
-static inline bool deref_filepath_into(char dest[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE], unsigned int size, void *base, unsigned int *refs, unsigned int *dentry_name, unsigned int *dentry_parent)
+static inline bool deref_filepath_into(char dest[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE], void *base, unsigned int *refs, unsigned int *dentry_name, unsigned int *dentry_parent)
 {
-    char *pathtemp = NULL;
-    char *dtemp = NULL;
-    u32 temp_id = 0;
-    char *pathtemp_ptr = NULL;
-    char *pathtemp_end = NULL;
     int dlen;
-    unsigned int dlen2;
     char *dname = NULL;
     unsigned int i;
-    unsigned int pathlen = 0;
-    unsigned int max_entries;
 
     void *dentry = (void *)deref(base, refs);
     void *newdentry = NULL;
 
-    pathtemp = bpf_map_lookup_elem(&filepath_temp, &temp_id);
-    if (!pathtemp)
+    if (!dentry)
         return false;
-
-    dtemp = bpf_map_lookup_elem(&d_temp, &temp_id);
-    if (!dtemp)
-        return false;
-
-    bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent[0]);
-
-    if (dentry == newdentry) {
-        return false;
-    }
-
-    dentry = newdentry;
 
     #pragma unroll
     for (i=0; i<FILEPATH_NUMDIRS; i++) {
         bpf_probe_read(&dname, sizeof(dname), dentry + dentry_name[0]);
+        if (!dname)
+            return false;
         dlen = bpf_probe_read_str(dest[i], FILEPATH_DIRSIZE, dname);
+        if (!dlen)
+            return false;
 
         bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent[0]);
 
-        if (dentry == newdentry) {
-            max_entries = i;
+        if (!newdentry || dentry == newdentry) {
             break;
         }
 
@@ -312,7 +294,8 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
 
     // get the comm, etc
     deref_string_into(event->comm, sizeof(event->comm), task, config->comm);
-    deref_filepath_into(event->exe, sizeof(event->exe), task, config->exe_dentry, config->dentry_name, config->dentry_parent);
+    deref_filepath_into(event->exe, task, config->exe_dentry, config->dentry_name, config->dentry_parent);
+    deref_filepath_into(event->pwd, task, config->pwd_dentry, config->dentry_name, config->dentry_parent);
 
     switch(event->syscall_id)
     {

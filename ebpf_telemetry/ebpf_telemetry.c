@@ -51,6 +51,31 @@
 //https://elixir.free-electrons.com/linux/latest/source/samples/bpf/bpf_load.c#L339
 //https://stackoverflow.com/questions/57628432/ebpf-maps-for-one-element-map-type-and-kernel-user-space-communication
 
+static char *combine_dentry_names(char *dest, unsigned int size, char dentry_names[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE])
+{
+    char *dest_ptr = dest + size - 1;
+    unsigned int total_len = 0;
+    unsigned int len;
+    *dest_ptr = 0x00;
+
+    if (!strcmp(dentry_names[0], "/") && dentry_names[1][0] == 0x00) {
+        dest_ptr--;
+        *dest_ptr = '/';
+        return dest_ptr;
+    }
+
+    for (int i=0; i<FILEPATH_NUMDIRS; i++) {
+        len = strlen(dentry_names[i]);
+        total_len += len + 1;
+        if (len == 0 || total_len > size || (len == 1 && dentry_names[i][0] == '/'))
+            break;
+        strncpy(dest_ptr - len, dentry_names[i], len);
+        dest_ptr -= (len + 1);
+        *dest_ptr = '/';
+    }
+    return dest_ptr;
+}
+
 static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 {
     event_s *event = (event_s *)data;
@@ -59,25 +84,21 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
          (event->version    == VERSION) )     // version check...
     {   
         char exe[PATH_MAX];
-        char *exe_ptr = exe + PATH_MAX - 1;
-        unsigned int total_len = 0;
-        unsigned int len;
+        char *exe_ptr = exe;
         *exe_ptr = 0x00;
-        for (int i=0; i<FILEPATH_NUMDIRS; i++) {
-            len = strlen(event->exe[i]);
-            total_len += len + 1;
-            if (len == 0 || total_len > PATH_MAX || (len == 1 && event->exe[i][0] == '/'))
-                break;
-            strncpy(exe_ptr - len, event->exe[i], len);
-            exe_ptr -= (len + 1);
-            *exe_ptr = '/';
-        }
-//        printf("PID:%u SYS:%lu RET:%ld PPID:%u ", event->pid, event->syscall_id, event->return_code, event->ppid);
+        char pwd[PATH_MAX];
+        char *pwd_ptr = pwd;
+        *pwd_ptr = 0x00;
+//        for (int i=0; i<8; i++) {
+//            printf("%d: %s\n", i, event->pwd[i]);
+//        }
+        exe_ptr = combine_dentry_names(exe, PATH_MAX, event->exe);
+        pwd_ptr = combine_dentry_names(pwd, PATH_MAX, event->pwd);
         printf("node=* arch=* syscall=%lu success=%s exit=%ld ", event->syscall_id, (event->return_code >= 0 ? "yes" : "no"), event->return_code);
         printf("a0=* a1=* a2=* a3=* ");
         printf("ppid=%u pid=%u ", event->ppid, event->pid);
         printf("auid=%u uid=%u gid=%u euid=%u suid=%u fsuid=%u egid=%u sgid=%u fsgid=%u ", event->auid, event->uid, event->gid, event->euid, event->suid, event->fsuid, event->egid, event->sgid, event->fsgid);
-        printf("tty=%s ses=%u comm=%s exe=%s cwd=* \n", event->tty, event->ses, event->comm, exe_ptr);
+        printf("tty=%s ses=%u comm=%s exe=%s cwd=%s \n", event->tty, event->ses, event->comm, exe_ptr, pwd_ptr);
 //        printf("name="/usr/local/sbin/grep" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0 path_name=["/usr/local/sbin/grep"] path_nametype=["UNKNOWN"] path_mode=[""] path_ouid=[""] path_ogid=[""] proctitle=/bin/sh /bin/egrep -q "(envID|VxID):.*[1-9]" /proc/self/status containerid=\n", 
 
 
@@ -133,8 +154,8 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 
 void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
-	fprintf(stderr, "Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
-    //assert(0);
+	fprintf(stdout, "Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+    assert(0);
 }
 
 void intHandler(int code) {

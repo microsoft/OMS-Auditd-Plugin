@@ -161,6 +161,7 @@ function(build_ebpf ebpfsrc)
                        DEPENDS ebpf_kern/${ebpfsrc}.c
                        DEPENDS libbpf
                        DEPENDS ../event_defs.h
+                       DEPENDS ebpf_kern/ebpf_kern_common.h
                        )
 endfunction()
 
