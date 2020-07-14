@@ -71,6 +71,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 //        }
         exe_ptr = combine_dentry_names(exe, PATH_MAX, event->exe);
         pwd_ptr = combine_dentry_names(pwd, PATH_MAX, event->pwd);
+        printf("timestamp=%ld.%ld ", event->bootns / (1000 * 1000 * 1000), event->bootns % (1000 * 1000 * 1000));
         printf("node=* arch=* syscall=%lu success=%s exit=%ld ", event->syscall_id, (event->return_code >= 0 ? "yes" : "no"), event->return_code);
         printf("a0=* a1=* a2=* a3=* ");
         printf("ppid=%u pid=%u ", event->ppid, event->pid);

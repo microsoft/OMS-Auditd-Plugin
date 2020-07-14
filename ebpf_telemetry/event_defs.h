@@ -61,6 +61,7 @@ typedef struct e_socket {
 typedef struct e_rec {
     unsigned long int  code_bytes; //Always 0xdeadbeef = 3735928559
     unsigned int       version;
+    unsigned long      bootns;
     unsigned long      syscall_id;
     unsigned int       pid;
     long int           return_code;

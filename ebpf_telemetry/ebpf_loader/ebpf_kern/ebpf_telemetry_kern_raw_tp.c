@@ -35,7 +35,8 @@ static inline u64 deref(void *base, unsigned int *refs)
 
     #pragma unroll
     for (i=0; i<NUM_REDIRECTS && ref && refs[i] != -1; i++) {
-        bpf_probe_read(&result, sizeof(result), ref + refs[i]);
+        if (bpf_probe_read(&result, sizeof(result), ref + refs[i]) != 0)
+            return 0;
         ref = (void *)result;
     }
 
@@ -48,16 +49,22 @@ static inline bool deref_string_into(char *dest, unsigned int size, void *base, 
     void *ref = base;
     u64 result = 0;
 
+    // nullify the string in case of error
+    *dest = 0x00;
+
     #pragma unroll
     for (i=0; i<NUM_REDIRECTS && ref && refs[i] != -1 && refs[i+1] != -1; i++) {
-        bpf_probe_read(&result, sizeof(result), ref + refs[i]);
+        if (bpf_probe_read(&result, sizeof(result), ref + refs[i]) != 0)
+            return false;
         ref = (void *)result;
     }
 
     if (ref && refs[i] != -1 && bpf_probe_read_str(dest, size, ref + refs[i]) > 0)
         return true;
-    else
+    else {
+        *dest = 0x00;
         return false;
+    }
 }
 
 static inline bool deref_filepath_into(char dest[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE], void *base, unsigned int *refs, unsigned int *dentry_name, unsigned int *dentry_parent)
@@ -74,14 +81,18 @@ static inline bool deref_filepath_into(char dest[FILEPATH_NUMDIRS][FILEPATH_DIRS
 
     #pragma unroll
     for (i=0; i<FILEPATH_NUMDIRS; i++) {
-        bpf_probe_read(&dname, sizeof(dname), dentry + dentry_name[0]);
+        // nullify string in case of error
+        dest[i][0] = 0x00;
+        if (bpf_probe_read(&dname, sizeof(dname), dentry + dentry_name[0]) != 0)
+            return false;
         if (!dname)
             return false;
         dlen = bpf_probe_read_str(dest[i], FILEPATH_DIRSIZE, dname);
-        if (!dlen)
+        if (dlen <= 0)
             return false;
 
-        bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent[0]);
+        if (bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent[0]) != 0)
+            break;
 
         if (!newdentry || dentry == newdentry) {
             break;
@@ -269,6 +280,9 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
     //event->return_code = ctx->ret;
     bpf_probe_read(&event->return_code, sizeof(s64), (void *)&PT_REGS_RC(regs));
 
+    // timestamp
+    event->bootns = bpf_ktime_get_ns();
+
     // get the task struct
     task = (void *)bpf_get_current_task();
 
@@ -283,14 +297,25 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
 
     // get the creds
     cred = (void *)deref(task, config->cred);
-    event->uid = (u32)deref(cred, config->cred_uid);
-    event->gid = (u32)deref(cred, config->cred_gid);
-    event->euid = (u32)deref(cred, config->cred_euid);
-    event->suid = (u32)deref(cred, config->cred_suid);
-    event->fsuid = (u32)deref(cred, config->cred_fsuid);
-    event->egid = (u32)deref(cred, config->cred_egid);
-    event->sgid = (u32)deref(cred, config->cred_sgid);
-    event->fsgid = (u32)deref(cred, config->cred_fsgid);
+    if (cred) {
+        event->uid = (u32)deref(cred, config->cred_uid);
+        event->gid = (u32)deref(cred, config->cred_gid);
+        event->euid = (u32)deref(cred, config->cred_euid);
+        event->suid = (u32)deref(cred, config->cred_suid);
+        event->fsuid = (u32)deref(cred, config->cred_fsuid);
+        event->egid = (u32)deref(cred, config->cred_egid);
+        event->sgid = (u32)deref(cred, config->cred_sgid);
+        event->fsgid = (u32)deref(cred, config->cred_fsgid);
+    } else {
+        event->uid = -1;
+        event->gid = -1;
+        event->euid = -1;
+        event->suid = -1;
+        event->fsuid = -1;
+        event->egid = -1;
+        event->sgid = -1;
+        event->fsgid = -1;
+    }
 
     // get the comm, etc
     deref_string_into(event->comm, sizeof(event->comm), task, config->comm);
