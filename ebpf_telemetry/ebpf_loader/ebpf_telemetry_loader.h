@@ -20,15 +20,19 @@
     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 */
 
-
 #include <unistd.h>
+#include <asm/unistd.h>
 #include <stdlib.h>
-#include <linux/compiler_types.h>
 #include <libbpf.h>
 #include <sys/resource.h>
 #include <bpf.h>
-#include <perf-sys.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <errno.h>
+#include <sys/utsname.h>
 #include <types.h>
+#include <signal.h>
 
 void ebpf_telemetry_close_all();
 int ebpf_telemetry_start(void (*event_cb)(void *ctx, int cpu, void *data, __u32 size), void (*events_lost_cb)(void *ctx, int cpu, __u64 lost_cnt));

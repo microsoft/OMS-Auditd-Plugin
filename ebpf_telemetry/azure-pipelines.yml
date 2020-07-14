@@ -1,0 +1,69 @@
+trigger: none
+
+variables:
+- group: pipeline_vargroup
+
+stages:
+  - stage: Build_All
+    displayName: 'Build Loader and Bytecode'
+    jobs:
+    - job: Building
+      pool:
+        name: $(agentPoolName)
+        demands:
+        - Agent.Name -equals $(hostname1)
+      workspace:
+        clean: all
+      steps:
+        - script: |
+            cd ebpf_telemetry          
+            rm -rf ./build
+            mkdir ./build && cd build
+            cmake ..
+            make all
+          displayName: CMake Build All
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish Bytecode'
+          inputs:
+            PathtoPublish: ebpf_telemetry/build/
+            ArtifactName: 'ebpf_telemetry/build/'
+  - stage: Deploy
+    displayName: 'Deploy to Test Kernels '
+    jobs:
+    - job: Kernel_4_12
+      pool:
+        name: $(agentPoolName)
+        demands:
+        - Agent.Name -equals $(hostname2)
+      workspace:
+        clean: all
+      steps:
+        - task: DownloadBuildArtifacts@0
+          inputs:
+            buildType: 'current'
+            downloadType: 'specific'
+            downloadPath: './'
+        - script: |
+            cd ./ebpf_telemetry/build
+            chmod 755 ./ebpf_telemetry
+            ldd ./ebpf_telemetry
+            sudo ./ebpf_telemetry
+    - job: Kernel_5
+      pool:
+        name: $(agentPoolName)
+        demands:
+        - Agent.Name -equals $(hostname1)
+      workspace:
+        clean: all
+      steps:
+        - task: DownloadBuildArtifacts@0
+          inputs:
+            buildType: 'current'
+            downloadType: 'specific'
+            downloadPath: './'
+        - script: |
+            cd ./ebpf_telemetry/build
+            chmod 755 ./ebpf_telemetry
+            ldd ./ebpf_telemetry
+            sudo ./ebpf_telemetry
+
