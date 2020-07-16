@@ -142,7 +142,8 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     if (!event)
         return 0;
 
-    event->code_bytes = CODE_BYTES;
+    event->code_bytes_start = CODE_BYTES;
+    event->code_bytes_end = CODE_BYTES;
     event->version = VERSION;
     event->syscall_id = ctx->args[1];
     event->pid = pid_tid >> 32;

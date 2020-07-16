@@ -88,7 +88,8 @@ int bpf_myprog(struct tracepoint__syscalls__sys_enter_open *args)
     if (!event)
         return 0;
 
-    event->code_bytes = CODE_BYTES;
+    event->code_bytes_start = CODE_BYTES;
+    event->code_bytes_end = CODE_BYTES;
     event->version    = VERSION;
     event->pid        = bpf_get_current_pid_tgid();
     event->syscall_id = args->__syscall_nr;
@@ -121,7 +122,8 @@ int bpf_myprog2(struct tracepoint__syscalls__sys_enter_execve *args)
     if (!event)
         return 0;
 
-    event->code_bytes = CODE_BYTES;
+    event->code_bytes_start = CODE_BYTES;
+    event->code_bytes_end = CODE_BYTES;
     event->version    = VERSION;
     event->pid        = pid_tid;
     event->syscall_id = args->__syscall_nr;
@@ -171,7 +173,8 @@ int bpf_myprog3(struct tracepoint__syscalls__sys_enter_connect *args)
     if (!event)
         return 0;
 
-    event->code_bytes = CODE_BYTES;
+    event->code_bytes_start = CODE_BYTES;
+    event->code_bytes_end = CODE_BYTES;
     event->version    = VERSION;
     event->pid        = bpf_get_current_pid_tgid();
     event->syscall_id = args->__syscall_nr;
@@ -198,7 +201,8 @@ int bpf_myprog4(struct tracepoint__syscalls__sys_enter_accept *args)
     if (!event)
         return 0;
 
-    event->code_bytes = CODE_BYTES;
+    event->code_bytes_start = CODE_BYTES;
+    event->code_bytes_end = CODE_BYTES;
     event->version    = VERSION;
     event->pid        = key;
     event->syscall_id = args->__syscall_nr;

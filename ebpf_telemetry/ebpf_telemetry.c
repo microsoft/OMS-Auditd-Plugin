@@ -28,6 +28,9 @@
 //https://elixir.free-electrons.com/linux/latest/source/samples/bpf/bpf_load.c#L339
 //https://stackoverflow.com/questions/57628432/ebpf-maps-for-one-element-map-type-and-kernel-user-space-communication
 
+unsigned int total_events = 0;
+unsigned int bad_events = 0;
+
 static char *combine_dentry_names(char *dest, unsigned int size, char dentry_names[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE])
 {
     char *dest_ptr = dest + size - 1;
@@ -55,9 +58,11 @@ static char *combine_dentry_names(char *dest, unsigned int size, char dentry_nam
 
 static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 {
+    total_events++;
     event_s *event = (event_s *)data;
     if ( (size > sizeof(event_s)) && // make sure we have enough data
-         (event->code_bytes == CODE_BYTES) && // garbage check...
+         (event->code_bytes_start == CODE_BYTES) && // garbage check...
+         (event->code_bytes_end == CODE_BYTES) && // garbage check...
          (event->version    == VERSION) )     // version check...
     {   
         char exe[PATH_MAX];
@@ -126,7 +131,8 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
             }
         }
     } else {
-        printf("bad data arrived\n");
+        bad_events++;
+        printf("bad data arrived - start: 0x%016lx end: 0x%016lx\n", event->code_bytes_start, event->code_bytes_end);
     }
 }
 
@@ -140,6 +146,9 @@ void intHandler(int code) {
     
     printf("\nStopping....\n");
     ebpf_telemetry_close_all();
+
+    printf("total events: %d, bad events: %d, ratio = %f\n", total_events, bad_events, (double)bad_events / total_events);
+    printf("sizeof(event_s) = %ld\n", sizeof(event_s));
    
     exit(0);
 }

@@ -59,7 +59,7 @@ typedef struct e_socket {
 
 // Event structure
 typedef struct e_rec {
-    unsigned long int  code_bytes; //Always 0xdeadbeef = 3735928559
+    unsigned long int  code_bytes_start; //Always 0xdeadbeef = 3735928559
     unsigned int       version;
     unsigned long      bootns;
     unsigned long      syscall_id;
@@ -85,6 +85,7 @@ typedef struct e_rec {
         event_execve_s execve;
         event_socket_s socket;
     } data;
+    unsigned long int  code_bytes_end; //Always 0xdeadbeef = 3735928559
 } event_s;
 
 // configuration
