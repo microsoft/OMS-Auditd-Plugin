@@ -67,11 +67,17 @@ static inline bool deref_string_into(char *dest, unsigned int size, void *base, 
     }
 }
 
-static inline bool deref_filepath_into(char dest[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE], void *base, unsigned int *refs, unsigned int *dentry_name, unsigned int *dentry_parent)
+static inline bool deref_filepath_into(char *dest, void *base, unsigned int *refs, unsigned int *dentry_name, unsigned int *dentry_parent)
 {
     int dlen;
     char *dname = NULL;
+    char *temp = NULL;
     unsigned int i;
+    unsigned int size=0;
+    u32 map_id = bpf_get_smp_processor_id();
+
+    // nullify string in case of error
+    dest[0] = 0x00;
 
     void *dentry = (void *)deref(base, refs);
     void *newdentry = NULL;
@@ -79,27 +85,47 @@ static inline bool deref_filepath_into(char dest[FILEPATH_NUMDIRS][FILEPATH_DIRS
     if (!dentry)
         return false;
 
+    // retrieve temporary filepath storage
+    temp = bpf_map_lookup_elem(&temppath_array, &map_id);
+    if (!temp)
+        return false;
+
     #pragma unroll
-    for (i=0; i<FILEPATH_NUMDIRS; i++) {
-        // nullify string in case of error
-        dest[i][0] = 0x00;
+    for (i=0; i<FILEPATH_NUMDIRS && size<PATH_MAX; i++) {
         if (bpf_probe_read(&dname, sizeof(dname), dentry + dentry_name[0]) != 0)
             return false;
         if (!dname)
             return false;
-        dlen = bpf_probe_read_str(dest[i], FILEPATH_DIRSIZE, dname);
+        // store this dentry name in start of second half of our temporary storage
+        dlen = bpf_probe_read_str(&temp[PATH_MAX], PATH_MAX, dname);
+        if (dlen <= 0 || dlen >= PATH_MAX || size + dlen > PATH_MAX)
+            return false;
+        // copy the temporary copy to the first half of our temporary storage, building it backwards from the middle of it
+        dlen = bpf_probe_read_str(&temp[(PATH_MAX - size - dlen) & (PATH_MAX - 1)], dlen, &temp[PATH_MAX]);
         if (dlen <= 0)
             return false;
+        if (i>0)
+            // overwrite the null char with a slash
+            temp[(PATH_MAX - size - 1) & (PATH_MAX - 1)] = '/';
+        size = size + dlen;
 
-        if (bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent[0]) != 0)
+        // check if we're at the root of the filesystem
+        if (bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent[0]) != 0 || !newdentry || dentry == newdentry)
             break;
 
-        if (!newdentry || dentry == newdentry) {
-            break;
-        }
-
+        // go up one directory
         dentry = newdentry;
     }
+
+    // copy the path from the temporary location to the destination
+    if (size == 2)
+        // path is simply "/"
+        dlen = bpf_probe_read_str(dest, PATH_MAX, &temp[PATH_MAX - size]);
+    else
+        // otherwise don't copy the extra slash
+        dlen = bpf_probe_read_str(dest, PATH_MAX, &temp[PATH_MAX - (size - 1)]);
+    if (dlen <= 0)
+        return false;
 
     return true;
 }
@@ -108,7 +134,7 @@ SEC("raw_tracepoint/sys_enter")
 int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 {
     u64 pid_tid = bpf_get_current_pid_tgid();
-    u32 map_id = 0;
+    u32 map_id = bpf_get_smp_processor_id();
     event_s *event = NULL;
     u32 config_id = 0;
     config_s *config;
@@ -250,7 +276,6 @@ SEC("raw_tracepoint/sys_exit")
 int sys_exit(struct bpf_raw_tracepoint_args *ctx)
 {
     u64 pid_tid = bpf_get_current_pid_tgid();
-    u32 map_id = 0;
     event_s *event = NULL;
     volatile struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
     u32 config_id = 0;
@@ -259,6 +284,7 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
     void *task;
     void *cred;
     char notty[] = "(none)";
+    char *temppath = NULL;
     
     // retrieve config
     config = bpf_map_lookup_elem(&config_map, &config_id);

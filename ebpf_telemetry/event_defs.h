@@ -69,8 +69,8 @@ typedef struct e_rec {
     unsigned int       ses;
     char               tty[TTYSIZE];
     char               comm[COMMSIZE];
-    char               exe[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE]; 
-    char               pwd[FILEPATH_NUMDIRS][FILEPATH_DIRSIZE]; 
+    char               exe[PATH_MAX];
+    char               pwd[PATH_MAX];
     unsigned int       auid;
     unsigned int       uid;
     unsigned int       gid;
