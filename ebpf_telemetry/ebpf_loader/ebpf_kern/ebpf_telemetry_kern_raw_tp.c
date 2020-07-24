@@ -266,6 +266,10 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 */
 
     struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
+    bpf_probe_read(&event->a[0], sizeof(event->a[0]), &PT_REGS_PARM1(regs));
+    bpf_probe_read(&event->a[1], sizeof(event->a[1]), &PT_REGS_PARM2(regs));
+    bpf_probe_read(&event->a[2], sizeof(event->a[2]), &PT_REGS_PARM3(regs));
+    bpf_probe_read(&event->a[3], sizeof(event->a[3]), &PT_REGS_PARM4(regs));
     
     // arch/ABI      arg1  arg2  arg3  arg4  arg5  arg6  arg7  
     // ------------------------------------------------------

@@ -14,6 +14,7 @@
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
+#include <sys/utsname.h>
 #include "ebpf_telemetry_config.h"
 #include "ebpf_loader/ebpf_telemetry_loader.h"
 #include "event_defs.h"
@@ -30,6 +31,7 @@
 
 unsigned int total_events = 0;
 unsigned int bad_events = 0;
+struct utsname uname_data;
 
 static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 {
@@ -41,8 +43,8 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
          (event->version    == VERSION) )     // version check...
     {   
         printf("timestamp=%ld.%ld ", event->bootns / (1000 * 1000 * 1000), event->bootns % (1000 * 1000 * 1000));
-        printf("node=* arch=* syscall=%lu success=%s exit=%ld ", event->syscall_id, (event->return_code >= 0 ? "yes" : "no"), event->return_code);
-        printf("a0=* a1=* a2=* a3=* ");
+        printf("node=%s arch=%s syscall=%lu success=%s exit=%ld ", uname_data.nodename, uname_data.machine, event->syscall_id, (event->return_code >= 0 ? "yes" : "no"), event->return_code);
+        printf("a0=%lx a1=%lx a2=%lx a3=%lx ", event->a[0], event->a[1], event->a[2], event->a[3]);
         printf("ppid=%u pid=%u ", event->ppid, event->pid);
         printf("auid=%u uid=%u gid=%u euid=%u suid=%u fsuid=%u egid=%u sgid=%u fsgid=%u ", event->auid, event->uid, event->gid, event->euid, event->suid, event->fsuid, event->egid, event->sgid, event->fsgid);
         printf("tty=%s ses=%u comm=%s exe=%s cwd=%s \n", event->tty, event->ses, event->comm, event->exe, event->pwd);
@@ -119,6 +121,11 @@ void intHandler(int code) {
 int main(int argc, char *argv[])
 {
     printf("EBPF_Telemetry v%d.%d\n\n", EBPF_Telemetry_VERSION_MAJOR, EBPF_Telemetry_VERSION_MINOR);
+
+    if (uname(&uname_data) != 0) {
+        printf("Failed to get uname\n");
+        exit(1);
+    }
     
     signal(SIGINT, intHandler);
 

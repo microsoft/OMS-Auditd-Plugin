@@ -64,6 +64,7 @@ typedef struct e_rec {
     unsigned int       version;
     unsigned long      bootns;
     unsigned long      syscall_id;
+    unsigned long      a[4];
     unsigned int       pid;
     long int           return_code;
     unsigned int       ppid;
