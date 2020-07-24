@@ -25,13 +25,15 @@
 
 #define CONFIG_FILE "../ebpf_telemetry.conf"
 
+#define CMDLINE_MAX_ARGS 128
+#define CMDLINE_MAX_LEN 32768 // must be power of 2
+
 #define TOTAL_MAX_ARGS 128
 #define ARGSIZE  128
 #define FULL_MAX_ARGS_ARR (TOTAL_MAX_ARGS * ARGSIZE)
 #define LAST_ARG (FULL_MAX_ARGS_ARR - ARGSIZE)
 
 #define FILEPATH_NUMDIRS 128
-#define FILEPATH_DIRSIZE 256
 
 #define TTYSIZE 64
 #define COMMSIZE 16
@@ -46,9 +48,8 @@ typedef struct e_openat {
 // __NR_execve
 typedef struct e_execve {
     unsigned int  args_count;
-    unsigned int  args_size;
-    char          exe[PATH_MAX];
-    char          cmdline[LAST_ARG];
+    unsigned int  cmdline_size;
+    char          cmdline[CMDLINE_MAX_LEN];
 } event_execve_s;
 
 // __NR_connect: 
@@ -113,10 +114,15 @@ typedef struct conf {
     unsigned int ses[NUM_REDIRECTS];
     unsigned int tty[NUM_REDIRECTS];
     unsigned int comm[NUM_REDIRECTS];
-    unsigned int exe_dentry[NUM_REDIRECTS];
-    unsigned int pwd_dentry[NUM_REDIRECTS];
+    unsigned int exe_path[NUM_REDIRECTS];
+    unsigned int pwd_path[NUM_REDIRECTS];
+    unsigned int path_vfsmount[NUM_REDIRECTS];
+    unsigned int path_dentry[NUM_REDIRECTS];
     unsigned int dentry_parent[NUM_REDIRECTS];
     unsigned int dentry_name[NUM_REDIRECTS];
+    unsigned int mount_mnt[NUM_REDIRECTS];
+    unsigned int mount_parent[NUM_REDIRECTS];
+    unsigned int mount_mountpoint[NUM_REDIRECTS];
     unsigned int cwd[NUM_REDIRECTS];
     unsigned int proctitle[NUM_REDIRECTS];
     unsigned int name_count[NUM_REDIRECTS];

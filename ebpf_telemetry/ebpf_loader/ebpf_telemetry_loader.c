@@ -115,14 +115,24 @@ unsigned int *find_config_item(config_s *c, char *param)
         return c->tty;
     else if (!strcmp(param, "comm"))
         return c->comm;
-    else if (!strcmp(param, "exe_dentry"))
-        return c->exe_dentry;
-    else if (!strcmp(param, "pwd_dentry"))
-        return c->pwd_dentry;
+    else if (!strcmp(param, "exe_path"))
+        return c->exe_path;
+    else if (!strcmp(param, "pwd_path"))
+        return c->pwd_path;
+    else if (!strcmp(param, "path_vfsmount"))
+        return c->path_vfsmount;
+    else if (!strcmp(param, "path_dentry"))
+        return c->path_dentry;
     else if (!strcmp(param, "dentry_parent"))
         return c->dentry_parent;
     else if (!strcmp(param, "dentry_name"))
         return c->dentry_name;
+    else if (!strcmp(param, "mount_mnt"))
+        return c->mount_mnt;
+    else if (!strcmp(param, "mount_parent"))
+        return c->mount_parent;
+    else if (!strcmp(param, "mount_mountpoint"))
+        return c->mount_mountpoint;
     else return NULL;
 }
 

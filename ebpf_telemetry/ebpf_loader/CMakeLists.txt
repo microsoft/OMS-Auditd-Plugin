@@ -68,7 +68,7 @@ ExternalProject_Add(libbpf
     GIT_TAG master
     PREFIX ./libbpf
     CONFIGURE_COMMAND ""
-    BUILD_COMMAND cd ../libbpf/src && make
+    BUILD_COMMAND cd ../libbpf/src && bash -c "CFLAGS=\"-g -O2 -Werror -Wall -fPIC\" make"
     INSTALL_COMMAND ""
     )
 
@@ -77,7 +77,7 @@ set(libbpf_SOURCE_DIR ${CMAKE_BINARY_DIR}/ebpf_loader/libbpf/src/libbpf)
 # make ebpf_loader
 add_library(ebpf_loader SHARED ebpf_telemetry_loader.c)
 add_dependencies(ebpf_loader libbpf)
-target_link_libraries(ebpf_loader ${libbpf_SOURCE_DIR}/src/libbpf.so elf z)
+target_link_libraries(ebpf_loader ${libbpf_SOURCE_DIR}/src/libbpf.a elf z)
 target_include_directories(ebpf_loader PUBLIC
                            "${PROJECT_BINARY_DIR}"
                            "${libbpf_SOURCE_DIR}/src"
@@ -102,8 +102,10 @@ target_include_directories(ebpf_loader PUBLIC
                            )
 
 # list of ebpf programs to make
-set(EBPF_PROGS ebpf_telemetry_kern_tp 
-               ebpf_telemetry_kern_raw_tp)
+set(EBPF_PROGS
+#               ebpf_telemetry_kern_tp 
+               ebpf_telemetry_kern_raw_tp
+)
 
 #################################################################################
 # Everything below this point should be fairly static.  Ensure LINUX_SRC points #

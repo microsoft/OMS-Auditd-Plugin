@@ -24,42 +24,53 @@
 #include "ebpf_kern_common.h"
 
 // struct bpf_raw_tracepoint_args {
-// 	__u64 args[0];
+//     __u64 args[0];
 // };
 
-static inline u64 deref(void *base, unsigned int *refs)
+__attribute__((always_inline))
+static inline void *deref_member(void *base, unsigned int *refs)
 {
     unsigned int i;
     void *ref = base;
-    u64 result = 0;
+    void *result = ref;
+
+    if (refs[0] == -1)
+        return NULL;
 
     #pragma unroll
-    for (i=0; i<NUM_REDIRECTS && ref && refs[i] != -1; i++) {
+    for (i=0; i<NUM_REDIRECTS - 1 && ref && refs[i] != -1 && refs[i+1] != -1; i++) {
         if (bpf_probe_read(&result, sizeof(result), ref + refs[i]) != 0)
             return 0;
-        ref = (void *)result;
+        ref = result;
     }
+
+    return result + refs[i];
+}
+
+__attribute__((always_inline))
+static inline u64 deref_ptr(void *base, unsigned int *refs)
+{
+    u64 result = 0;
+    void *ref;
+
+    ref = deref_member(base, refs);
+
+    if (bpf_probe_read(&result, sizeof(result), ref) != 0)
+        return 0;
 
     return result;
 }
 
+__attribute__((always_inline))
 static inline bool deref_string_into(char *dest, unsigned int size, void *base, unsigned int *refs)
 {
     unsigned int i;
     void *ref = base;
     u64 result = 0;
 
-    // nullify the string in case of error
-    *dest = 0x00;
+    ref = deref_member(base, refs);
 
-    #pragma unroll
-    for (i=0; i<NUM_REDIRECTS && ref && refs[i] != -1 && refs[i+1] != -1; i++) {
-        if (bpf_probe_read(&result, sizeof(result), ref + refs[i]) != 0)
-            return false;
-        ref = (void *)result;
-    }
-
-    if (ref && refs[i] != -1 && bpf_probe_read_str(dest, size, ref + refs[i]) > 0)
+    if (ref && bpf_probe_read_str(dest, size, ref) > 0)
         return true;
     else {
         *dest = 0x00;
@@ -67,7 +78,8 @@ static inline bool deref_string_into(char *dest, unsigned int size, void *base, 
     }
 }
 
-static inline bool deref_filepath_into(char *dest, void *base, unsigned int *refs, unsigned int *dentry_name, unsigned int *dentry_parent)
+__attribute__((always_inline))
+static inline bool deref_filepath_into(char *dest, void *base, unsigned int *refs, config_s *config)
 {
     int dlen;
     char *dname = NULL;
@@ -75,14 +87,26 @@ static inline bool deref_filepath_into(char *dest, void *base, unsigned int *ref
     unsigned int i;
     unsigned int size=0;
     u32 map_id = bpf_get_smp_processor_id();
+    void *path = NULL;
+    void *dentry = NULL;
+    void *newdentry = NULL;
+    void *vfsmount = NULL;
+    void *mnt = NULL;
 
     // nullify string in case of error
     dest[0] = 0x00;
 
-    void *dentry = (void *)deref(base, refs);
-    void *newdentry = NULL;
+    path = deref_member(base, refs);
+    if (!path)
+        return false;
+    if (bpf_probe_read(&dentry, sizeof(dentry), path + config->path_dentry[0]) != 0)
+        return false;
 
     if (!dentry)
+        return false;
+
+    // get a pointer to the vfsmount
+    if (bpf_probe_read(&vfsmount, sizeof(vfsmount), path + config->path_vfsmount[0]) != 0)
         return false;
 
     // retrieve temporary filepath storage
@@ -92,7 +116,7 @@ static inline bool deref_filepath_into(char *dest, void *base, unsigned int *ref
 
     #pragma unroll
     for (i=0; i<FILEPATH_NUMDIRS && size<PATH_MAX; i++) {
-        if (bpf_probe_read(&dname, sizeof(dname), dentry + dentry_name[0]) != 0)
+        if (bpf_probe_read(&dname, sizeof(dname), dentry + config->dentry_name[0]) != 0)
             return false;
         if (!dname)
             return false;
@@ -100,18 +124,36 @@ static inline bool deref_filepath_into(char *dest, void *base, unsigned int *ref
         dlen = bpf_probe_read_str(&temp[PATH_MAX], PATH_MAX, dname);
         if (dlen <= 0 || dlen >= PATH_MAX || size + dlen > PATH_MAX)
             return false;
-        // copy the temporary copy to the first half of our temporary storage, building it backwards from the middle of it
-        dlen = bpf_probe_read_str(&temp[(PATH_MAX - size - dlen) & (PATH_MAX - 1)], dlen, &temp[PATH_MAX]);
-        if (dlen <= 0)
-            return false;
-        if (i>0)
-            // overwrite the null char with a slash
-            temp[(PATH_MAX - size - 1) & (PATH_MAX - 1)] = '/';
-        size = size + dlen;
-
-        // check if we're at the root of the filesystem
-        if (bpf_probe_read(&newdentry, sizeof(newdentry), dentry + dentry_parent[0]) != 0 || !newdentry || dentry == newdentry)
-            break;
+        // get parent dentry
+        bpf_probe_read(&newdentry, sizeof(newdentry), dentry + config->dentry_parent[0]);
+        // check if current dentry name is valid
+        if (dlen > 0) {
+            // copy the temporary copy to the first half of our temporary storage, building it backwards from the middle of it
+            dlen = bpf_probe_read_str(&temp[(PATH_MAX - size - dlen) & (PATH_MAX - 1)], dlen, &temp[PATH_MAX]);
+            if (dlen <= 0)
+                return false;
+            if (size > 0)
+                // overwrite the null char with a slash
+                temp[(PATH_MAX - size - 1) & (PATH_MAX - 1)] = '/';
+            size = size + dlen;
+        }
+        // check if this is the root of the filesystem
+        if (!newdentry || dentry == newdentry) {
+            // check if we're on a mounted partition
+            // find mount struct from vfsmount
+            mnt = vfsmount - config->mount_mnt[0];
+            void *parent = (void *)deref_ptr(mnt, config->mount_parent);
+            // check if we're at the real root
+            if (parent == mnt)
+                break;
+            // move to mount point
+            vfsmount = parent + config->mount_mnt[0];
+            newdentry = (void *)deref_ptr(mnt, config->mount_mountpoint);
+            // another check for real root
+            if (dentry == newdentry)
+                break;
+            size = size - dlen;
+        }
 
         // go up one directory
         dentry = newdentry;
@@ -121,7 +163,7 @@ static inline bool deref_filepath_into(char *dest, void *base, unsigned int *ref
     if (size == 2)
         // path is simply "/"
         dlen = bpf_probe_read_str(dest, PATH_MAX, &temp[PATH_MAX - size]);
-    else
+    else if (size > 2)
         // otherwise don't copy the extra slash
         dlen = bpf_probe_read_str(dest, PATH_MAX, &temp[PATH_MAX - (size - 1)]);
     if (dlen <= 0)
@@ -130,11 +172,55 @@ static inline bool deref_filepath_into(char *dest, void *base, unsigned int *ref
     return true;
 }
 
+__attribute__((always_inline))
+static inline bool extract_commandline(event_s *e, struct pt_regs* r, u32 map_id)
+{
+    const char **argv; 
+    volatile const char *argp;
+    int dlen;
+    unsigned int i;
+    char *temp = NULL;
+
+    // nullify string in case of error
+    e->data.execve.cmdline[0] = 0x00;
+    e->data.execve.args_count = 0;
+    e->data.execve.cmdline_size  = 0;
+
+    // retrieve temporary filepath storage
+    temp = bpf_map_lookup_elem(&tempcmdline_array, &map_id);
+    if (!temp)
+        return false;
+   
+    // get the args
+    if (bpf_probe_read(&argv, sizeof(argv), (void *)&PT_REGS_PARM2(r)) != 0)
+        return false;
+    
+    #pragma unroll // no loops in eBPF, but need to get all args....
+    for (int i = 0; i < CMDLINE_MAX_ARGS && e->data.execve.cmdline_size < CMDLINE_MAX_LEN; i++) {
+        if (bpf_probe_read(&argp, sizeof(argp), (void*) &argv[i]) != 0 || !argp)
+            break;
+
+        dlen = bpf_probe_read_str(&temp[e->data.execve.cmdline_size & (CMDLINE_MAX_LEN - 1)], CMDLINE_MAX_LEN, (void*) argp);
+        if (dlen <= 0)
+            return false;
+
+        e->data.execve.args_count++;
+        e->data.execve.cmdline_size += dlen;
+    }
+
+    // copy from temporary cmdline to actual cmdline
+    dlen = bpf_probe_read(e->data.execve.cmdline, e->data.execve.cmdline_size & (CMDLINE_MAX_LEN - 1), temp);
+
+    return true;
+}
+
+
 SEC("raw_tracepoint/sys_enter")
+__attribute__((flatten))
 int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 {
     u64 pid_tid = bpf_get_current_pid_tgid();
-    u32 map_id = bpf_get_smp_processor_id();
+    u32 cpu_id = bpf_get_smp_processor_id();
     event_s *event = NULL;
     u32 config_id = 0;
     config_s *config;
@@ -164,7 +250,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         return 0;
 
     // retrieve map storage for event
-    event = bpf_map_lookup_elem(&event_storage_map, &map_id);
+    event = bpf_map_lookup_elem(&event_storage_map, &cpu_id);
     if (!event)
         return 0;
 
@@ -179,7 +265,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     task = (void *)bpf_get_current_task();
 */
 
-    volatile struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
+    struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
     
     // arch/ABI      arg1  arg2  arg3  arg4  arg5  arg6  arg7  
     // ------------------------------------------------------
@@ -207,40 +293,8 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         // int execve(const char *filename, char *const argv[], char *const envp[]);
         case __NR_execve: 
         {
-            const char **argv; 
-            volatile const char *filename;
-	        volatile const char *argp;
-            unsigned int ret;
-           
-            // get filename 
-            bpf_probe_read(&filename, sizeof(filename), (void *)&PT_REGS_PARM1(regs)); //read addr into char*
-            bpf_probe_read_str(event->data.execve.exe, sizeof(event->data.execve.exe), (void *)filename); // read str from char*
-            
-            // get the args
-            bpf_probe_read(&argv, sizeof(argv), (void *)&PT_REGS_PARM2(regs)); // read argv[]
-            
-            event->data.execve.args_count = 0;
-            event->data.execve.args_size  = 0;
-            #pragma unroll // no loops in eBPF, but need to get all args....
-            for (int i = 1; i < TOTAL_MAX_ARGS; i++) {
-                bpf_probe_read(&argp, sizeof(argp), (void*) &argv[i]);
-                if (!argp)
-                    break;
+            extract_commandline(event, regs, cpu_id);
 
-                // This is important or the verifier will reject without a bounds check
-                if (event->data.execve.args_size > ARGSIZE )
-                    break;
-                
-                ret = bpf_probe_read_str(&event->data.execve.cmdline[event->data.execve.args_size], ARGSIZE, (void*) argp);
-                if (ret > ARGSIZE)
-                    break;
-
-                if ( ret > 0 ){ 
-                    event->data.execve.args_count++;
-                    event->data.execve.args_size += ret;
-                }
-            }
-            
             break;
         }
         
@@ -273,6 +327,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 }
 
 SEC("raw_tracepoint/sys_exit")
+__attribute__((flatten))
 int sys_exit(struct bpf_raw_tracepoint_args *ctx)
 {
     u64 pid_tid = bpf_get_current_pid_tgid();
@@ -314,25 +369,25 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
     task = (void *)bpf_get_current_task();
 
     // get the ppid
-    event->ppid = (u32)deref(task, config->ppid);
+    event->ppid = (u32)deref_ptr(task, config->ppid);
 
     // get the session
-    event->auid = (u32)deref(task, config->auid);
-    event->ses = (u32)deref(task, config->ses);
+    event->auid = (u32)deref_ptr(task, config->auid);
+    event->ses = (u32)deref_ptr(task, config->ses);
     if (!deref_string_into(event->tty, sizeof(event->tty), task, config->tty))
         bpf_probe_read_str(event->tty, sizeof(event->tty), notty);
 
     // get the creds
-    cred = (void *)deref(task, config->cred);
+    cred = (void *)deref_ptr(task, config->cred);
     if (cred) {
-        event->uid = (u32)deref(cred, config->cred_uid);
-        event->gid = (u32)deref(cred, config->cred_gid);
-        event->euid = (u32)deref(cred, config->cred_euid);
-        event->suid = (u32)deref(cred, config->cred_suid);
-        event->fsuid = (u32)deref(cred, config->cred_fsuid);
-        event->egid = (u32)deref(cred, config->cred_egid);
-        event->sgid = (u32)deref(cred, config->cred_sgid);
-        event->fsgid = (u32)deref(cred, config->cred_fsgid);
+        event->uid = (u32)deref_ptr(cred, config->cred_uid);
+        event->gid = (u32)deref_ptr(cred, config->cred_gid);
+        event->euid = (u32)deref_ptr(cred, config->cred_euid);
+        event->suid = (u32)deref_ptr(cred, config->cred_suid);
+        event->fsuid = (u32)deref_ptr(cred, config->cred_fsuid);
+        event->egid = (u32)deref_ptr(cred, config->cred_egid);
+        event->sgid = (u32)deref_ptr(cred, config->cred_sgid);
+        event->fsgid = (u32)deref_ptr(cred, config->cred_fsgid);
     } else {
         event->uid = -1;
         event->gid = -1;
@@ -346,8 +401,8 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
 
     // get the comm, etc
     deref_string_into(event->comm, sizeof(event->comm), task, config->comm);
-    deref_filepath_into(event->exe, task, config->exe_dentry, config->dentry_name, config->dentry_parent);
-    deref_filepath_into(event->pwd, task, config->pwd_dentry, config->dentry_name, config->dentry_parent);
+    deref_filepath_into(event->exe, task, config->exe_path, config);
+    deref_filepath_into(event->pwd, task, config->pwd_path, config);
 
     switch(event->syscall_id)
     {

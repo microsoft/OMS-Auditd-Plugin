@@ -55,6 +55,14 @@ struct bpf_map_def SEC("maps") event_storage_map = {
     .max_entries = 512,
 };
 
+// create a map to hold a temporary cmdline as we build it - too big for stack
+struct bpf_map_def SEC("maps") tempcmdline_array = {
+    .type = BPF_MAP_TYPE_ARRAY,
+    .key_size = sizeof(u32),
+    .value_size = CMDLINE_MAX_LEN * 2,
+    .max_entries = 512,
+};
+
 // create a map to hold a temporary filepath as we build it - too big for stack
 struct bpf_map_def SEC("maps") temppath_array = {
     .type = BPF_MAP_TYPE_ARRAY,

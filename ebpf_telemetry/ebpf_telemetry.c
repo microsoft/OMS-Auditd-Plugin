@@ -63,8 +63,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
                 // For every null terminated argument in the array of args
                 // print them all out together
                 int args_count = 0; 
-                printf("%s ", event->data.execve.exe);
-                for (int i = 0; i < event->data.execve.args_size && args_count < event->data.execve.args_count; i++) {
+                for (int i = 0; i < event->data.execve.cmdline_size && args_count < event->data.execve.args_count; i++) {
                     
                     char c = event->data.execve.cmdline[i];
                     
