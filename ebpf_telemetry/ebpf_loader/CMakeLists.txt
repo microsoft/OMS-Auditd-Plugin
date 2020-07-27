@@ -38,7 +38,7 @@
 #    $ cd ..                                                                    #
 #    $ rm -rf build                                                             #
 #    $ mkdir build; cd build                                                    #
-#    $ cmake ..                                                                 #
+#    $ cmake ..  <-DDEBUG_K=On> : to print out kernel debugging to trace_pipe   #
 #    $ make                                                                     #
 #                                                                               #
 #################################################################################
@@ -62,6 +62,9 @@ set(LINUX_SRC "/usr/src/linux")
 
 include(ExternalProject)
 
+#Set option for Debug Outputs
+option(DEBUG_K "Enter debug mode" Off)
+
 #Fetch libbpf
 ExternalProject_Add(libbpf
     GIT_REPOSITORY https://github.com/libbpf/libbpf.git
@@ -76,6 +79,7 @@ set(libbpf_SOURCE_DIR ${CMAKE_BINARY_DIR}/ebpf_loader/libbpf/src/libbpf)
 
 # make ebpf_loader
 add_library(ebpf_loader SHARED ebpf_telemetry_loader.c)
+add_definitions("-fPIC")
 add_dependencies(ebpf_loader libbpf)
 target_link_libraries(ebpf_loader ${libbpf_SOURCE_DIR}/src/libbpf.a elf z)
 target_include_directories(ebpf_loader PUBLIC
@@ -135,6 +139,11 @@ set(CLANG_DEFINES -D __KERNEL__
                   -D __BPF_TRACING__
                   -D __TARGET_ARCH_x86
                   )
+if (DEBUG_K)
+    message("   Using DEBUG_K Option...")
+    list(APPEND CLANG_DEFINES -DDEBUG_K)
+endif()
+
 set(CLANG_INCLUDES -include "${LINUX_SRC}/include/linux/kconfig.h"
                    -include "${LINUX_SRC}/samples/bpf/asm_goto_workaround.h"
                    -I "${libbpf_SOURCE_DIR}/src"

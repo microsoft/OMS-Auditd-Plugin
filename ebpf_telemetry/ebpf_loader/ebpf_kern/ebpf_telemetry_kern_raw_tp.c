@@ -23,9 +23,6 @@
 
 #include "ebpf_kern_common.h"
 
-// struct bpf_raw_tracepoint_args {
-//     __u64 args[0];
-// };
 
 __attribute__((always_inline))
 static inline void *deref_member(void *base, unsigned int *refs)
@@ -209,7 +206,7 @@ static inline bool extract_commandline(event_s *e, struct pt_regs* r, u32 map_id
     }
 
     // copy from temporary cmdline to actual cmdline
-    dlen = bpf_probe_read(e->data.execve.cmdline, e->data.execve.cmdline_size & (CMDLINE_MAX_LEN - 1), temp);
+    bpf_probe_read(e->data.execve.cmdline, e->data.execve.cmdline_size & (CMDLINE_MAX_LEN - 1), temp);
 
     return true;
 }
@@ -225,12 +222,12 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     u32 config_id = 0;
     config_s *config;
     u32 userland_pid = 0;
-//    void *task;
+    long byte_count = 0;
 
     // bail early for syscalls we aren't interested in
     unsigned long long syscall = ctx->args[1];
     if ( 
-         (syscall != __NR_execve)
+            (syscall != __NR_execve)
          && (syscall != __NR_open)
          && (syscall != __NR_openat)
          && (syscall != __NR_accept)
@@ -255,10 +252,11 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         return 0;
 
     event->code_bytes_start = CODE_BYTES;
-    event->code_bytes_end = CODE_BYTES;
-    event->version = VERSION;
-    event->syscall_id = ctx->args[1];
-    event->pid = pid_tid >> 32;
+    event->code_bytes_end   = CODE_BYTES;
+    event->version          = VERSION;
+    event->status           = 0;
+    event->syscall_id       = ctx->args[1];
+    event->pid              = pid_tid >> 32;
 
 /*
     // get the task struct
@@ -283,21 +281,26 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         case __NR_openat: // syscall id #s might be kernel specific
         {
             volatile const char *pathname;
+            
+            if (0 == bpf_probe_read(&pathname, sizeof(pathname), (void *)&PT_REGS_PARM2(regs)) ){
+                if (0 >= (byte_count = bpf_probe_read_str(event->data.openat.filename, 
+                                                            sizeof(event->data.openat.filename), 
+                                                            (void *)pathname))){
+                    BPF_PRINTK("ERROR, OPEN(%lu): returned %ld\n", event->syscall_id, byte_count);
+                    event->status = -1;               
+                } 
+            }
 
-            bpf_probe_read(&pathname, sizeof(pathname), (void *)&PT_REGS_PARM2(regs)); //read addr into char*
-            bpf_probe_read_str(event->data.openat.filename, sizeof(event->data.openat.filename), (void *)pathname); // read str from char*
-            
-            // Debug
-            // char fmt[] = "OPEN: %s\n";
-            // bpf_trace_printk(fmt, sizeof(fmt), event->data.openat.filename);
-            
             break;
         }
         
         // int execve(const char *filename, char *const argv[], char *const envp[]);
         case __NR_execve: 
         {
-            extract_commandline(event, regs, cpu_id);
+            if (0 == extract_commandline(event, regs, cpu_id)){
+                BPF_PRINTK("ERROR, EXECVE(%lu): failed to get cmdline\n", event->syscall_id);
+                event->status = -1;
+            }
 
             break;
         }
@@ -307,25 +310,31 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         {
             struct sockaddr *addr;
                         
-            bpf_probe_read(&addr, sizeof(addr), (void *)&PT_REGS_PARM2(regs));
-            bpf_probe_read(&event->data.socket.addr, sizeof(event->data.socket.addr), (void *)addr);
+            if (0 == bpf_probe_read(&addr, sizeof(addr), (void *)&PT_REGS_PARM2(regs))){
+                if (0 != bpf_probe_read(&event->data.socket.addr, sizeof(event->data.socket.addr), (void *)addr)){
+                    BPF_PRINTK("ERROR, CONNECT(%lu): failed to get socket info\n", event->syscall_id);
+                    event->status = -1;
+                }
+            }
         }
 
         case __NR_accept4:
         case __NR_accept:
-            bpf_probe_read(&event->data.socket.addrp, sizeof(event->data.socket.addrp), (void *)&regs->si);
             
-            // if (NULL == event->data.socket.addrp){
-            //     char fmt[] = "ACCEPT: Empty\n";
-            //     bpf_trace_printk(fmt, sizeof(fmt));
-            // }
-
+            if (0 != bpf_probe_read(&event->data.socket.addrp, sizeof(event->data.socket.addrp), (void *)&regs->si)){
+                BPF_PRINTK("ERROR, ACCEPT(%lu): failed to get socket addr info\n", event->syscall_id);
+                event->status = -1;
+            }
+                        
             break;
         
     }
 
     // store event in the hash
-    bpf_map_update_elem(&events_hash, &pid_tid, event, BPF_ANY);
+    long ret = 0;
+    if (0 != (ret = bpf_map_update_elem(&events_hash, &pid_tid, event, BPF_ANY))){
+        BPF_PRINTK("ERROR, HASHMAP: failed to update event map, %ld\n", ret);
+    }
 
     return 0;
 }
@@ -363,64 +372,92 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
         // otherwise bail
         return 0;
 
-    //event->return_code = ctx->ret;
-    bpf_probe_read(&event->return_code, sizeof(s64), (void *)&PT_REGS_RC(regs));
+    // if the event is incomplete we dont want to process further. 
+    if (0 != event->status){
+        BPF_PRINTK("ERROR, sys_enter failed, stopping sys_exit processing %lu\n", event->syscall_id);
+    } 
+    else{        
+        
+        //event->return_code = ctx->ret;
+        if (0 != bpf_probe_read(&event->return_code, sizeof(s64), (void *)&PT_REGS_RC(regs))){
+            BPF_PRINTK("ERROR, failed to get return code, exiting syscall %lu\n", event->syscall_id);
+            event->status = -1;
+        }
+        else{
 
-    // timestamp
-    event->bootns = bpf_ktime_get_ns();
+            // timestamp
+            event->bootns = bpf_ktime_get_ns();
 
-    // get the task struct
-    task = (void *)bpf_get_current_task();
+            // get the task struct
+            task = (void *)bpf_get_current_task();
 
-    // get the ppid
-    event->ppid = (u32)deref_ptr(task, config->ppid);
+            // get the ppid
+            event->ppid = (u32)deref_ptr(task, config->ppid);
 
-    // get the session
-    event->auid = (u32)deref_ptr(task, config->auid);
-    event->ses = (u32)deref_ptr(task, config->ses);
-    if (!deref_string_into(event->tty, sizeof(event->tty), task, config->tty))
-        bpf_probe_read_str(event->tty, sizeof(event->tty), notty);
+            // get the session
+            event->auid = (u32)deref_ptr(task, config->auid);
+            event->ses = (u32)deref_ptr(task, config->ses);
 
-    // get the creds
-    cred = (void *)deref_ptr(task, config->cred);
-    if (cred) {
-        event->uid = (u32)deref_ptr(cred, config->cred_uid);
-        event->gid = (u32)deref_ptr(cred, config->cred_gid);
-        event->euid = (u32)deref_ptr(cred, config->cred_euid);
-        event->suid = (u32)deref_ptr(cred, config->cred_suid);
-        event->fsuid = (u32)deref_ptr(cred, config->cred_fsuid);
-        event->egid = (u32)deref_ptr(cred, config->cred_egid);
-        event->sgid = (u32)deref_ptr(cred, config->cred_sgid);
-        event->fsgid = (u32)deref_ptr(cred, config->cred_fsgid);
-    } else {
-        event->uid = -1;
-        event->gid = -1;
-        event->euid = -1;
-        event->suid = -1;
-        event->fsuid = -1;
-        event->egid = -1;
-        event->sgid = -1;
-        event->fsgid = -1;
-    }
+            if (!deref_string_into(event->tty, sizeof(event->tty), task, config->tty)){
+                bpf_probe_read_str(event->tty, sizeof(event->tty), notty);
+            }
 
-    // get the comm, etc
-    deref_string_into(event->comm, sizeof(event->comm), task, config->comm);
-    deref_filepath_into(event->exe, task, config->exe_path, config);
-    deref_filepath_into(event->pwd, task, config->pwd_path, config);
+            // get the creds
+            cred = (void *)deref_ptr(task, config->cred);
+            if (cred) {
+                event->uid = (u32)deref_ptr(cred, config->cred_uid);
+                event->gid = (u32)deref_ptr(cred, config->cred_gid);
+                event->euid = (u32)deref_ptr(cred, config->cred_euid);
+                event->suid = (u32)deref_ptr(cred, config->cred_suid);
+                event->fsuid = (u32)deref_ptr(cred, config->cred_fsuid);
+                event->egid = (u32)deref_ptr(cred, config->cred_egid);
+                event->sgid = (u32)deref_ptr(cred, config->cred_sgid);
+                event->fsgid = (u32)deref_ptr(cred, config->cred_fsgid);
+            } else {
+                BPF_PRINTK("ERROR, ACCEPT failed to deref creds\n");
+                event->status = -1;
 
-    switch(event->syscall_id)
-    {
-        case __NR_accept4:
-        case __NR_accept:
-        {
-            bpf_probe_read(&event->data.socket.addr, 
-                           sizeof(event->data.socket.addr), 
-                           (void *)event->data.socket.addrp);
-            break;
+                event->uid = -1;
+                event->gid = -1;
+                event->euid = -1;
+                event->suid = -1;
+                event->fsuid = -1;
+                event->egid = -1;
+                event->sgid = -1;
+                event->fsgid = -1;
+            }
+
+            // get the comm, etc
+            deref_string_into(event->comm, sizeof(event->comm), task, config->comm);
+            deref_filepath_into(event->exe, task, config->exe_path, config);
+            deref_filepath_into(event->pwd, task, config->pwd_path, config);
+
+            switch(event->syscall_id)
+            {
+                case __NR_accept4:
+                case __NR_accept:
+                {
+                    if (0 != bpf_probe_read(&event->data.socket.addr, 
+                                             sizeof(event->data.socket.addr), 
+                                             (void *)event->data.socket.addrp)){
+                        BPF_PRINTK("ERROR, ACCEPT failed to retrieve addr info\n");
+                        event->status = -1;
+                    }
+                    break;
+                }
+            }
+
+            // Pass the final result to user space if all is well
+            if (0 == event->status){
+                bpf_perf_event_output(ctx, &event_map, BPF_F_CURRENT_CPU, event, sizeof(event_s));
+            }
+            else{
+                BPF_PRINTK("ERROR, Unable to finish event... dropping\n");
+            }
         }
     }
-
-    bpf_perf_event_output(ctx, &event_map, BPF_F_CURRENT_CPU, event, sizeof(event_s));
+   
+    // Cleanup
     bpf_map_delete_elem(&events_hash, &pid_tid);
 
     return 0;

@@ -63,6 +63,7 @@ typedef struct e_rec {
     unsigned long int  code_bytes_start; //Always 0xdeadbeef = 3735928559
     unsigned int       version;
     unsigned long      bootns;
+    long int           status;
     unsigned long      syscall_id;
     unsigned long      a[4];
     unsigned int       pid;
