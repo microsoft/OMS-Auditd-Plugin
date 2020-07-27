@@ -34,6 +34,17 @@
 #include <bpf_tracing.h>
 #include "../../event_defs.h"
 
+// debug tracing cant be found using:
+// #cat /sys/kernel/debug/tracing/trace_pipe
+
+#ifdef DEBUG_K
+#define BPF_PRINTK( format, ... ) \
+    char fmt[] = format; \
+    bpf_trace_printk(fmt, sizeof(fmt), ##__VA_ARGS__ ); 
+#else
+#define BPF_PRINTK ((void)0);
+#endif
+
 struct bpf_map_def SEC("maps") event_map = {
 	.type = BPF_MAP_TYPE_PERF_EVENT_ARRAY, //BPF_MAP_TYPE_HASH doesnt stack....
 	.key_size = sizeof(int),
