@@ -33,9 +33,8 @@
 //https://elixir.free-electrons.com/linux/latest/source/samples/bpf/bpf_load.c#L339
 //https://stackoverflow.com/questions/57628432/ebpf-maps-for-one-element-map-type-and-kernel-user-space-communication
 
-//#define MAP_PAGE_SIZE (16 * 1024)
-//#define MAP_PAGE_SIZE 256
-#define MAP_PAGE_SIZE 1024
+#define MAP_PAGE_SIZE (16 * 1024)
+//#define MAP_PAGE_SIZE 1024
 #define DEBUGFS "/sys/kernel/debug/tracing/"
 
 #define KERN_TRACEPOINT_OBJ "ebpf_loader/ebpf_telemetry_kern_tp.o"
@@ -133,6 +132,12 @@ unsigned int *find_config_item(config_s *c, char *param)
         return c->mount_parent;
     else if (!strcmp(param, "mount_mountpoint"))
         return c->mount_mountpoint;
+    else if (!strcmp(param, "max_fds"))
+        return c->max_fds;
+    else if (!strcmp(param, "dfd_table"))
+        return c->dfd_table;
+    else if (!strcmp(param, "dfd_path"))
+        return c->dfd_path;
     else return NULL;
 }
 

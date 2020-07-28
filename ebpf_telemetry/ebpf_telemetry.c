@@ -56,7 +56,20 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
             case __NR_openat:
             case __NR_open:
             {
-                printf(" %s\n", event->data.openat.filename);
+                char temp[PATH_MAX * 2];
+                char abs_path[PATH_MAX];
+                if (event->data.openat.path.dfd_path[0] == 'A')
+                    snprintf(temp, PATH_MAX * 2, "%s", event->data.openat.path.pathname);
+                else if (event->data.openat.path.dfd_path[0] == 'C')
+                    snprintf(temp, PATH_MAX * 2, "%s/%s", event->pwd, event->data.openat.path.pathname);
+                else if (event->data.openat.path.dfd_path[0] != 'U')
+                    snprintf(temp, PATH_MAX * 2, "%s/%s", event->data.openat.path.dfd_path, event->data.openat.path.pathname);
+                else
+                    snprintf(temp, PATH_MAX * 2, "%s", event->data.openat.path.pathname);
+                if (realpath(temp, abs_path) != NULL)
+                    printf(" %s\n", abs_path);
+                else
+                    printf(" %s\n", temp);
                 break;
             }
 

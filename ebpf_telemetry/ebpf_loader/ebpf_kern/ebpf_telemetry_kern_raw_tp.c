@@ -211,6 +211,57 @@ static inline bool extract_commandline(event_s *e, struct pt_regs* r, u32 map_id
     return true;
 }
 
+__attribute__((always_inline))
+static inline bool resolve_dfd_path(event_path_s *dfd_path, int dfd, void *path_arg, void *task, config_s *config)
+{
+    char *pathname = NULL;
+    int byte_count;
+
+    if (0 == bpf_probe_read(&pathname, sizeof(pathname), path_arg) ){
+        if (0 >= (byte_count = bpf_probe_read_str(dfd_path->pathname, 
+                                                    sizeof(dfd_path->pathname), 
+                                                    (void *)pathname))){
+            BPF_PRINTK("ERROR, reading pathname, returned %ld\n", byte_count);
+            return false;
+        } 
+    }
+
+    dfd_path->dfd_path[1] = 0x00;
+    // find the dfd path and store in event
+    if (dfd_path->pathname[0] == '/') {
+        // absolute path
+        dfd_path->dfd_path[0] = 'A';
+        return true;
+    }
+    if (dfd == AT_FDCWD) {
+        // relative to current working directory
+        dfd_path->dfd_path[0] = 'C';
+        return true;
+    }
+
+    // check if dfd is valid
+    int max_fds = deref_ptr(task, config->max_fds);
+    if (dfd < 0 || dfd > MAX_FDS || max_fds <= 0 || dfd > max_fds) {
+        dfd_path->dfd_path[0] = 'U';
+        return false;
+    }
+
+    // resolve the dfd to the dfd_path
+    void **fd_table = (void **)deref_ptr(task, config->dfd_table);
+    if (!fd_table) {
+        dfd_path->dfd_path[0] = 'U';
+        return false;
+    }
+
+    void *file = NULL;
+    if (bpf_probe_read(&file, sizeof(file), &fd_table[dfd & MAX_FDS]) != 0 || !file) {
+        dfd_path->dfd_path[0] = 'U';
+        return false;
+    } else {
+        deref_filepath_into(dfd_path->dfd_path, file, config->dfd_path, config);
+    }
+    return true;
+}
 
 SEC("raw_tracepoint/sys_enter")
 __attribute__((flatten))
@@ -223,6 +274,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     config_s *config;
     u32 userland_pid = 0;
     long byte_count = 0;
+    void *task = NULL;
 
     // bail early for syscalls we aren't interested in
     unsigned long long syscall = ctx->args[1];
@@ -273,6 +325,9 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     // ------------------------------------------------------
     // x86-64        rdi   rsi   rdx   r10   r8    r9    -
 
+    // get the task struct
+    task = (void *)bpf_get_current_task();
+
     switch(event->syscall_id)
     {
         // int open(const char *pathname, int flags, mode_t mode);
@@ -281,7 +336,6 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         case __NR_open:
         case __NR_openat: // syscall id #s might be kernel specific
         {
-            volatile const char *pathname;
             void *path_arg = NULL;
             int dfd = 0;
 
@@ -290,18 +344,11 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
                 dfd = AT_FDCWD;
             } else {
                 path_arg = (void *)&PT_REGS_PARM2(regs);
-                dfd = (int)PT_REGS_PARM1(regs);
+                if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0)
+                    dfd = AT_FDCWD;
             }
             
-            if (0 == bpf_probe_read(&pathname, sizeof(pathname), path_arg) ){
-                if (0 >= (byte_count = bpf_probe_read_str(event->data.openat.filename, 
-                                                            sizeof(event->data.openat.filename), 
-                                                            (void *)pathname))){
-                    BPF_PRINTK("ERROR, OPEN(%lu): returned %ld\n", event->syscall_id, byte_count);
-                    event->status = -1;               
-                } 
-            }
-
+            resolve_dfd_path(&event->data.openat.path, dfd, path_arg, task, config);
             break;
         }
         

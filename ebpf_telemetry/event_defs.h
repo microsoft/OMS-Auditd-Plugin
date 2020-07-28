@@ -40,9 +40,21 @@
 
 #define NUM_REDIRECTS 8
 
+#define MAX_FDS 65535
+
+// file operations
+typedef struct e_path {
+    char    pathname[PATH_MAX];
+    char    dfd_path[PATH_MAX];
+} event_path_s;
+
 // __NR_openat
 typedef struct e_openat {
+/*
     char    filename[PATH_MAX];
+    char    dfd_path[PATH_MAX];
+*/
+    event_path_s  path;
 } event_openat_s;
 
 // __NR_execve
@@ -125,24 +137,9 @@ typedef struct conf {
     unsigned int mount_mnt[NUM_REDIRECTS];
     unsigned int mount_parent[NUM_REDIRECTS];
     unsigned int mount_mountpoint[NUM_REDIRECTS];
-    unsigned int cwd[NUM_REDIRECTS];
-    unsigned int proctitle[NUM_REDIRECTS];
-    unsigned int name_count[NUM_REDIRECTS];
-    unsigned int names_head[NUM_REDIRECTS];
-    unsigned int names_name[NUM_REDIRECTS];
-    unsigned int names_namelen[NUM_REDIRECTS];
-    unsigned int names_ino[NUM_REDIRECTS];
-    unsigned int names_dev[NUM_REDIRECTS];
-    unsigned int names_mode[NUM_REDIRECTS];
-    unsigned int names_ouid[NUM_REDIRECTS];
-    unsigned int names_ogid[NUM_REDIRECTS];
-    unsigned int names_rdev[NUM_REDIRECTS];
-    unsigned int names_type[NUM_REDIRECTS];
-    unsigned int names_cap_fp[NUM_REDIRECTS];
-    unsigned int names_cap_fi[NUM_REDIRECTS];
-    unsigned int names_cap_fe[NUM_REDIRECTS];
-    unsigned int names_cap_fver[NUM_REDIRECTS];
-    unsigned int names_cap_frootid[NUM_REDIRECTS];
+    unsigned int max_fds[NUM_REDIRECTS];
+    unsigned int dfd_table[NUM_REDIRECTS];
+    unsigned int dfd_path[NUM_REDIRECTS];
 } config_s;
 
 #endif
