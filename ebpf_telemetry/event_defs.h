@@ -44,16 +44,12 @@
 
 // file operations
 typedef struct e_path {
-    char    pathname[PATH_MAX];
-    char    dfd_path[PATH_MAX];
+    char          pathname[PATH_MAX];
+    char          dfd_path[PATH_MAX];
 } event_path_s;
 
 // __NR_openat
 typedef struct e_openat {
-/*
-    char    filename[PATH_MAX];
-    char    dfd_path[PATH_MAX];
-*/
     event_path_s  path;
 } event_openat_s;
 
