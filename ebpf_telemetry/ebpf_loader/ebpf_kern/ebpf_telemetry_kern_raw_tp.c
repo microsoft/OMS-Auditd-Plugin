@@ -275,14 +275,25 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 
     switch(event->syscall_id)
     {
+        // int open(const char *pathname, int flags, mode_t mode);
         // int openat(int dirfd, const char *pathname, int flags);
         // int openat(int dirfd, const char *pathname, int flags, mode_t mode);
         case __NR_open:
         case __NR_openat: // syscall id #s might be kernel specific
         {
             volatile const char *pathname;
+            void *path_arg = NULL;
+            int dfd = 0;
+
+            if (event->syscall_id == __NR_open) {
+                path_arg = (void *)&PT_REGS_PARM1(regs);
+                dfd = AT_FDCWD;
+            } else {
+                path_arg = (void *)&PT_REGS_PARM2(regs);
+                dfd = (int)PT_REGS_PARM1(regs);
+            }
             
-            if (0 == bpf_probe_read(&pathname, sizeof(pathname), (void *)&PT_REGS_PARM2(regs)) ){
+            if (0 == bpf_probe_read(&pathname, sizeof(pathname), path_arg) ){
                 if (0 >= (byte_count = bpf_probe_read_str(event->data.openat.filename, 
                                                             sizeof(event->data.openat.filename), 
                                                             (void *)pathname))){
