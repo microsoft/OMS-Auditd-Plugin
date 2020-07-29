@@ -29,9 +29,30 @@
 //https://elixir.free-electrons.com/linux/latest/source/samples/bpf/bpf_load.c#L339
 //https://stackoverflow.com/questions/57628432/ebpf-maps-for-one-element-map-type-and-kernel-user-space-communication
 
-unsigned int total_events = 0;
-unsigned int bad_events = 0;
+unsigned long total_events = 0;
+unsigned long bad_events = 0;
+unsigned int num_lost_notifications = 0;
+unsigned long num_lost_events = 0;
 struct utsname uname_data;
+
+void combine_paths(char *dest, event_path_s *path, char *pwd, bool resolvepath)
+{
+    char temp[PATH_MAX * 2];
+    char abs_path[PATH_MAX];
+
+    if (path->dfd_path[0] == 'A')
+        snprintf(temp, PATH_MAX * 2, "%s", path->pathname);
+    else if (path->dfd_path[0] == 'C')
+        snprintf(temp, PATH_MAX * 2, "%s/%s", pwd, path->pathname);
+    else if (path->dfd_path[0] != 'U')
+        snprintf(temp, PATH_MAX * 2, "%s/%s", path->dfd_path, path->pathname);
+    else
+        snprintf(temp, PATH_MAX * 2, "%s", path->pathname);
+
+    // don't resolve real path for symbolic links
+    if (!resolvepath || !realpath(temp, dest))
+        snprintf(dest, PATH_MAX, "%s", temp);
+}
 
 static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 {
@@ -53,23 +74,43 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 
         switch(event->syscall_id)
         {    
-            case __NR_openat:
             case __NR_open:
+            case __NR_openat:
+            case __NR_truncate:
+            case __NR_rmdir:
+            case __NR_creat:
+            case __NR_unlink:
+            case __NR_unlinkat:
+            case __NR_chmod:
+            case __NR_fchmodat:
+            case __NR_chown:
+            case __NR_lchown:
+            case __NR_fchownat:
+            case __NR_mknod:
+            case __NR_mknodat:
             {
-                char temp[PATH_MAX * 2];
                 char abs_path[PATH_MAX];
-                if (event->data.openat.path.dfd_path[0] == 'A')
-                    snprintf(temp, PATH_MAX * 2, "%s", event->data.openat.path.pathname);
-                else if (event->data.openat.path.dfd_path[0] == 'C')
-                    snprintf(temp, PATH_MAX * 2, "%s/%s", event->pwd, event->data.openat.path.pathname);
-                else if (event->data.openat.path.dfd_path[0] != 'U')
-                    snprintf(temp, PATH_MAX * 2, "%s/%s", event->data.openat.path.dfd_path, event->data.openat.path.pathname);
-                else
-                    snprintf(temp, PATH_MAX * 2, "%s", event->data.openat.path.pathname);
-                if (realpath(temp, abs_path) != NULL)
-                    printf(" %s\n", abs_path);
-                else
-                    printf(" %s\n", temp);
+
+                combine_paths(abs_path, &event->data.fileop.path1, event->pwd, true);
+                printf(" %s\n", abs_path);
+                break;
+            }
+
+            case __NR_rename:
+            case __NR_renameat:
+            case __NR_renameat2:
+            case __NR_link:
+            case __NR_linkat:
+            case __NR_symlink:
+            case __NR_symlinkat:
+            {
+                bool resolvepath = true;
+                char abs_path1[PATH_MAX];
+                char abs_path2[PATH_MAX];
+
+                combine_paths(abs_path1, &event->data.fileop.path1, event->pwd, resolvepath);
+                combine_paths(abs_path2, &event->data.fileop.path2, event->pwd, resolvepath);
+                printf(" %s   %s\n", abs_path1, abs_path2);
                 break;
             }
 
@@ -117,6 +158,8 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
 	fprintf(stdout, "Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+    num_lost_notifications++;
+    num_lost_events += lost_cnt;
     //assert(0);
 }
 
@@ -125,8 +168,8 @@ void intHandler(int code) {
     printf("\nStopping....\n");
     ebpf_telemetry_close_all();
 
-    printf("total events: %d, bad events: %d, ratio = %f\n", total_events, bad_events, (double)bad_events / total_events);
-    printf("sizeof(event_s) = %ld\n", sizeof(event_s));
+    printf("total events: %ld, bad events: %ld, ratio = %f\n", total_events, bad_events, (double)bad_events / total_events);
+    printf("lost events: %ld, in %d notifications\n", num_lost_events, num_lost_notifications);
    
     exit(0);
 }
@@ -134,6 +177,11 @@ void intHandler(int code) {
 int main(int argc, char *argv[])
 {
     printf("EBPF_Telemetry v%d.%d\n\n", EBPF_Telemetry_VERSION_MAJOR, EBPF_Telemetry_VERSION_MINOR);
+
+    if (sizeof(event_s) > MAX_EVENT_SIZE) {
+        printf("sizeof(event_s) == %ld > %d!\n", sizeof(event_s), MAX_EVENT_SIZE);
+        exit(1);
+    }
 
     if (uname(&uname_data) != 0) {
         printf("Failed to get uname\n");

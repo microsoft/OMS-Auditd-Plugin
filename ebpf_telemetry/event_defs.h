@@ -33,7 +33,7 @@
 #define FULL_MAX_ARGS_ARR (TOTAL_MAX_ARGS * ARGSIZE)
 #define LAST_ARG (FULL_MAX_ARGS_ARR - ARGSIZE)
 
-#define FILEPATH_NUMDIRS 128
+#define FILEPATH_NUMDIRS 32
 
 #define TTYSIZE 64
 #define COMMSIZE 16
@@ -42,16 +42,28 @@
 
 #define MAX_FDS 65535
 
+#define MAX_EVENT_SIZE (65536 - 8)
+
 // file operations
 typedef struct e_path {
     char          pathname[PATH_MAX];
     char          dfd_path[PATH_MAX];
 } event_path_s;
 
+/*
 // __NR_openat
 typedef struct e_openat {
     event_path_s  path;
 } event_openat_s;
+*/
+
+// file op: open/at, truncate, rename/at/2, rmdir, creat, link/at, unlink/at, symlink/at, chmod, fchmodat, chown, lchown, fchownat, mknod/at
+typedef struct e_fileop {
+    event_path_s  path1;
+    event_path_s  path2;
+    unsigned int  uid;
+    unsigned int  gid;
+} event_fileop_s;
 
 // __NR_execve
 typedef struct e_execve {
@@ -92,7 +104,7 @@ typedef struct e_rec {
     unsigned int       sgid;
     unsigned int       fsgid;
     union e_data {
-        event_openat_s openat;
+        event_fileop_s fileop;
         event_execve_s execve;
         event_socket_s socket;
     } data;

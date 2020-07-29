@@ -275,6 +275,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     u32 userland_pid = 0;
     long byte_count = 0;
     void *task = NULL;
+    int dfd = 0;
 
     // bail early for syscalls we aren't interested in
     unsigned long long syscall = ctx->args[1];
@@ -282,6 +283,25 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
             (syscall != __NR_execve)
          && (syscall != __NR_open)
          && (syscall != __NR_openat)
+         && (syscall != __NR_truncate)
+         && (syscall != __NR_rename)
+         && (syscall != __NR_renameat)
+         && (syscall != __NR_renameat2)
+         && (syscall != __NR_rmdir)
+         && (syscall != __NR_creat)
+         && (syscall != __NR_link)
+         && (syscall != __NR_linkat)
+         && (syscall != __NR_unlink)
+         && (syscall != __NR_unlinkat)
+         && (syscall != __NR_symlink)
+         && (syscall != __NR_symlinkat)
+         && (syscall != __NR_chmod)
+         && (syscall != __NR_fchmodat)
+         && (syscall != __NR_chown)
+         && (syscall != __NR_lchown)
+         && (syscall != __NR_fchownat)
+         && (syscall != __NR_mknod)
+         && (syscall != __NR_mknodat)
          && (syscall != __NR_accept)
          && (syscall != __NR_accept4)
          && (syscall != __NR_connect)
@@ -331,27 +351,180 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     switch(event->syscall_id)
     {
         // int open(const char *pathname, int flags, mode_t mode);
+        case __NR_open:
+        {
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            break;
+        }
+
         // int openat(int dirfd, const char *pathname, int flags);
         // int openat(int dirfd, const char *pathname, int flags, mode_t mode);
-        case __NR_open:
         case __NR_openat: // syscall id #s might be kernel specific
         {
-            void *path_arg = NULL;
-            int dfd = 0;
-
-            if (event->syscall_id == __NR_open) {
-                path_arg = (void *)&PT_REGS_PARM1(regs);
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
                 dfd = AT_FDCWD;
-            } else {
-                path_arg = (void *)&PT_REGS_PARM2(regs);
-                if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0)
-                    dfd = AT_FDCWD;
-            }
-            
-            resolve_dfd_path(&event->data.openat.path, dfd, path_arg, task, config);
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
+            break;
+        }
+
+        // int rename(const char *oldname, const char *newname);
+        case __NR_rename:
+        {
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path2, AT_FDCWD, (void *)&PT_REGS_PARM2(regs), task, config);
+            break;
+        }
+
+        // int renameat(int olddfd, const char *oldname, int newdfd, const char *newname, int flags);
+        // int renameat2(int olddfd, const char __user *oldname, int newdfd, const char __user *newname, unsigned int flags);
+        case __NR_renameat: // syscall id #s might be kernel specific
+        case __NR_renameat2: // syscall id #s might be kernel specific
+        {
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+                dfd = AT_FDCWD;
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM3(regs)) != 0 || dfd <= 0)
+                dfd = AT_FDCWD;
+            resolve_dfd_path(&event->data.fileop.path2, dfd, (void *)&PT_REGS_PARM4(regs), task, config);
+            break;
+        }
+
+        // int link(const char *oldname, const char *newname);
+        case __NR_link:
+        {
+
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path2, AT_FDCWD, (void *)&PT_REGS_PARM2(regs), task, config);
+            break;
+        }
+
+        // int linkat(int olddfd, const char *oldname, int newdfd, const char *newname, int flags);
+        case __NR_linkat: // syscall id #s might be kernel specific
+        {
+
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+                dfd = AT_FDCWD;
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM3(regs)) != 0 || dfd <= 0)
+                dfd = AT_FDCWD;
+            resolve_dfd_path(&event->data.fileop.path2, dfd, (void *)&PT_REGS_PARM4(regs), task, config);
+            break;
+        }
+
+        // int symlink(const char *oldname, const char *newname);
+        case __NR_symlink:
+        {
+
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path2, AT_FDCWD, (void *)&PT_REGS_PARM2(regs), task, config);
+            break;
+        }
+
+        // int symlinkat(const char *oldname, int newdfd, const char *newname);
+        case __NR_symlinkat: // syscall id #s might be kernel specific
+        {
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM2(regs)) != 0 || dfd <= 0)
+                dfd = AT_FDCWD;
+            resolve_dfd_path(&event->data.fileop.path2, dfd, (void *)&PT_REGS_PARM3(regs), task, config);
+            break;
+        }
+
+        // int chown(const char *pathname, uid_t user, gid_t group);
+        // int lchown(const char *pathname, uid_t user, gid_t group);
+        case __NR_chown:
+        case __NR_lchown:
+        {
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            if (bpf_probe_read(&event->data.fileop.uid, sizeof(event->data.fileop.uid), (void *)&PT_REGS_PARM2(regs)) != 0 || event->data.fileop.uid < 0)
+                event->data.fileop.uid = -1;
+            if (bpf_probe_read(&event->data.fileop.gid, sizeof(event->data.fileop.gid), (void *)&PT_REGS_PARM3(regs)) != 0 || event->data.fileop.gid < 0)
+                event->data.fileop.gid = -1;
+            break;
+        }
+
+        // int fchownat(int dfd, const char *pathname, uid_t user, gid_t group, int flag);
+        case __NR_fchownat: // syscall id #s might be kernel specific
+        {
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+                dfd = AT_FDCWD;
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
+            if (bpf_probe_read(&event->data.fileop.uid, sizeof(event->data.fileop.uid), (void *)&PT_REGS_PARM3(regs)) != 0 || event->data.fileop.uid < 0)
+                event->data.fileop.uid = -1;
+            if (bpf_probe_read(&event->data.fileop.gid, sizeof(event->data.fileop.gid), (void *)&PT_REGS_PARM4(regs)) != 0 || event->data.fileop.gid < 0)
+                event->data.fileop.gid = -1;
             break;
         }
         
+        // int unlink(const char *pathname);
+        case __NR_unlink:
+        {
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            break;
+        }
+
+        // int unlinkat(int dfd, const char *pathname, int flag);
+        case __NR_unlinkat: // syscall id #s might be kernel specific
+        {
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+                dfd = AT_FDCWD;
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
+            break;
+        }
+        
+        // int chmod(const char *pathname, mode_t mode);
+        case __NR_chmod:
+        {
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            break;
+        }
+
+        // int fchmodat(int dfd, const char *pathname, mode_t mode);
+        case __NR_fchmodat: // syscall id #s might be kernel specific
+        {
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+                dfd = AT_FDCWD;
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
+            break;
+        }
+        
+        // int mknod(const char *pathname, umode_t mode, unsigned dev);
+        case __NR_mknod:
+        {
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            break;
+        }
+
+        // int mknodat(int dfd, const char *pathname, int mode, unsigned dev);
+        case __NR_mknodat: // syscall id #s might be kernel specific
+        {
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+                dfd = AT_FDCWD;
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
+            break;
+        }
+        
+        // int truncate(const char *pathname, long length);
+        case __NR_truncate:
+        {
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            break;
+        }
+
+        // int rmdir(const char *pathname);
+        case __NR_rmdir:
+        {
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            break;
+        }
+
+        // int creat(const char *pathname, int mode);
+        case __NR_creat:
+        {
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            break;
+        }
+
         // int execve(const char *filename, char *const argv[], char *const envp[]);
         case __NR_execve: 
         {
