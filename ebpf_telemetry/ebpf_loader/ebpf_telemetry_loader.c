@@ -126,6 +126,14 @@ unsigned int *find_config_item(config_s *c, char *param)
         return c->dentry_parent;
     else if (!strcmp(param, "dentry_name"))
         return c->dentry_name;
+    else if (!strcmp(param, "dentry_inode"))
+        return c->dentry_inode;
+    else if (!strcmp(param, "inode_mode"))
+        return c->inode_mode;
+    else if (!strcmp(param, "inode_ouid"))
+        return c->inode_ouid;
+    else if (!strcmp(param, "inode_ogid"))
+        return c->inode_ogid;
     else if (!strcmp(param, "mount_mnt"))
         return c->mount_mnt;
     else if (!strcmp(param, "mount_parent"))

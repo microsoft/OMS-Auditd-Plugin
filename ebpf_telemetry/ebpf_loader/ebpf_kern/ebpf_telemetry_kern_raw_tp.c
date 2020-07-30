@@ -280,6 +280,112 @@ static inline unsigned long read_positive_arg(void *arg)
     return val;
 }
 
+__attribute__((always_inline))
+static inline void init_event(event_s *event, unsigned long syscall_id, unsigned int pid)
+{
+    event->code_bytes_start = CODE_BYTES;
+    event->code_bytes_end   = CODE_BYTES;
+    event->version          = VERSION;
+    event->status           = 0;
+    event->syscall_id       = syscall_id;
+    event->pid              = pid;
+}
+
+__attribute__((always_inline))
+static inline void set_event_args(event_s *event, struct pt_regs *regs)
+{
+    bpf_probe_read(&event->a[0], sizeof(event->a[0]), &SYSCALL_PT_REGS_PARM1(regs));
+    bpf_probe_read(&event->a[1], sizeof(event->a[1]), &SYSCALL_PT_REGS_PARM2(regs));
+    bpf_probe_read(&event->a[2], sizeof(event->a[2]), &SYSCALL_PT_REGS_PARM3(regs));
+    bpf_probe_read(&event->a[3], sizeof(event->a[3]), &SYSCALL_PT_REGS_PARM4(regs));
+    bpf_probe_read(&event->a[4], sizeof(event->a[4]), &SYSCALL_PT_REGS_PARM5(regs));
+    bpf_probe_read(&event->a[5], sizeof(event->a[5]), &SYSCALL_PT_REGS_PARM6(regs));
+}
+
+__attribute__((always_inline))
+static inline bool set_event_exe_info(event_s *event, void *task, struct pt_regs *regs, config_s *config)
+{
+    void *path;
+    void *dentry;
+    void *inode;
+
+    path = deref_member(task, config->exe_path);
+    if (!path)
+        return false;
+    if (bpf_probe_read(&dentry, sizeof(dentry), path + config->path_dentry[0]) != 0)
+        return false;
+    inode = (void *)deref_ptr(dentry, config->dentry_inode);
+    if (!inode)
+        return false;
+    event->exe_mode = (u16)deref_ptr(inode, config->inode_mode);
+    event->exe_ouid = (u32)deref_ptr(inode, config->inode_ouid);
+    event->exe_ogid = (u32)deref_ptr(inode, config->inode_ogid);
+    return true;
+}
+
+__attribute__((always_inline))
+static inline bool set_event_exit_info(event_s *event, void *task, struct pt_regs *regs, config_s *config)
+{
+    void *cred;
+    char notty[] = "(none)";
+
+    if (0 != bpf_probe_read(&event->return_code, sizeof(s64), (void *)&SYSCALL_PT_REGS_RC(regs))){
+        BPF_PRINTK("ERROR, failed to get return code, exiting syscall %lu\n", event->syscall_id);
+        event->status = -1;
+    }
+
+    // timestamp
+    event->bootns = bpf_ktime_get_ns();
+
+    // get the ppid
+    event->ppid = (u32)deref_ptr(task, config->ppid);
+
+    // get the session
+    event->auid = (u32)deref_ptr(task, config->auid);
+    event->ses = (u32)deref_ptr(task, config->ses);
+
+    if (!deref_string_into(event->tty, sizeof(event->tty), task, config->tty)){
+        bpf_probe_read_str(event->tty, sizeof(event->tty), notty);
+    }
+
+    // get the creds
+    cred = (void *)deref_ptr(task, config->cred);
+    if (cred) {
+        event->uid = (u32)deref_ptr(cred, config->cred_uid);
+        event->gid = (u32)deref_ptr(cred, config->cred_gid);
+        event->euid = (u32)deref_ptr(cred, config->cred_euid);
+        event->suid = (u32)deref_ptr(cred, config->cred_suid);
+        event->fsuid = (u32)deref_ptr(cred, config->cred_fsuid);
+        event->egid = (u32)deref_ptr(cred, config->cred_egid);
+        event->sgid = (u32)deref_ptr(cred, config->cred_sgid);
+        event->fsgid = (u32)deref_ptr(cred, config->cred_fsgid);
+    } else {
+        BPF_PRINTK("ERROR, ACCEPT failed to deref creds\n");
+        event->status = -1;
+
+        event->uid = -1;
+        event->gid = -1;
+        event->euid = -1;
+        event->suid = -1;
+        event->fsuid = -1;
+        event->egid = -1;
+        event->sgid = -1;
+        event->fsgid = -1;
+    }
+
+    // get the comm, etc
+    deref_string_into(event->comm, sizeof(event->comm), task, config->comm);
+    deref_filepath_into(event->exe, task, config->exe_path, config);
+    deref_filepath_into(event->pwd, task, config->pwd_path, config);
+    set_event_exe_info(event, task, regs, config);
+
+    if (event->status == -1)
+        return false;
+    else
+        return true;
+}
+
+ 
 SEC("raw_tracepoint/sys_enter")
 __attribute__((flatten))
 int sys_enter(struct bpf_raw_tracepoint_args *ctx)
@@ -290,9 +396,8 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     u32 config_id = 0;
     config_s *config;
     u32 userland_pid = 0;
-    long byte_count = 0;
-    void *task = NULL;
     int dfd = 0;
+    void *task = NULL;
 
     // bail early for syscalls we aren't interested in
     unsigned long long syscall = ctx->args[1];
@@ -332,6 +437,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 
     userland_pid = config->userland_pid;
 
+    // don't report any syscalls for the userland PID
     if ((pid_tid >> 32) == userland_pid)
         return 0;
 
@@ -340,25 +446,12 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
     if (!event)
         return 0;
 
-    event->code_bytes_start = CODE_BYTES;
-    event->code_bytes_end   = CODE_BYTES;
-    event->version          = VERSION;
-    event->status           = 0;
-    event->syscall_id       = ctx->args[1];
-    event->pid              = pid_tid >> 32;
-
-/*
-    // get the task struct
-    task = (void *)bpf_get_current_task();
-*/
-
+    // retrieve the register state
     struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
-    bpf_probe_read(&event->a[0], sizeof(event->a[0]), &SYSCALL_PT_REGS_PARM1(regs));
-    bpf_probe_read(&event->a[1], sizeof(event->a[1]), &SYSCALL_PT_REGS_PARM2(regs));
-    bpf_probe_read(&event->a[2], sizeof(event->a[2]), &SYSCALL_PT_REGS_PARM3(regs));
-    bpf_probe_read(&event->a[3], sizeof(event->a[3]), &SYSCALL_PT_REGS_PARM4(regs));
-    bpf_probe_read(&event->a[4], sizeof(event->a[4]), &SYSCALL_PT_REGS_PARM5(regs));
-    bpf_probe_read(&event->a[5], sizeof(event->a[5]), &SYSCALL_PT_REGS_PARM6(regs));
+
+    // initialise the event
+    init_event(event, ctx->args[1], pid_tid >> 32);
+    set_event_args(event, regs);
     
     // arch/ABI      arg1  arg2  arg3  arg4  arg5  arg6  arg7  
     // ------------------------------------------------------
@@ -591,7 +684,7 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
 {
     u64 pid_tid = bpf_get_current_pid_tgid();
     event_s *event = NULL;
-    volatile struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
+    struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
     u32 config_id = 0;
     config_s *config;
     u32 userland_pid = 0;
@@ -607,6 +700,7 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
 
     userland_pid = config->userland_pid;
 
+    // don't report any syscalls for the userland PID
     if ((pid_tid >> 32) == userland_pid)
         return 0;
 
@@ -618,89 +712,37 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
         // otherwise bail
         return 0;
 
-    // if the event is incomplete we dont want to process further. 
+    // get the task struct
+    task = (void *)bpf_get_current_task();
+
+    // if the event is incomplete we may not want to process further. 
     if (0 != event->status){
         BPF_PRINTK("ERROR, sys_enter failed, stopping sys_exit processing %lu\n", event->syscall_id);
     } 
-    else{        
         
-        //event->return_code = ctx->ret;
-        if (0 != bpf_probe_read(&event->return_code, sizeof(s64), (void *)&SYSCALL_PT_REGS_RC(regs))){
-            BPF_PRINTK("ERROR, failed to get return code, exiting syscall %lu\n", event->syscall_id);
-            event->status = -1;
-        }
-        else{
+    set_event_exit_info(event, task, regs, config);
 
-            // timestamp
-            event->bootns = bpf_ktime_get_ns();
-
-            // get the task struct
-            task = (void *)bpf_get_current_task();
-
-            // get the ppid
-            event->ppid = (u32)deref_ptr(task, config->ppid);
-
-            // get the session
-            event->auid = (u32)deref_ptr(task, config->auid);
-            event->ses = (u32)deref_ptr(task, config->ses);
-
-            if (!deref_string_into(event->tty, sizeof(event->tty), task, config->tty)){
-                bpf_probe_read_str(event->tty, sizeof(event->tty), notty);
-            }
-
-            // get the creds
-            cred = (void *)deref_ptr(task, config->cred);
-            if (cred) {
-                event->uid = (u32)deref_ptr(cred, config->cred_uid);
-                event->gid = (u32)deref_ptr(cred, config->cred_gid);
-                event->euid = (u32)deref_ptr(cred, config->cred_euid);
-                event->suid = (u32)deref_ptr(cred, config->cred_suid);
-                event->fsuid = (u32)deref_ptr(cred, config->cred_fsuid);
-                event->egid = (u32)deref_ptr(cred, config->cred_egid);
-                event->sgid = (u32)deref_ptr(cred, config->cred_sgid);
-                event->fsgid = (u32)deref_ptr(cred, config->cred_fsgid);
-            } else {
-                BPF_PRINTK("ERROR, ACCEPT failed to deref creds\n");
+    switch(event->syscall_id)
+    {
+        case __NR_accept4:
+        case __NR_accept:
+        {
+            if (0 != bpf_probe_read(&event->data.socket.addr, 
+                                     sizeof(event->data.socket.addr), 
+                                     (void *)event->data.socket.addrp)){
+                BPF_PRINTK("ERROR, ACCEPT failed to retrieve addr info\n");
                 event->status = -1;
-
-                event->uid = -1;
-                event->gid = -1;
-                event->euid = -1;
-                event->suid = -1;
-                event->fsuid = -1;
-                event->egid = -1;
-                event->sgid = -1;
-                event->fsgid = -1;
             }
-
-            // get the comm, etc
-            deref_string_into(event->comm, sizeof(event->comm), task, config->comm);
-            deref_filepath_into(event->exe, task, config->exe_path, config);
-            deref_filepath_into(event->pwd, task, config->pwd_path, config);
-
-            switch(event->syscall_id)
-            {
-                case __NR_accept4:
-                case __NR_accept:
-                {
-                    if (0 != bpf_probe_read(&event->data.socket.addr, 
-                                             sizeof(event->data.socket.addr), 
-                                             (void *)event->data.socket.addrp)){
-                        BPF_PRINTK("ERROR, ACCEPT failed to retrieve addr info\n");
-                        event->status = -1;
-                    }
-                    break;
-                }
-            }
-
-            // Pass the final result to user space if all is well
-            if (0 == event->status){
-                bpf_perf_event_output(ctx, &event_map, BPF_F_CURRENT_CPU, event, sizeof(event_s));
-            }
-            else{
-                BPF_PRINTK("ERROR, Unable to finish event... dropping\n");
-            }
+            break;
         }
+    }
+
+    // Pass the final result to user space if all is well
+    if (0 == event->status){
+        bpf_perf_event_output(ctx, &event_map, BPF_F_CURRENT_CPU, event, sizeof(event_s));
+    }
+    else{
+        BPF_PRINTK("ERROR, Unable to finish event... dropping\n");
     }
    
     // Cleanup

@@ -68,7 +68,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
         printf("a0=%lx a1=%lx a2=%lx a3=%lx a4=%lx a5=%lx ", event->a[0], event->a[1], event->a[2], event->a[3], event->a[4], event->a[5]);
         printf("ppid=%u pid=%u ", event->ppid, event->pid);
         printf("auid=%u uid=%u gid=%u euid=%u suid=%u fsuid=%u egid=%u sgid=%u fsgid=%u ", event->auid, event->uid, event->gid, event->euid, event->suid, event->fsuid, event->egid, event->sgid, event->fsgid);
-        printf("tty=%s ses=%u comm=%s exe=%s cwd=%s \n", event->tty, event->ses, event->comm, event->exe, event->pwd);
+        printf("tty=%s ses=%u comm=%s exe=%s exe_mode=%o exe_ouid=%d exe_ogid=%d cwd=%s \n", event->tty, event->ses, event->comm, event->exe, event->exe_mode, event->exe_ouid, event->exe_ogid, event->pwd);
 //        printf("name="/usr/local/sbin/grep" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0 path_name=["/usr/local/sbin/grep"] path_nametype=["UNKNOWN"] path_mode=[""] path_ouid=[""] path_ogid=[""] proctitle=/bin/sh /bin/egrep -q "(envID|VxID):.*[1-9]" /proc/self/status containerid=\n", 
 
 
