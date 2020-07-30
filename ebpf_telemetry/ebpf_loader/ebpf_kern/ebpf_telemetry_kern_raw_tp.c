@@ -23,6 +23,14 @@
 
 #include "ebpf_kern_common.h"
 
+// x64 syscall macros
+#define SYSCALL_PT_REGS_PARM1(x) ((x)->di)
+#define SYSCALL_PT_REGS_PARM2(x) ((x)->si)
+#define SYSCALL_PT_REGS_PARM3(x) ((x)->dx)
+#define SYSCALL_PT_REGS_PARM4(x) ((x)->r10)
+#define SYSCALL_PT_REGS_PARM5(x) ((x)->r8)
+#define SYSCALL_PT_REGS_PARM6(x) ((x)->r9)
+#define SYSCALL_PT_REGS_RC(x)    ((x)->ax)
 
 __attribute__((always_inline))
 static inline void *deref_member(void *base, unsigned int *refs)
@@ -189,7 +197,7 @@ static inline bool extract_commandline(event_s *e, struct pt_regs* r, u32 map_id
         return false;
    
     // get the args
-    if (bpf_probe_read(&argv, sizeof(argv), (void *)&PT_REGS_PARM2(r)) != 0)
+    if (bpf_probe_read(&argv, sizeof(argv), (void *)&SYSCALL_PT_REGS_PARM2(r)) != 0)
         return false;
     
     #pragma unroll // no loops in eBPF, but need to get all args....
@@ -261,6 +269,15 @@ static inline bool resolve_dfd_path(event_path_s *dfd_path, int dfd, void *path_
         deref_filepath_into(dfd_path->dfd_path, file, config->dfd_path, config);
     }
     return true;
+}
+
+__attribute__((always_inline))
+static inline unsigned long read_positive_arg(void *arg)
+{
+    unsigned long val = -1;
+    if (bpf_probe_read(&val, sizeof(val), arg) != 0 || val < 0)
+        val = -1;
+    return val;
 }
 
 SEC("raw_tracepoint/sys_enter")
@@ -336,10 +353,12 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 */
 
     struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
-    bpf_probe_read(&event->a[0], sizeof(event->a[0]), &PT_REGS_PARM1(regs));
-    bpf_probe_read(&event->a[1], sizeof(event->a[1]), &PT_REGS_PARM2(regs));
-    bpf_probe_read(&event->a[2], sizeof(event->a[2]), &PT_REGS_PARM3(regs));
-    bpf_probe_read(&event->a[3], sizeof(event->a[3]), &PT_REGS_PARM4(regs));
+    bpf_probe_read(&event->a[0], sizeof(event->a[0]), &SYSCALL_PT_REGS_PARM1(regs));
+    bpf_probe_read(&event->a[1], sizeof(event->a[1]), &SYSCALL_PT_REGS_PARM2(regs));
+    bpf_probe_read(&event->a[2], sizeof(event->a[2]), &SYSCALL_PT_REGS_PARM3(regs));
+    bpf_probe_read(&event->a[3], sizeof(event->a[3]), &SYSCALL_PT_REGS_PARM4(regs));
+    bpf_probe_read(&event->a[4], sizeof(event->a[4]), &SYSCALL_PT_REGS_PARM5(regs));
+    bpf_probe_read(&event->a[5], sizeof(event->a[5]), &SYSCALL_PT_REGS_PARM6(regs));
     
     // arch/ABI      arg1  arg2  arg3  arg4  arg5  arg6  arg7  
     // ------------------------------------------------------
@@ -353,7 +372,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         // int open(const char *pathname, int flags, mode_t mode);
         case __NR_open:
         {
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
             break;
         }
 
@@ -361,17 +380,17 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         // int openat(int dirfd, const char *pathname, int flags, mode_t mode);
         case __NR_openat: // syscall id #s might be kernel specific
         {
-            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&SYSCALL_PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
                 dfd = AT_FDCWD;
-            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&SYSCALL_PT_REGS_PARM2(regs), task, config);
             break;
         }
 
         // int rename(const char *oldname, const char *newname);
         case __NR_rename:
         {
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
-            resolve_dfd_path(&event->data.fileop.path2, AT_FDCWD, (void *)&PT_REGS_PARM2(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path2, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM2(regs), task, config);
             break;
         }
 
@@ -380,12 +399,12 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         case __NR_renameat: // syscall id #s might be kernel specific
         case __NR_renameat2: // syscall id #s might be kernel specific
         {
-            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&SYSCALL_PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
                 dfd = AT_FDCWD;
-            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
-            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM3(regs)) != 0 || dfd <= 0)
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&SYSCALL_PT_REGS_PARM2(regs), task, config);
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&SYSCALL_PT_REGS_PARM3(regs)) != 0 || dfd <= 0)
                 dfd = AT_FDCWD;
-            resolve_dfd_path(&event->data.fileop.path2, dfd, (void *)&PT_REGS_PARM4(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path2, dfd, (void *)&SYSCALL_PT_REGS_PARM4(regs), task, config);
             break;
         }
 
@@ -393,8 +412,8 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         case __NR_link:
         {
 
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
-            resolve_dfd_path(&event->data.fileop.path2, AT_FDCWD, (void *)&PT_REGS_PARM2(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path2, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM2(regs), task, config);
             break;
         }
 
@@ -402,12 +421,12 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         case __NR_linkat: // syscall id #s might be kernel specific
         {
 
-            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&SYSCALL_PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
                 dfd = AT_FDCWD;
-            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
-            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM3(regs)) != 0 || dfd <= 0)
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&SYSCALL_PT_REGS_PARM2(regs), task, config);
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&SYSCALL_PT_REGS_PARM3(regs)) != 0 || dfd <= 0)
                 dfd = AT_FDCWD;
-            resolve_dfd_path(&event->data.fileop.path2, dfd, (void *)&PT_REGS_PARM4(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path2, dfd, (void *)&SYSCALL_PT_REGS_PARM4(regs), task, config);
             break;
         }
 
@@ -415,18 +434,18 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         case __NR_symlink:
         {
 
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
-            resolve_dfd_path(&event->data.fileop.path2, AT_FDCWD, (void *)&PT_REGS_PARM2(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path2, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM2(regs), task, config);
             break;
         }
 
         // int symlinkat(const char *oldname, int newdfd, const char *newname);
         case __NR_symlinkat: // syscall id #s might be kernel specific
         {
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
-            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM2(regs)) != 0 || dfd <= 0)
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&SYSCALL_PT_REGS_PARM2(regs)) != 0 || dfd <= 0)
                 dfd = AT_FDCWD;
-            resolve_dfd_path(&event->data.fileop.path2, dfd, (void *)&PT_REGS_PARM3(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path2, dfd, (void *)&SYSCALL_PT_REGS_PARM3(regs), task, config);
             break;
         }
 
@@ -435,93 +454,89 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         case __NR_chown:
         case __NR_lchown:
         {
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
-            if (bpf_probe_read(&event->data.fileop.uid, sizeof(event->data.fileop.uid), (void *)&PT_REGS_PARM2(regs)) != 0 || event->data.fileop.uid < 0)
-                event->data.fileop.uid = -1;
-            if (bpf_probe_read(&event->data.fileop.gid, sizeof(event->data.fileop.gid), (void *)&PT_REGS_PARM3(regs)) != 0 || event->data.fileop.gid < 0)
-                event->data.fileop.gid = -1;
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
+            event->data.fileop.uid = read_positive_arg((void *)&SYSCALL_PT_REGS_PARM2(regs));
+            event->data.fileop.gid = read_positive_arg((void *)&SYSCALL_PT_REGS_PARM3(regs));
             break;
         }
 
         // int fchownat(int dfd, const char *pathname, uid_t user, gid_t group, int flag);
         case __NR_fchownat: // syscall id #s might be kernel specific
         {
-            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&SYSCALL_PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
                 dfd = AT_FDCWD;
-            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
-            if (bpf_probe_read(&event->data.fileop.uid, sizeof(event->data.fileop.uid), (void *)&PT_REGS_PARM3(regs)) != 0 || event->data.fileop.uid < 0)
-                event->data.fileop.uid = -1;
-            if (bpf_probe_read(&event->data.fileop.gid, sizeof(event->data.fileop.gid), (void *)&PT_REGS_PARM4(regs)) != 0 || event->data.fileop.gid < 0)
-                event->data.fileop.gid = -1;
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&SYSCALL_PT_REGS_PARM2(regs), task, config);
+            event->data.fileop.uid = (int)read_positive_arg((void *)&SYSCALL_PT_REGS_PARM3(regs));
+            event->data.fileop.gid = (int)read_positive_arg((void *)&SYSCALL_PT_REGS_PARM4(regs));
             break;
         }
         
         // int unlink(const char *pathname);
         case __NR_unlink:
         {
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
             break;
         }
 
         // int unlinkat(int dfd, const char *pathname, int flag);
         case __NR_unlinkat: // syscall id #s might be kernel specific
         {
-            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&SYSCALL_PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
                 dfd = AT_FDCWD;
-            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&SYSCALL_PT_REGS_PARM2(regs), task, config);
             break;
         }
         
         // int chmod(const char *pathname, mode_t mode);
         case __NR_chmod:
         {
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
             break;
         }
 
         // int fchmodat(int dfd, const char *pathname, mode_t mode);
         case __NR_fchmodat: // syscall id #s might be kernel specific
         {
-            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&SYSCALL_PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
                 dfd = AT_FDCWD;
-            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&SYSCALL_PT_REGS_PARM2(regs), task, config);
             break;
         }
         
         // int mknod(const char *pathname, umode_t mode, unsigned dev);
         case __NR_mknod:
         {
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
             break;
         }
 
         // int mknodat(int dfd, const char *pathname, int mode, unsigned dev);
         case __NR_mknodat: // syscall id #s might be kernel specific
         {
-            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
+            if (bpf_probe_read(&dfd, sizeof(dfd), (void *)&SYSCALL_PT_REGS_PARM1(regs)) != 0 || dfd <= 0)
                 dfd = AT_FDCWD;
-            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&PT_REGS_PARM2(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, dfd, (void *)&SYSCALL_PT_REGS_PARM2(regs), task, config);
             break;
         }
         
         // int truncate(const char *pathname, long length);
         case __NR_truncate:
         {
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
             break;
         }
 
         // int rmdir(const char *pathname);
         case __NR_rmdir:
         {
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
             break;
         }
 
         // int creat(const char *pathname, int mode);
         case __NR_creat:
         {
-            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&PT_REGS_PARM1(regs), task, config);
+            resolve_dfd_path(&event->data.fileop.path1, AT_FDCWD, (void *)&SYSCALL_PT_REGS_PARM1(regs), task, config);
             break;
         }
 
@@ -541,7 +556,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         {
             struct sockaddr *addr;
                         
-            if (0 == bpf_probe_read(&addr, sizeof(addr), (void *)&PT_REGS_PARM2(regs))){
+            if (0 == bpf_probe_read(&addr, sizeof(addr), (void *)&SYSCALL_PT_REGS_PARM2(regs))){
                 if (0 != bpf_probe_read(&event->data.socket.addr, sizeof(event->data.socket.addr), (void *)addr)){
                     BPF_PRINTK("ERROR, CONNECT(%lu): failed to get socket info\n", event->syscall_id);
                     event->status = -1;
@@ -610,7 +625,7 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
     else{        
         
         //event->return_code = ctx->ret;
-        if (0 != bpf_probe_read(&event->return_code, sizeof(s64), (void *)&PT_REGS_RC(regs))){
+        if (0 != bpf_probe_read(&event->return_code, sizeof(s64), (void *)&SYSCALL_PT_REGS_RC(regs))){
             BPF_PRINTK("ERROR, failed to get return code, exiting syscall %lu\n", event->syscall_id);
             event->status = -1;
         }

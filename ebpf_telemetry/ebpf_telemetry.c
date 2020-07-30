@@ -65,7 +65,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
     {   
         printf("timestamp=%ld.%ld ", event->bootns / (1000 * 1000 * 1000), event->bootns % (1000 * 1000 * 1000));
         printf("node=%s arch=%s syscall=%lu success=%s exit=%ld ", uname_data.nodename, uname_data.machine, event->syscall_id, (event->return_code >= 0 ? "yes" : "no"), event->return_code);
-        printf("a0=%lx a1=%lx a2=%lx a3=%lx ", event->a[0], event->a[1], event->a[2], event->a[3]);
+        printf("a0=%lx a1=%lx a2=%lx a3=%lx a4=%lx a5=%lx ", event->a[0], event->a[1], event->a[2], event->a[3], event->a[4], event->a[5]);
         printf("ppid=%u pid=%u ", event->ppid, event->pid);
         printf("auid=%u uid=%u gid=%u euid=%u suid=%u fsuid=%u egid=%u sgid=%u fsgid=%u ", event->auid, event->uid, event->gid, event->euid, event->suid, event->fsuid, event->egid, event->sgid, event->fsgid);
         printf("tty=%s ses=%u comm=%s exe=%s cwd=%s \n", event->tty, event->ses, event->comm, event->exe, event->pwd);
@@ -83,9 +83,6 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
             case __NR_unlinkat:
             case __NR_chmod:
             case __NR_fchmodat:
-            case __NR_chown:
-            case __NR_lchown:
-            case __NR_fchownat:
             case __NR_mknod:
             case __NR_mknodat:
             {
@@ -93,6 +90,17 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 
                 combine_paths(abs_path, &event->data.fileop.path1, event->pwd, true);
                 printf(" %s\n", abs_path);
+                break;
+            }
+
+            case __NR_chown:
+            case __NR_lchown:
+            case __NR_fchownat:
+            {
+                char abs_path[PATH_MAX];
+
+                combine_paths(abs_path, &event->data.fileop.path1, event->pwd, true);
+                printf(" %s  uid: %d, gid: %d\n", abs_path, event->data.fileop.uid, event->data.fileop.gid);
                 break;
             }
 

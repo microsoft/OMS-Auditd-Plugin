@@ -50,19 +50,14 @@ typedef struct e_path {
     char          dfd_path[PATH_MAX];
 } event_path_s;
 
-/*
-// __NR_openat
-typedef struct e_openat {
-    event_path_s  path;
-} event_openat_s;
-*/
-
 // file op: open/at, truncate, rename/at/2, rmdir, creat, link/at, unlink/at, symlink/at, chmod, fchmodat, chown, lchown, fchownat, mknod/at
 typedef struct e_fileop {
     event_path_s  path1;
     event_path_s  path2;
-    unsigned int  uid;
-    unsigned int  gid;
+    int  uid;
+    int  gid;
+    unsigned long mode;
+    unsigned long flags;
 } event_fileop_s;
 
 // __NR_execve
@@ -85,7 +80,7 @@ typedef struct e_rec {
     unsigned long      bootns;
     long int           status;
     unsigned long      syscall_id;
-    unsigned long      a[4];
+    unsigned long      a[6];
     unsigned int       pid;
     long int           return_code;
     unsigned int       ppid;
