@@ -44,6 +44,31 @@
 
 #define MAX_EVENT_SIZE (65536 - 8)
 
+#define SYSCALL_MAX 335
+#define SYSCALL_ARRAY_SIZE 512
+#define COMP_ERROR 0
+#define COMP_EQ    1
+#define COMP_LT    2
+#define COMP_GT    3
+#define COMP_AND   4
+#define COMP_OR    5
+
+#define ARG_MASK 7
+#define ACTIVE_MASK 0x1f
+#define ACTIVE_SYSCALL 0x20
+#define ACTIVE_NOFAIL  0x40
+#define ACTIVE_PARSEV  0x80
+
+#define STATUS_VALUE   0x0001
+#define STATUS_RC      0x0002
+#define STATUS_CRED    0x0004
+#define STATUS_COMM    0x0008
+#define STATUS_EXE     0x0010
+#define STATUS_PWD     0x0020
+#define STATUS_EXEINFO 0x0040
+#define STATUS_NOTASK  0x0080
+
+
 // file operations
 typedef struct e_path {
     char          pathname[PATH_MAX];
@@ -78,9 +103,9 @@ typedef struct e_rec {
     unsigned long int  code_bytes_start; //Always 0xdeadbeef = 3735928559
     unsigned int       version;
     unsigned long      bootns;
-    long int           status;
+    unsigned int       status;
     unsigned long      syscall_id;
-    unsigned long      a[6];
+    unsigned long      a[8]; // Should only be 6 but this helps with verifier
     unsigned int       pid;
     long int           return_code;
     unsigned int       ppid;
@@ -111,45 +136,62 @@ typedef struct e_rec {
 
 // configuration
 typedef struct conf {
-    unsigned int userland_pid;
-    unsigned int timesec[NUM_REDIRECTS];
-    unsigned int timensec[NUM_REDIRECTS];
-    unsigned int serial[NUM_REDIRECTS];
-    unsigned int arch[NUM_REDIRECTS];
-    unsigned int arg0[NUM_REDIRECTS];
-    unsigned int arg1[NUM_REDIRECTS];
-    unsigned int arg2[NUM_REDIRECTS];
-    unsigned int arg3[NUM_REDIRECTS];
-    unsigned int ppid[NUM_REDIRECTS];
-    unsigned int auid[NUM_REDIRECTS];
-    unsigned int cred[NUM_REDIRECTS];
-    unsigned int cred_uid[NUM_REDIRECTS];
-    unsigned int cred_gid[NUM_REDIRECTS];
-    unsigned int cred_euid[NUM_REDIRECTS];
-    unsigned int cred_suid[NUM_REDIRECTS];
-    unsigned int cred_fsuid[NUM_REDIRECTS];
-    unsigned int cred_egid[NUM_REDIRECTS];
-    unsigned int cred_sgid[NUM_REDIRECTS];
-    unsigned int cred_fsgid[NUM_REDIRECTS];
-    unsigned int ses[NUM_REDIRECTS];
-    unsigned int tty[NUM_REDIRECTS];
-    unsigned int comm[NUM_REDIRECTS];
-    unsigned int exe_path[NUM_REDIRECTS];
-    unsigned int pwd_path[NUM_REDIRECTS];
-    unsigned int path_vfsmount[NUM_REDIRECTS];
-    unsigned int path_dentry[NUM_REDIRECTS];
-    unsigned int dentry_parent[NUM_REDIRECTS];
-    unsigned int dentry_name[NUM_REDIRECTS];
-    unsigned int dentry_inode[NUM_REDIRECTS];
-    unsigned int inode_mode[NUM_REDIRECTS];
-    unsigned int inode_ouid[NUM_REDIRECTS];
-    unsigned int inode_ogid[NUM_REDIRECTS];
-    unsigned int mount_mnt[NUM_REDIRECTS];
-    unsigned int mount_parent[NUM_REDIRECTS];
-    unsigned int mount_mountpoint[NUM_REDIRECTS];
-    unsigned int max_fds[NUM_REDIRECTS];
-    unsigned int dfd_table[NUM_REDIRECTS];
-    unsigned int dfd_path[NUM_REDIRECTS];
+    unsigned int       userland_pid;
+    unsigned char      active[SYSCALL_ARRAY_SIZE]; // b0-b4 count of filters for this syscall;
+                                    // b5 = syscall should generate events;
+                                    // b6 = no failures; b7 = parse value ok
+    unsigned int       timesec[NUM_REDIRECTS];
+    unsigned int       timensec[NUM_REDIRECTS];
+    unsigned int       serial[NUM_REDIRECTS];
+    unsigned int       arch[NUM_REDIRECTS];
+    unsigned int       arg0[NUM_REDIRECTS];
+    unsigned int       arg1[NUM_REDIRECTS];
+    unsigned int       arg2[NUM_REDIRECTS];
+    unsigned int       arg3[NUM_REDIRECTS];
+    unsigned int       ppid[NUM_REDIRECTS];
+    unsigned int       auid[NUM_REDIRECTS];
+    unsigned int       cred[NUM_REDIRECTS];
+    unsigned int       cred_uid[NUM_REDIRECTS];
+    unsigned int       cred_gid[NUM_REDIRECTS];
+    unsigned int       cred_euid[NUM_REDIRECTS];
+    unsigned int       cred_suid[NUM_REDIRECTS];
+    unsigned int       cred_fsuid[NUM_REDIRECTS];
+    unsigned int       cred_egid[NUM_REDIRECTS];
+    unsigned int       cred_sgid[NUM_REDIRECTS];
+    unsigned int       cred_fsgid[NUM_REDIRECTS];
+    unsigned int       ses[NUM_REDIRECTS];
+    unsigned int       tty[NUM_REDIRECTS];
+    unsigned int       comm[NUM_REDIRECTS];
+    unsigned int       exe_path[NUM_REDIRECTS];
+    unsigned int       pwd_path[NUM_REDIRECTS];
+    unsigned int       path_vfsmount[NUM_REDIRECTS];
+    unsigned int       path_dentry[NUM_REDIRECTS];
+    unsigned int       dentry_parent[NUM_REDIRECTS];
+    unsigned int       dentry_name[NUM_REDIRECTS];
+    unsigned int       dentry_inode[NUM_REDIRECTS];
+    unsigned int       inode_mode[NUM_REDIRECTS];
+    unsigned int       inode_ouid[NUM_REDIRECTS];
+    unsigned int       inode_ogid[NUM_REDIRECTS];
+    unsigned int       mount_mnt[NUM_REDIRECTS];
+    unsigned int       mount_parent[NUM_REDIRECTS];
+    unsigned int       mount_mountpoint[NUM_REDIRECTS];
+    unsigned int       max_fds[NUM_REDIRECTS];
+    unsigned int       fd_table[NUM_REDIRECTS];
+    unsigned int       fd_path[NUM_REDIRECTS];
 } config_s;
+
+// syscall configuration
+// arg specifies which of the 6 syscall arguments to match on
+// op represents the comparison operator from:
+//     COMP_EQ, COMP_LT, COMP_GT, COMP_AND (bitwise AND), COMP_OR (bitwise OR)
+//     - these are all ORed so any matches means event is generated
+// is_signed represents whether the operation should be a signed one
+// value is the value to compare with
+typedef struct sysconf {
+    char               arg;
+    char               op;
+    char               is_signed;
+    unsigned long      value;
+} sysconf_s;
 
 #endif

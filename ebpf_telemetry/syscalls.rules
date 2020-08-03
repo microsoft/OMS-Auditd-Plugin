@@ -1,0 +1,103 @@
+# syscalls.rules
+# each line starts with the syscall number to log
+# followed by space-separated clauses
+# each clause can be an argument (a0 .. a5), an operator (=, <, >, &, |)
+# and a value (leading 0 for octal, 0x for hex)
+# OR can be the global P or V. P indicates all events generated for this
+# syscall number must correctly parse standard fields, and V indicates that
+# all events for this syscall number must correctly parse any syscall-specific
+# fields.
+# Operator & ANDs the argument and the value and checks the result equals
+# the value (&= in auditctl); and operator | ANDs the argument with the value
+# and checks the result is not 0 (& in auditctl).
+
+# open
+2 P V
+# mmap - prot has write and exec bits
+9 a2 & 0x6 P V
+# mprotect - prot has exec bit
+10 a2 | 0x4 P V
+# connect
+42 P V
+# accept
+43 P V
+# execve
+59 P V
+# kill - signal is 9 (KILL) or 19 (STOP)
+62 a1 = 9 a1 = 19 P V
+# truncate
+76 P V
+# ftruncate
+77 P V
+# rename
+82 P V
+# rmdir
+84 P V
+# creat
+85 P V
+# link
+86 P V
+# unlink
+87 P V
+# symlink
+88 P V
+# chmod
+90 P V
+# fchmod
+91 P V
+# chown
+92 P V
+# fchown
+93 P V
+# lchown
+94 P V
+# ptrace
+101 P V
+# mknod
+133 P V
+# adjtimex
+159 P V
+# settimeofday
+164 P V
+# init_module
+175 P V
+# delete_module
+176 P V
+# tkill - signal is 9 (KILL) or 19 (STOP)
+200 a1 = 9 a1 = 19 P V
+# remap_file_pages - prot has write and exec bite
+216 a2 & 0x6 P V
+# clock_settime
+227 P V
+# tgkill - signal is 9 (KILL) or 19 (STOP)
+234 a2 = 9 a2 = 19 P V
+# kexec_load
+246 P V
+# openat - mode includes O_WRONLY (1) or O_RDWR (2)
+257 a2 | 0x3 P V
+# mknodat
+259 P V
+# fchownat
+260 P V
+# unlinkat
+263 P V
+# renameat
+264 P V
+# linkat
+265 P V
+# symlinkat
+266 P V
+# fchmodat
+268 P V
+# accept4
+288 P V
+# clock_adjtime
+305 P V
+# finit_module
+313 P V
+# renameat2
+316 P V
+# kexec_file_load
+320 P V
+# execveat
+322 P V

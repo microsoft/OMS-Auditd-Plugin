@@ -33,6 +33,8 @@ unsigned long total_events = 0;
 unsigned long bad_events = 0;
 unsigned int num_lost_notifications = 0;
 unsigned long num_lost_events = 0;
+unsigned long num_fail = 0;
+unsigned long num_parsev = 0;
 struct utsname uname_data;
 
 void combine_paths(char *dest, event_path_s *path, char *pwd, bool resolvepath)
@@ -63,6 +65,15 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
          (event->code_bytes_end == CODE_BYTES) && // garbage check...
          (event->version    == VERSION) )     // version check...
     {   
+        if (event->status & STATUS_VALUE) {
+            printf("PARSEV!     ");
+            num_parsev++;
+        }
+        if (event->status & ~STATUS_VALUE) {
+            printf("FAIL!       ");
+            num_fail++;
+        }
+
         printf("timestamp=%ld.%ld ", event->bootns / (1000 * 1000 * 1000), event->bootns % (1000 * 1000 * 1000));
         printf("node=%s arch=%s syscall=%lu success=%s exit=%ld ", uname_data.nodename, uname_data.machine, event->syscall_id, (event->return_code >= 0 ? "yes" : "no"), event->return_code);
         printf("a0=%lx a1=%lx a2=%lx a3=%lx a4=%lx a5=%lx ", event->a[0], event->a[1], event->a[2], event->a[3], event->a[4], event->a[5]);
@@ -77,6 +88,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
             case __NR_open:
             case __NR_openat:
             case __NR_truncate:
+            case __NR_ftruncate:
             case __NR_rmdir:
             case __NR_creat:
             case __NR_unlink:
@@ -118,11 +130,12 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 
                 combine_paths(abs_path1, &event->data.fileop.path1, event->pwd, resolvepath);
                 combine_paths(abs_path2, &event->data.fileop.path2, event->pwd, resolvepath);
-                printf(" %s   %s\n", abs_path1, abs_path2);
+                printf(" %s  %s\n", abs_path1, abs_path2);
                 break;
             }
 
             case __NR_execve:
+            case __NR_execveat:
             {
                 // For every null terminated argument in the array of args
                 // print them all out together
@@ -145,11 +158,11 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
             case __NR_accept:
             case __NR_connect: 
             {
-                char   addr[INET_ADDRSTRLEN] = {0};
+                char addr[INET_ADDRSTRLEN] = {0};
                 
                 if (event->data.socket.addr.sin_family == AF_INET){
                     inet_ntop(AF_INET, &event->data.socket.addr.sin_addr, addr, INET_ADDRSTRLEN);
-                    printf(" %s %hu\n", addr, ntohs(event->data.socket.addr.sin_port) );
+                    printf(" %s:%hu\n", addr, ntohs(event->data.socket.addr.sin_port) );
                 }
                 else{
                     printf("\n");
@@ -178,6 +191,7 @@ void intHandler(int code) {
 
     printf("total events: %ld, bad events: %ld, ratio = %f\n", total_events, bad_events, (double)bad_events / total_events);
     printf("lost events: %ld, in %d notifications\n", num_lost_events, num_lost_notifications);
+    printf("parse errors: %ld, value parse errors: %ld\n", num_fail, num_parsev);
    
     exit(0);
 }
@@ -200,7 +214,7 @@ int main(int argc, char *argv[])
 
     printf("Running...\n");
 
-    ebpf_telemetry_start(print_bpf_output, handle_lost_events);
+    ebpf_telemetry_start("../syscalls.rules", print_bpf_output, handle_lost_events);
 
     return 0;
 }
