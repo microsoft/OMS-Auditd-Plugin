@@ -35,5 +35,5 @@
 #include <signal.h>
 
 void ebpf_telemetry_close_all();
-int ebpf_telemetry_start(void (*event_cb)(void *ctx, int cpu, void *data, __u32 size), void (*events_lost_cb)(void *ctx, int cpu, __u64 lost_cnt));
+int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int cpu, void *data, __u32 size), void (*events_lost_cb)(void *ctx, int cpu, __u64 lost_cnt));
 

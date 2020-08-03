@@ -45,11 +45,12 @@
 #define BPF_PRINTK ((void)0);
 #endif
 
+
 struct bpf_map_def SEC("maps") event_map = {
 	.type = BPF_MAP_TYPE_PERF_EVENT_ARRAY, //BPF_MAP_TYPE_HASH doesnt stack....
 	.key_size = sizeof(int),
 	.value_size = sizeof(u32),
-	.max_entries = 512, // 512 CPUs - this needs to accommodate most systems as this is CO:RE
+	.max_entries = 512, // 512 CPUs - this needs to accommodate most systems as this is CO:RE-alike
                         // Also, as this map is quite small (8 bytes per entry), we could potentially
                         // make this event bigger and it woulnd't cost much
 };
@@ -104,5 +105,16 @@ struct bpf_map_def SEC("maps") config_map = {
     .value_size = sizeof(config_s),
     .max_entries = 1,
 };
+
+// create a map to hold the syscall configuration
+// key is syscall << 16 | index
+// syscall indicies are per syscall, and each increments from 0
+struct bpf_map_def SEC("maps") sysconf_map = {
+    .type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(u32),
+    .value_size = sizeof(sysconf_s),
+    .max_entries = 10240,
+};
+
 
 #endif

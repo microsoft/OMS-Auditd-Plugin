@@ -42,6 +42,7 @@
 
 static int    event_map_fd          = 0;
 static int    config_map_fd         = 0;
+static int    sysconf_map_fd        = 0;
 static struct utsname     uname_s   = { 0 };
 static struct bpf_object  *bpf_obj  = NULL;
 
@@ -142,10 +143,10 @@ unsigned int *find_config_item(config_s *c, char *param)
         return c->mount_mountpoint;
     else if (!strcmp(param, "max_fds"))
         return c->max_fds;
-    else if (!strcmp(param, "dfd_table"))
-        return c->dfd_table;
-    else if (!strcmp(param, "dfd_path"))
-        return c->dfd_path;
+    else if (!strcmp(param, "fd_table"))
+        return c->fd_table;
+    else if (!strcmp(param, "fd_path"))
+        return c->fd_path;
     else return NULL;
 }
 
@@ -219,7 +220,145 @@ bool populate_config_offsets(config_s *c)
     return true;
 }
 
-int ebpf_telemetry_start(void (*event_cb)(void *ctx, int cpu, void *data, __u32 size), void (*events_lost_cb)(void *ctx, int cpu, __u64 lost_cnt))
+char get_op(char *arg)
+{
+    switch (*arg) {
+        case '=':
+            return COMP_EQ;
+            break;
+        case '<':
+            return COMP_LT;
+            break;
+        case '>':
+            return COMP_GT;
+            break;
+        case '&':
+            return COMP_AND;
+            break;
+        case '|':
+            return COMP_OR;
+            break;
+        default:
+            return COMP_ERROR;
+    }
+}
+
+bool get_next_arg(char **arg, char **strtok_ctx)
+{
+    if (**arg == 0x00) {
+        *arg = strtok_r(NULL, " \n", strtok_ctx);
+        if (!*arg) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool populate_syscall_conf(char *filename, config_s *config, int sysconf_map_fd)
+{
+    unsigned int index;
+    FILE *sysconf;
+    char *line = NULL;
+    size_t len = 0;
+    ssize_t read_len;
+    char *syscall = NULL;
+    char *arg = NULL;
+    char *whitespace = NULL;
+    unsigned int syscall_num;
+    unsigned int arg_len;
+    char *strtok_ctx = NULL;
+    bool error = false;
+    bool eol = false;
+    sysconf_s sc;
+    char *orig = NULL;
+
+    memset(config->active, 0, sizeof(config->active));
+
+    sysconf = fopen(filename, "r");
+    if (!sysconf) {
+        fprintf(stderr, "Cannot open syscall conf file, '%s'\n", filename);
+        return false;
+    }
+    while ((read_len = getline(&line, &len, sysconf)) >= 0) {
+        if (read_len > 0 && line[0] == '#')
+            continue;
+        orig = (char *)malloc(read_len + 1);
+        memcpy(orig, line, read_len + 1);
+        whitespace = line;
+        while (*whitespace == ' ')
+            whitespace++;
+        syscall = strtok_r(whitespace, " \n", &strtok_ctx);
+        if (!syscall)
+            continue;
+        syscall_num = atoi(syscall);
+        if (syscall_num > SYSCALL_MAX)
+            continue;
+        error = false;
+        eol = false;
+        while (!error && !eol) {
+            sc.is_signed = 0;
+            arg = strtok_r(NULL, " \n", &strtok_ctx);
+            if (!arg) {
+                config->active[syscall_num] |= ACTIVE_SYSCALL;
+                eol = true;
+                continue;
+            }
+            switch (arg[0]) {
+                case 'P':
+                case 'p':
+                    config->active[syscall_num] |= ACTIVE_NOFAIL;
+                    break;
+                case 'V':
+                case 'v':
+                    config->active[syscall_num] |= ACTIVE_PARSEV;
+                    break;
+                case 'a':
+                case 'A':
+                    arg_len = strlen(arg);
+                    if (arg_len <= 1 || arg[1] < '0' || arg[1] > '5') {
+                        error = true;
+                        continue;
+                    }
+                    sc.arg = arg[1] - '0';
+                    arg += 2;
+                    if (error = !get_next_arg(&arg, &strtok_ctx))
+                        continue;
+                    if (error = !(sc.op = get_op(arg)))
+                        continue;
+                    arg++;
+                    if (error = !get_next_arg(&arg, &strtok_ctx))
+                        continue;
+                    if (*arg == 's' || *arg == 'S') {
+                        sc.is_signed = 1;
+                        arg++;
+                    }
+                    if (error = !get_next_arg(&arg, &strtok_ctx))
+                        continue;
+                    sc.value = strtoul(arg, NULL, 0);
+                    index = (syscall_num << 16) | (config->active[syscall_num] & ACTIVE_MASK);
+                    if (bpf_map_update_elem(sysconf_map_fd, &index, &sc, BPF_ANY)) {
+                        fprintf(stderr, "ERROR: failed to set syscall config: '%s'\n", strerror(errno));
+                        return false;
+                    }
+                    config->active[syscall_num]++;
+                    break;
+                default:
+                    error = true;
+                    continue;
+            }
+        }
+        if (error) {
+            fprintf(stderr, "Error in syscall config:\n'%s'\n", orig);
+            break;
+        }
+        free(orig);
+    }
+    free(line);
+    fclose(sysconf);
+    return !error;
+}
+
+int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int cpu, void *data, __u32 size), void (*events_lost_cb)(void *ctx, int cpu, __u64 lost_cnt))
 {
     unsigned int major = 0, minor = 0;
     
@@ -315,16 +454,25 @@ int ebpf_telemetry_start(void (*event_cb)(void *ctx, int cpu, void *data, __u32 
         return 1;
     }
 
-    //update the config with the userland pid
+    sysconf_map_fd = bpf_object__find_map_fd_by_name(bpf_obj, "sysconf_map");
+    if ( 0 >= sysconf_map_fd) {
+        fprintf(stderr, "ERROR: failed to load sysconf_map_fd: '%s'\n", strerror(errno));
+        return 1;
+    }
+
+    // populate config
     unsigned int config_entry = 0;
     config_s config;
     config.userland_pid = getpid();
     populate_config_offsets(&config);
+    if (!populate_syscall_conf(sysconf_filename, &config, sysconf_map_fd))
+        exit(1);
+
     if (bpf_map_update_elem(config_map_fd, &config_entry, &config, BPF_ANY)) {
         fprintf(stderr, "ERROR: failed to set config: '%s'\n", strerror(errno));
         return 1;
     }
-    
+
     if ( support_version == BPF_TP ){
 
         bpf_sys_enter_openat_link  = bpf_program__attach_tracepoint(bpf_sys_enter_openat, "syscalls", "sys_enter_open");

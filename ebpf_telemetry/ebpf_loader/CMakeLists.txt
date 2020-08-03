@@ -63,7 +63,7 @@ set(LINUX_SRC "/usr/src/linux")
 include(ExternalProject)
 
 #Set option for Debug Outputs
-option(DEBUG_K "Enter debug mode" Off)
+option(DEBUG_K "Enter debug mode" On)
 
 #Fetch libbpf
 ExternalProject_Add(libbpf
