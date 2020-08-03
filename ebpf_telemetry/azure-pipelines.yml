@@ -19,7 +19,7 @@ stages:
             cd ebpf_telemetry          
             rm -rf ./build
             mkdir ./build && cd build
-            cmake ..
+            cmake .. -DDEBUG_K=On -DSTOPLOOP=10
             make all
           displayName: CMake Build All
         - task: PublishBuildArtifacts@1
