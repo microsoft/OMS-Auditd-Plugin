@@ -40,6 +40,12 @@
 #define KERN_TRACEPOINT_OBJ "ebpf_loader/ebpf_telemetry_kern_tp.o"
 #define KERN_RAW_TRACEPOINT_OBJ "ebpf_loader/ebpf_telemetry_kern_raw_tp.o"
 
+#ifndef STOPLOOP
+    #define STOPLOOP 0
+#endif
+
+static unsigned int isTesting       = STOPLOOP;
+
 static int    event_map_fd          = 0;
 static int    config_map_fd         = 0;
 static struct utsname     uname_s   = { 0 };
@@ -369,7 +375,9 @@ int ebpf_telemetry_start(void (*event_cb)(void *ctx, int cpu, void *data, __u32 
 
     int i = 0;
     while ((ret = perf_buffer__poll(pb, 1000)) >= 0 ) {
-//        if (i++ > 10) break;
+        if (isTesting){
+            if (i++ > STOPLOOP) break;
+        }
     }
 
     ebpf_telemetry_close_all();

@@ -62,7 +62,7 @@ set(LINUX_SRC "/usr/src/linux")
 
 include(ExternalProject)
 
-#Set option for Debug Outputs
+#Set option for Debug Outputs for eBPF programs
 option(DEBUG_K "Enter debug mode" Off)
 
 #Fetch libbpf
@@ -82,6 +82,12 @@ add_library(ebpf_loader SHARED ebpf_telemetry_loader.c)
 add_definitions("-fPIC")
 add_dependencies(ebpf_loader libbpf)
 target_link_libraries(ebpf_loader ${libbpf_SOURCE_DIR}/src/libbpf.a elf z)
+
+if (STOPLOOP)
+    message("setting STOPLOOP Count=${STOPLOOP}")
+    target_compile_definitions( ebpf_loader PUBLIC STOPLOOP=${STOPLOOP})
+endif()
+
 target_include_directories(ebpf_loader PUBLIC
                            "${PROJECT_BINARY_DIR}"
                            "${libbpf_SOURCE_DIR}/src"
@@ -140,7 +146,7 @@ set(CLANG_DEFINES -D __KERNEL__
                   -D __TARGET_ARCH_x86
                   )
 if (DEBUG_K)
-    message("   Using DEBUG_K Option...")
+    message("Using DEBUG_K Option...")
     list(APPEND CLANG_DEFINES -DDEBUG_K)
 endif()
 

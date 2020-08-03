@@ -134,7 +134,7 @@ static inline bool deref_filepath_into(char *dest, void *base, unsigned int *ref
         // check if current dentry name is valid
         if (dlen > 0) {
             // copy the temporary copy to the first half of our temporary storage, building it backwards from the middle of it
-            dlen = bpf_probe_read_str(&temp[(PATH_MAX - size - dlen) & (PATH_MAX - 1)], dlen, &temp[PATH_MAX]);
+            dlen = bpf_probe_read_str(&temp[(PATH_MAX - size - dlen) & (PATH_MAX - 1)], PATH_MAX, &temp[PATH_MAX]);
             if (dlen <= 0)
                 return false;
             if (size > 0)
