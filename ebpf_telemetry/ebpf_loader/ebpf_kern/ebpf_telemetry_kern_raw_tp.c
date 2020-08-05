@@ -628,7 +628,7 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
         case __NR_connect: 
         {
             if (bpf_probe_read(&event->socket.addr, sizeof(event->socket.addr), (void *)event->a[1]) != 0) {
-                BPF_PRINTK("ERROR, CONNECT(%lu): failed to get socket info\n", event->syscall_id);
+                BPF_PRINTK("ERROR, CONNECT(%lu): failed to get socket info from a1 0x%lx\n", event->syscall_id, event->a[1]);
                 event->status |= STATUS_VALUE;
             }
             break;
@@ -644,7 +644,7 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
                 if (bpf_probe_read(&event->socket.addr, 
                                          sizeof(event->socket.addr), 
                                          (void *)event->a[1]) != 0){
-                    BPF_PRINTK("ERROR, ACCEPT failed to retrieve addr info\n");
+                    BPF_PRINTK("ERROR, ACCEPT(%lu) failed to retrieve addr info from a1 0x%lx\n", event->syscall_id, event->a[1]);
                     event->status |= STATUS_VALUE;
                 }
             }
@@ -670,8 +670,10 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
         // int mknod(const char *pathname, umode_t mode, unsigned dev);
         case __NR_mknod:
         {
-            if (!resolve_dfd_path(&event->fileop.path1, AT_FDCWD, (void *)event->a[0], task, config))
+            if (!resolve_dfd_path(&event->fileop.path1, AT_FDCWD, (void *)event->a[0], task, config)) {
+                BPF_PRINTK("ERROR, syscall %d, resolve_dfd_path() failed on a0 0x%lx\n", event->syscall_id, event->a[0]);
                 event->status |= STATUS_VALUE;
+            }
             break;
         }
 
@@ -682,10 +684,14 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
         // int symlink(const char *oldname, const char *newname);
         case __NR_symlink:
         {
-            if (!resolve_dfd_path(&event->fileop.path1, AT_FDCWD, (void *)event->a[0], task, config))
+            if (!resolve_dfd_path(&event->fileop.path1, AT_FDCWD, (void *)event->a[0], task, config)) {
+                BPF_PRINTK("ERROR, syscall %d, resolve_dfd_path() failed on a0 0x%lx\n", event->syscall_id, event->a[0]);
                 event->status |= STATUS_VALUE;
-            if (!resolve_dfd_path(&event->fileop.path2, AT_FDCWD, (void *)event->a[1], task, config))
+            }
+            if (!resolve_dfd_path(&event->fileop.path2, AT_FDCWD, (void *)event->a[1], task, config)) {
+                BPF_PRINTK("ERROR, syscall %d, resolve_dfd_path() failed on a1 0x%lx\n", event->syscall_id, event->a[1]);
                 event->status |= STATUS_VALUE;
+            }
             break;
         }
 
@@ -696,8 +702,10 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
         // int fchown(unsigned int fd, uid_t user, gid_t group);
         case __NR_fchown:
         {
-            if (!resolve_fd_path(&event->fileop.path1, event->a[0], task, config))
+            if (!resolve_fd_path(&event->fileop.path1, event->a[0], task, config)) {
+                BPF_PRINTK("ERROR, syscall %d, resolve_fd_path() failed on a0 0x%lx\n", event->syscall_id, event->a[0]);
                 event->status |= STATUS_VALUE;
+            }
             break;
         }
 
@@ -716,8 +724,10 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
             int dfd = event->a[0];
             if (dfd <= 0)
                 dfd = AT_FDCWD;
-            if (!resolve_dfd_path(&event->fileop.path1, dfd, (void *)event->a[1], task, config))
+            if (!resolve_dfd_path(&event->fileop.path1, dfd, (void *)event->a[1], task, config)) {
+                BPF_PRINTK("ERROR, syscall %d, resolve_dfd_path() failed on a1 0x%lx\n", event->syscall_id, event->a[1]);
                 event->status |= STATUS_VALUE;
+            }
             break;
         }
 
@@ -731,26 +741,34 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
             int dfd = event->a[0];
             if (dfd <= 0)
                 dfd = AT_FDCWD;
-            if (!resolve_dfd_path(&event->fileop.path1, dfd, (void *)event->a[1], task, config))
+            if (!resolve_dfd_path(&event->fileop.path1, dfd, (void *)event->a[1], task, config)) {
+                BPF_PRINTK("ERROR, syscall %d, resolve_dfd_path() failed on a1 0x%lx\n", event->syscall_id, event->a[1]);
                 event->status |= STATUS_VALUE;
+            }
             dfd = event->a[2];
             if (dfd <= 0)
                 dfd = AT_FDCWD;
-            if (!resolve_dfd_path(&event->fileop.path1, dfd, (void *)event->a[3], task, config))
+            if (!resolve_dfd_path(&event->fileop.path1, dfd, (void *)event->a[3], task, config)) {
+                BPF_PRINTK("ERROR, syscall %d, resolve_dfd_path() failed on a3 0x%lx\n", event->syscall_id, event->a[3]);
                 event->status |= STATUS_VALUE;
+                }
             break;
         }
 
         // int symlinkat(const char *oldname, int newdfd, const char *newname);
         case __NR_symlinkat: // syscall id #s might be kernel specific
         {
-            if (!resolve_dfd_path(&event->fileop.path1, AT_FDCWD, (void *)event->a[0], task, config))
+            if (!resolve_dfd_path(&event->fileop.path1, AT_FDCWD, (void *)event->a[0], task, config)) {
+                BPF_PRINTK("ERROR, syscall %d, resolve_dfd_path() failed on a0 0x%lx\n", event->syscall_id, event->a[0]);
                 event->status |= STATUS_VALUE;
+            }
             int dfd = event->a[1];
             if (dfd <= 0)
                 dfd = AT_FDCWD;
-            if (!resolve_dfd_path(&event->fileop.path1, dfd, (void *)event->a[2], task, config))
+            if (!resolve_dfd_path(&event->fileop.path1, dfd, (void *)event->a[2], task, config)) {
+                BPF_PRINTK("ERROR, syscall %d, resolve_dfd_path() failed on a2 0x%lx\n", event->syscall_id, event->a[2]);
                 event->status |= STATUS_VALUE;
+            }
             break;
         }
 
