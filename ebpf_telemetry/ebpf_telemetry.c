@@ -86,50 +86,48 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
         switch(event->syscall_id)
         {    
             case __NR_open:
-            case __NR_openat:
             case __NR_truncate:
-            case __NR_ftruncate:
             case __NR_rmdir:
             case __NR_creat:
             case __NR_unlink:
-            case __NR_unlinkat:
             case __NR_chmod:
-            case __NR_fchmodat:
+            case __NR_chown:
+            case __NR_lchown:
             case __NR_mknod:
+            case __NR_ftruncate:
+            case __NR_fchmod:
+            case __NR_fchown:
+            case __NR_openat:
             case __NR_mknodat:
+            case __NR_fchownat:
+            case __NR_unlinkat:
+            case __NR_fchmodat:
             {
                 char abs_path[PATH_MAX];
 
-                combine_paths(abs_path, &event->data.fileop.path1, event->pwd, true);
+                combine_paths(abs_path, &event->fileop.path1, event->pwd, true);
                 printf(" %s\n", abs_path);
                 break;
             }
 
-            case __NR_chown:
-            case __NR_lchown:
-            case __NR_fchownat:
-            {
-                char abs_path[PATH_MAX];
-
-                combine_paths(abs_path, &event->data.fileop.path1, event->pwd, true);
-                printf(" %s  uid: %d, gid: %d\n", abs_path, event->data.fileop.uid, event->data.fileop.gid);
-                break;
-            }
-
             case __NR_rename:
+            case __NR_link:
+            case __NR_symlink:
             case __NR_renameat:
             case __NR_renameat2:
-            case __NR_link:
             case __NR_linkat:
-            case __NR_symlink:
             case __NR_symlinkat:
             {
                 bool resolvepath = true;
                 char abs_path1[PATH_MAX];
                 char abs_path2[PATH_MAX];
 
-                combine_paths(abs_path1, &event->data.fileop.path1, event->pwd, resolvepath);
-                combine_paths(abs_path2, &event->data.fileop.path2, event->pwd, resolvepath);
+                // don't resolve paths for symlinks
+                if (event->syscall_id == __NR_symlink || event->syscall_id == __NR_symlinkat)
+                    resolvepath = false;
+
+                combine_paths(abs_path1, &event->fileop.path1, event->pwd, true);
+                combine_paths(abs_path2, &event->fileop.path2, event->pwd, resolvepath);
                 printf(" %s  %s\n", abs_path1, abs_path2);
                 break;
             }
@@ -140,9 +138,9 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
                 // For every null terminated argument in the array of args
                 // print them all out together
                 int args_count = 0; 
-                for (int i = 0; i < event->data.execve.cmdline_size && args_count < event->data.execve.args_count; i++) {
+                for (int i = 0; i < event->execve.cmdline_size && args_count < event->execve.args_count; i++) {
                     
-                    char c = event->data.execve.cmdline[i];
+                    char c = event->execve.cmdline[i];
                     
                     if (c == '\0') {
                         args_count++;
@@ -156,13 +154,14 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
             }
 
             case __NR_accept:
+            case __NR_accept4:
             case __NR_connect: 
             {
                 char addr[INET_ADDRSTRLEN] = {0};
                 
-                if (event->data.socket.addr.sin_family == AF_INET){
-                    inet_ntop(AF_INET, &event->data.socket.addr.sin_addr, addr, INET_ADDRSTRLEN);
-                    printf(" %s:%hu\n", addr, ntohs(event->data.socket.addr.sin_port) );
+                if (event->socket.addr.sin_family == AF_INET){
+                    inet_ntop(AF_INET, &event->socket.addr.sin_addr, addr, INET_ADDRSTRLEN);
+                    printf(" %s:%hu\n", addr, ntohs(event->socket.addr.sin_port) );
                 }
                 else{
                     printf("\n");

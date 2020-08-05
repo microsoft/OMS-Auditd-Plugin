@@ -67,26 +67,32 @@
 #define STATUS_PWD     0x0020
 #define STATUS_EXEINFO 0x0040
 #define STATUS_NOTASK  0x0080
+#define STATUS_NOARGS  0x0100
 
 
 // file operations
 typedef struct e_path {
-    char          pathname[PATH_MAX];
-    char          dfd_path[PATH_MAX];
+    union {
+        struct {
+            char  pathname[PATH_MAX];
+            char  dfd_path[PATH_MAX];
+        };
+        struct {
+            int   dfd;
+            void  *pathname_ptr;
+        };
+    };
 } event_path_s;
 
 // file op: open/at, truncate, rename/at/2, rmdir, creat, link/at, unlink/at, symlink/at, chmod, fchmodat, chown, lchown, fchownat, mknod/at
 typedef struct e_fileop {
     event_path_s  path1;
     event_path_s  path2;
-    int  uid;
-    int  gid;
-    unsigned long mode;
-    unsigned long flags;
 } event_fileop_s;
 
 // __NR_execve
 typedef struct e_execve {
+    event_path_s  exe_path;
     unsigned int  args_count;
     unsigned int  cmdline_size;
     char          cmdline[CMDLINE_MAX_LEN];
@@ -94,7 +100,6 @@ typedef struct e_execve {
 
 // __NR_connect: 
 typedef struct e_socket {
-    struct sockaddr_in *addrp;
     struct sockaddr_in addr;
 } event_socket_s;
 
@@ -126,18 +131,19 @@ typedef struct e_rec {
     unsigned int       egid;
     unsigned int       sgid;
     unsigned int       fsgid;
-    union e_data {
+    union {
         event_fileop_s fileop;
         event_execve_s execve;
         event_socket_s socket;
-    } data;
+    };
     unsigned long int  code_bytes_end; //Always 0xdeadbeef = 3735928559
 } event_s;
 
 // configuration
 typedef struct conf {
     unsigned int       userland_pid;
-    unsigned char      active[SYSCALL_ARRAY_SIZE]; // b0-b4 count of filters for this syscall;
+    unsigned char      active[SYSCALL_ARRAY_SIZE]; // b0-b4 count of filters
+                                                   // for this syscall;
                                     // b5 = syscall should generate events;
                                     // b6 = no failures; b7 = parse value ok
     unsigned int       timesec[NUM_REDIRECTS];
