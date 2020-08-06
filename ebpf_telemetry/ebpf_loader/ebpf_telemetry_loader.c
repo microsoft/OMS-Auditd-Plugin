@@ -123,6 +123,10 @@ unsigned int *find_config_item(config_s *c, char *param)
         return c->comm;
     else if (!strcmp(param, "exe_path"))
         return c->exe_path;
+    else if (!strcmp(param, "mm_arg_start"))
+        return c->mm_arg_start;
+    else if (!strcmp(param, "mm_arg_end"))
+        return c->mm_arg_end;
     else if (!strcmp(param, "pwd_path"))
         return c->pwd_path;
     else if (!strcmp(param, "path_vfsmount"))

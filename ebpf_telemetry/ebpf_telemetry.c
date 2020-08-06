@@ -80,8 +80,6 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
         printf("ppid=%u pid=%u ", event->ppid, event->pid);
         printf("auid=%u uid=%u gid=%u euid=%u suid=%u fsuid=%u egid=%u sgid=%u fsgid=%u ", event->auid, event->uid, event->gid, event->euid, event->suid, event->fsuid, event->egid, event->sgid, event->fsgid);
         printf("tty=%s ses=%u comm=%s exe=%s exe_mode=%o exe_ouid=%d exe_ogid=%d cwd=%s \n", event->tty, event->ses, event->comm, event->exe, event->exe_mode, event->exe_ouid, event->exe_ogid, event->pwd);
-//        printf("name="/usr/local/sbin/grep" nametype=UNKNOWN cap_fp=0 cap_fi=0 cap_fe=0 cap_fver=0 cap_frootid=0 path_name=["/usr/local/sbin/grep"] path_nametype=["UNKNOWN"] path_mode=[""] path_ouid=[""] path_ogid=[""] proctitle=/bin/sh /bin/egrep -q "(envID|VxID):.*[1-9]" /proc/self/status containerid=\n", 
-
 
         switch(event->syscall_id)
         {    
@@ -138,10 +136,8 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
                 // For every null terminated argument in the array of args
                 // print them all out together
                 int args_count = 0; 
-                for (int i = 0; i < event->execve.cmdline_size && args_count < event->execve.args_count; i++) {
-                    
+                for (int i = 0; i < event->execve.cmdline_size; i++) {
                     char c = event->execve.cmdline[i];
-                    
                     if (c == '\0') {
                         args_count++;
                         putchar(' ');
@@ -151,6 +147,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
                     }    
                 }
                 printf("\n");
+                break;
             }
 
             case __NR_accept:
@@ -166,7 +163,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
                 else{
                     printf("\n");
                 }
-                
+                break;                
             }
         }
     } else {

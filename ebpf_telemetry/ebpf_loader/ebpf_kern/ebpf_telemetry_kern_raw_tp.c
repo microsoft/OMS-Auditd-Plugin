@@ -210,15 +210,17 @@ static inline bool extract_commandline(event_execve_s *e, const char **argv, u32
     #pragma unroll // no loops in eBPF, but need to get all args....
     for (int i = 0; i < CMDLINE_MAX_ARGS && e->cmdline_size < CMDLINE_MAX_LEN; i++) {
         if (bpf_probe_read(&argp, sizeof(argp), (void*) &argv[i]) != 0) {
-            BPF_PRINTK("extract_commandline: failed to read argv[%d]\n", i);
-            break;
+            // don't report page fault as an error at this point
+            // pick this up on exit
+            return false;
         }
         if (!argp)
             break;
 
         dlen = bpf_probe_read_str(&temp[e->cmdline_size & (CMDLINE_MAX_LEN - 1)], CMDLINE_MAX_LEN, (void*) argp);
         if (dlen < 0) {
-            BPF_PRINTK("extract_commandline: bpf_probe_read_str: 0x%lx = %d\n", argp, dlen);
+            // don't report page fault as an error at this point
+            // pick this up on exit
             return false;
         }
 
@@ -541,31 +543,18 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
         // int execve(const char *filename, char *const argv[], char *const envp[]);
         case __NR_execve: 
         {
-            if (!resolve_dfd_path(&event->execve.exe_path, AT_FDCWD, (char *)event->a[0], task, config)) {
-                BPF_PRINTK("ERROR, EXECVE(%lu): failed to get exe_path\n", event->syscall_id);
-                event->status |= STATUS_VALUE;
-            }
-            if (!extract_commandline(&event->execve, (const char **)event->a[1], cpu_id)) {
-                BPF_PRINTK("ERROR, EXECVE(%lu): failed to get cmdline\n", event->syscall_id);
-                event->status |= STATUS_VALUE;
-            }
+            // don't treat extract_commandline failures as errors at this point
+            // these will be picked up if necessary on exit
+            extract_commandline(&event->execve, (const char **)event->a[1], cpu_id);
             break;
         }
 
         // int execveat(int dfd, const char *filename, char *const argv[], char *const envp[]);
         case __NR_execveat: 
         {
-            int dfd = event->a[0];
-            if (dfd <= 0)
-                dfd = AT_FDCWD;
-            if (!resolve_dfd_path(&event->execve.exe_path, dfd, (char *)event->a[1], task, config)) {
-                BPF_PRINTK("ERROR, EXECVEAT(%lu): failed to get exe_path\n", event->syscall_id);
-                event->status |= STATUS_VALUE;
-            }
-            if (!extract_commandline(&event->execve, (const char **)event->a[2], cpu_id)) {
-                BPF_PRINTK("ERROR, EXECVEAT(%lu): failed to get cmdline\n", event->syscall_id);
-                event->status |= STATUS_VALUE;
-            }
+            // don't treat extract_commandline failures as errors at this point
+            // these will be picked up if necessary on exit
+            extract_commandline(&event->execve, (const char **)event->a[2], cpu_id);
             break;
         }
     }
@@ -772,6 +761,35 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
             break;
         }
 
+        // int execve(const char *filename, char *const argv[], char *const envp[]);
+        case __NR_execve: 
+        // int execveat(int dfd, const char *filename, char *const argv[], char *const envp[]);
+        case __NR_execveat: 
+        {
+            if (event->return_code == 0) {
+                // read the more reliable cmdline from task_struct->mm->arg_start
+                u64 arg_start = deref_ptr(task, config->mm_arg_start);
+                u64 arg_end = deref_ptr(task, config->mm_arg_end);
+                int j = arg_end - arg_start;
+
+                if (bpf_probe_read(&event->execve.cmdline, j & (CMDLINE_MAX_LEN - 1), (void *)arg_start) < 0) {
+                    BPF_PRINTK("ERROR, execve(%d), failed to read cmdline from mm\n", event->syscall_id);
+                    event->status |= STATUS_VALUE;
+                }
+                // add nul terminator just in case
+                event->execve.cmdline[CMDLINE_MAX_LEN - 1] = 0x00;
+                event->execve.cmdline[j & (CMDLINE_MAX_LEN - 1)] = 0x00;
+                event->execve.cmdline_size = j;
+            } else {
+                // execve failed so the task_struct has the parent cmdline
+                // if extract_cmdline() failed then cmdline will be empty,
+                // so report this as an error
+                if (event->execve.cmdline[0] == 0x00) {
+                    BPF_PRINTK("ERROR, execve(%d), failed to get cmdline\n", event->syscall_id);
+                    event->status |= STATUS_VALUE;
+                }
+            }
+        }
     }
 
     // Pass the final result to user space if all is well or it satisfies config

@@ -92,7 +92,6 @@ typedef struct e_fileop {
 
 // __NR_execve
 typedef struct e_execve {
-    event_path_s  exe_path;
     unsigned int  args_count;
     unsigned int  cmdline_size;
     char          cmdline[CMDLINE_MAX_LEN];
@@ -169,6 +168,8 @@ typedef struct conf {
     unsigned int       tty[NUM_REDIRECTS];
     unsigned int       comm[NUM_REDIRECTS];
     unsigned int       exe_path[NUM_REDIRECTS];
+    unsigned int       mm_arg_start[NUM_REDIRECTS];
+    unsigned int       mm_arg_end[NUM_REDIRECTS];
     unsigned int       pwd_path[NUM_REDIRECTS];
     unsigned int       path_vfsmount[NUM_REDIRECTS];
     unsigned int       path_dentry[NUM_REDIRECTS];
