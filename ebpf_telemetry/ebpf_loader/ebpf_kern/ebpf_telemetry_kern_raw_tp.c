@@ -804,7 +804,7 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
             send_event = false;
     }
 
-    if (send_event || 1) {
+    if (send_event) {
         bpf_perf_event_output(ctx, &event_map, BPF_F_CURRENT_CPU, event, sizeof(event_s));
     } else {
         BPF_PRINTK("ERROR, Unable to finish event... dropping\n");

@@ -12,92 +12,92 @@
 # and checks the result is not 0 (& in auditctl).
 
 # open
-2 P V
+2
 # mmap - prot has write and exec bits
-9 a2 & 0x6 P V
+9 a2 & 0x6
 # mprotect - prot has exec bit
-10 a2 | 0x4 P V
+10 a2 | 0x4
 # connect
-42 P V
+42
 # accept
-43 P V
+43
 # execve
-59 P V
+59
 # kill - signal is 9 (KILL) or 19 (STOP)
-62 a1 = 9 a1 = 19 P V
+62 a1 = 9 a1 = 19
 # truncate
-76 P V
+76
 # ftruncate
-77 P V
+77
 # rename
-82 P V
+82
 # rmdir
-84 P V
+84
 # creat
-85 P V
+85
 # link
-86 P V
+86
 # unlink
-87 P V
+87
 # symlink
-88 P V
+88
 # chmod
-90 P V
+90
 # fchmod
-91 P V
+91
 # chown
-92 P V
+92
 # fchown
-93 P V
+93
 # lchown
-94 P V
+94
 # ptrace
-101 P V
+101
 # mknod
-133 P V
+133
 # adjtimex
-159 P V
+159
 # settimeofday
-164 P V
+164
 # init_module
-175 P V
+175
 # delete_module
-176 P V
+176
 # tkill - signal is 9 (KILL) or 19 (STOP)
-200 a1 = 9 a1 = 19 P V
-# remap_file_pages - prot has write and exec bite
-216 a2 & 0x6 P V
+200 a1 = 9 a1 = 19
+# remap_file_pages - prot has write and exec bits
+216 a2 & 0x6
 # clock_settime
-227 P V
+227
 # tgkill - signal is 9 (KILL) or 19 (STOP)
-234 a2 = 9 a2 = 19 P V
+234 a2 = 9 a2 = 19
 # kexec_load
-246 P V
+246
 # openat - mode includes O_WRONLY (1) or O_RDWR (2)
-257 a2 | 0x3 P V
+257 a2 | 0x3
 # mknodat
-259 P V
+259
 # fchownat
-260 P V
+260
 # unlinkat
-263 P V
+263
 # renameat
-264 P V
+264
 # linkat
-265 P V
+265
 # symlinkat
-266 P V
+266
 # fchmodat
-268 P V
+268
 # accept4
-288 P V
+288
 # clock_adjtime
-305 P V
+305
 # finit_module
-313 P V
+313
 # renameat2
-316 P V
+316
 # kexec_file_load
-320 P V
+320
 # execveat
-322 P V
+322
