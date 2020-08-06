@@ -640,10 +640,10 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
         case __NR_accept4:
         {
             event->socket.addr.sin_family = AF_UNSPEC;
-            if (!event->a[1]) {
+            if (event->a[1] != 0) {
                 if (bpf_probe_read(&event->socket.addr, 
                                          sizeof(event->socket.addr), 
-                                         (void *)event->a[1]) != 0){
+                                         (void *)event->a[1]) != 0) {
                     BPF_PRINTK("ERROR, ACCEPT(%lu) failed to retrieve addr info from a1 0x%lx\n", event->syscall_id, event->a[1]);
                     event->status |= STATUS_VALUE;
                 }
