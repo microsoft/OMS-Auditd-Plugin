@@ -24,6 +24,7 @@
 #define CODE_BYTES 0xdeadbeef
 
 #define CONFIG_FILE "../ebpf_telemetry.conf"
+#define SYSCALL_FILE "../syscalls.conf"
 
 #define CMDLINE_MAX_ARGS 128
 #define CMDLINE_MAX_LEN 32768 // must be power of 2
@@ -45,6 +46,7 @@
 #define MAX_EVENT_SIZE (65536 - 8)
 
 #define SYSCALL_MAX 335
+#define SYSCALL_NAME_LEN 64
 #define SYSCALL_ARRAY_SIZE 512
 #define COMP_ERROR 0
 #define COMP_EQ    1
@@ -200,5 +202,12 @@ typedef struct sysconf {
     char               is_signed;
     unsigned long      value;
 } sysconf_s;
+
+typedef struct syscall_names {
+    char name[SYSCALL_NAME_LEN];
+    unsigned int nr;
+    unsigned int num_args;
+} syscall_names_s;
+
 
 #endif

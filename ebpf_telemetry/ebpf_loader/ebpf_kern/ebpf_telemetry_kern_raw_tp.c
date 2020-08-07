@@ -23,6 +23,24 @@
 
 #include "ebpf_kern_common.h"
 
+
+// store the syscall arguments from the registers in the event
+__attribute__((always_inline))
+static inline bool set_event_args(unsigned long *a, struct pt_regs *regs)
+{
+    int ret = 0;
+    ret |= bpf_probe_read(&a[0], sizeof(a[0]), &SYSCALL_PT_REGS_PARM1(regs));
+    ret |= bpf_probe_read(&a[1], sizeof(a[1]), &SYSCALL_PT_REGS_PARM2(regs));
+    ret |= bpf_probe_read(&a[2], sizeof(a[2]), &SYSCALL_PT_REGS_PARM3(regs));
+    ret |= bpf_probe_read(&a[3], sizeof(a[3]), &SYSCALL_PT_REGS_PARM4(regs));
+    ret |= bpf_probe_read(&a[4], sizeof(a[4]), &SYSCALL_PT_REGS_PARM5(regs));
+    ret |= bpf_probe_read(&a[5], sizeof(a[5]), &SYSCALL_PT_REGS_PARM6(regs));
+    if (!ret)
+        return true;
+    else
+        return false;
+}
+
  
 SEC("raw_tracepoint/sys_enter")
 __attribute__((flatten))
@@ -126,7 +144,13 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
     if (!task)
         event->status |= STATUS_NOTASK;
     else
-        set_event_exit_info(event, task, regs, config);
+        set_event_exit_info(event, task, config);
+
+    // set the return code
+    if (bpf_probe_read(&event->return_code, sizeof(s64), (void *)&SYSCALL_PT_REGS_RC(regs)) != 0){
+        BPF_PRINTK("ERROR, failed to get return code, exiting syscall %lu\n", event->syscall_id);
+        event->status |= STATUS_RC;
+    }
 
     switch(event->syscall_id)
     {

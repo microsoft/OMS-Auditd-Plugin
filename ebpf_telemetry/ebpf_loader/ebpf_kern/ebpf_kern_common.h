@@ -427,23 +427,9 @@ static inline void init_event(event_s *event, unsigned long syscall_id, unsigned
     event->status           = 0;
     event->syscall_id       = syscall_id;
     event->pid              = pid;
-}
-
-// store the syscall arguments from the registers in the event
-__attribute__((always_inline))
-static inline bool set_event_args(unsigned long *a, struct pt_regs *regs)
-{
-    int ret = 0;
-    ret |= bpf_probe_read(&a[0], sizeof(a[0]), &SYSCALL_PT_REGS_PARM1(regs));
-    ret |= bpf_probe_read(&a[1], sizeof(a[1]), &SYSCALL_PT_REGS_PARM2(regs));
-    ret |= bpf_probe_read(&a[2], sizeof(a[2]), &SYSCALL_PT_REGS_PARM3(regs));
-    ret |= bpf_probe_read(&a[3], sizeof(a[3]), &SYSCALL_PT_REGS_PARM4(regs));
-    ret |= bpf_probe_read(&a[4], sizeof(a[4]), &SYSCALL_PT_REGS_PARM5(regs));
-    ret |= bpf_probe_read(&a[5], sizeof(a[5]), &SYSCALL_PT_REGS_PARM6(regs));
-    if (!ret)
-        return true;
-    else
-        return false;
+    for (int i=0; i<6; i++) {
+        event->a[i] = 0;
+    }
 }
 
 // retrieve and process per-syscall filters
@@ -494,7 +480,7 @@ static inline bool check_event_filters(unsigned long *a, unsigned long syscall)
 
 // extract details of the process' executable
 __attribute__((always_inline))
-static inline bool set_event_exe_info(event_s *event, void *task, struct pt_regs *regs, config_s *config)
+static inline bool set_event_exe_info(event_s *event, void *task, config_s *config)
 {
     void *path = NULL;
     void *dentry = NULL;
@@ -516,15 +502,10 @@ static inline bool set_event_exe_info(event_s *event, void *task, struct pt_regs
 
 // fill in details on syscall exit
 __attribute__((always_inline))
-static inline bool set_event_exit_info(event_s *event, void *task, struct pt_regs *regs, config_s *config)
+static inline bool set_event_exit_info(event_s *event, void *task, config_s *config)
 {
     void *cred = NULL;
     char notty[] = "(none)";
-
-    if (bpf_probe_read(&event->return_code, sizeof(s64), (void *)&SYSCALL_PT_REGS_RC(regs)) != 0){
-        BPF_PRINTK("ERROR, failed to get return code, exiting syscall %lu\n", event->syscall_id);
-        event->status |= STATUS_RC;
-    }
 
     // timestamp
     event->bootns = bpf_ktime_get_ns();
@@ -572,7 +553,7 @@ static inline bool set_event_exit_info(event_s *event, void *task, struct pt_reg
         event->status |= STATUS_EXE;
     if (!deref_filepath_into(event->pwd, task, config->pwd_path, config))
         event->status |= STATUS_PWD;
-    if (!set_event_exe_info(event, task, regs, config))
+    if (!set_event_exe_info(event, task, config))
         event->status |= STATUS_EXEINFO;
 
     if (!event->status)

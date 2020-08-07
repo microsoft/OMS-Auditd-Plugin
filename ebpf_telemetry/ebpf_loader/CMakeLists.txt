@@ -53,6 +53,7 @@
 
 
 cmake_minimum_required(VERSION 3.10)
+set(SED "sed")
 
 # set the project name
 project(EBPF_Loader VERSION 0.1)
@@ -113,10 +114,39 @@ target_include_directories(ebpf_loader PUBLIC
                            "/usr/include"
                            )
 
+# function to generate numbered ebpf programs
+function(gen_ebpf ebpf_argnum)
+    add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/ebpf_loader/ebpf_kern/ebpf_telemetry_kern_tp_${ebpf_argnum}.c
+                       COMMAND "${SED}" -e s/ARG_NUM/${ebpf_argnum}/ ${CMAKE_SOURCE_DIR}/ebpf_loader/ebpf_kern/ebpf_telemetry_kern_tp_${ebpf_argnum}.c > ${CMAKE_SOURCE_DIR}/ebpf_loader/ebpf_kern/ebpf_telemetry_kern_tp_${ebpf_argnum}.c
+                       COMMENT "Generating EBPF source ${CMAKE_SOURCE_DIR}/ebpf_loader/ebpf_kern/ebpf_telemetry_kern_tp_${ebpf_argnum}.c"
+                       DEPENDS ebpf_kern/ebpf_telemetry_kern_tp.c
+                       )
+endfunction()
+
+# loop for all number of possible arguments for syscalls
+foreach(ARG_NUM RANGE 6)
+    
+    # test to only generate ebpf programs when the source has changed
+    if(${CMAKE_SOURCE_DIR}/ebpf_loader/ebpf_kern/ebpf_telemetry_kern_tp.c IS_NEWER_THAN ${CMAKE_SOURCE_DIR}/ebpf_loader/ebpf_kern/ebpf_telemetry_kern_tp_${ARG_NUM}.c)
+        gen_ebpf(${ARG_NUM})
+    endif()
+
+    # add ebpf programs to clean
+    set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES ${CMAKE_SOURCE_DIR}/ebpf_loader/ebpf_kern/ebpf_telemetry_kern_tp_${ARG_NUM}.c)
+endforeach(ARG_NUM)
+
+
 # list of ebpf programs to make
 set(EBPF_PROGS
-#               ebpf_telemetry_kern_tp 
-               ebpf_telemetry_kern_raw_tp
+               ebpf_telemetry_kern_raw_tp 
+               ebpf_telemetry_kern_tp
+#               ebpf_telemetry_kern_tp_0
+#               ebpf_telemetry_kern_tp_1
+#               ebpf_telemetry_kern_tp_2
+#               ebpf_telemetry_kern_tp_3
+#               ebpf_telemetry_kern_tp_4
+#               ebpf_telemetry_kern_tp_5
+#               ebpf_telemetry_kern_tp_6
 )
 
 #################################################################################
