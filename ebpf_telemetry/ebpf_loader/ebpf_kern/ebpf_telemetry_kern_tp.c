@@ -23,7 +23,10 @@
 
 #include "ebpf_kern_common.h"
 
-// from /sys/kernel/debug/tracing/events/syscalls/sys_enter_openat/format:
+// generic sys_enter argument struct for traditional tracepoints. Note that
+// some or all of the 'a' array can't be derefenced depending on how many
+// arguments a syscall expects; attempts to do so will cause the verifier
+// to reject it.
 struct tracepoint__syscalls__sys_enter {
     __u64 pad;
     __u32 __syscall_nr;
@@ -31,6 +34,7 @@ struct tracepoint__syscalls__sys_enter {
     __u64 a[6];
 };
 
+// all sys_exit arguments are the same for traditional tracepoints.
 struct tracepoint__syscalls__sys_exit {
     __u64 pad;
     __u32 __syscall_nr;
@@ -53,11 +57,6 @@ static inline event_s *sys_enter_check_and_init(u32 syscall, u64 pid_tid)
     // retrieve config
     config = bpf_map_lookup_elem(&config_map, &config_id);
     if (!config)
-        return NULL;
-
-    // bail early for syscalls we aren't interested in
-    syscall_flags = config->active[syscall & (SYSCALL_ARRAY_SIZE - 1)];
-    if (!(syscall_flags & ACTIVE_SYSCALL))
         return NULL;
 
     userland_pid = config->userland_pid;

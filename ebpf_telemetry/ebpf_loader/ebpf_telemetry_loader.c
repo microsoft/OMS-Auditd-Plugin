@@ -34,7 +34,6 @@
 //https://stackoverflow.com/questions/57628432/ebpf-maps-for-one-element-map-type-and-kernel-user-space-communication
 
 #define MAP_PAGE_SIZE (16 * 1024)
-//#define MAP_PAGE_SIZE 1024
 #define DEBUGFS "/sys/kernel/debug/tracing/"
 
 #define KERN_TRACEPOINT_OBJ "ebpf_loader/ebpf_telemetry_kern_tp.o"
@@ -62,12 +61,6 @@ static struct bpf_program *bpf_sys_enter_tp[7];
 static struct bpf_program *bpf_sys_enter = NULL;
 static struct bpf_program *bpf_sys_exit  = NULL;
 
-static struct bpf_link    *bpf_sys_enter_openat_link  = NULL;
-static struct bpf_link    *bpf_sys_enter_execve_link  = NULL;
-static struct bpf_link    *bpf_sys_enter_connect_link = NULL;
-static struct bpf_link    *bpf_sys_enter_accept_link  = NULL;
-static struct bpf_link    *bpf_sys_exit_accept_link   = NULL;
-
 static struct bpf_link    *bpf_sys_enter_tp_link[SYSCALL_MAX+1];
 static struct bpf_link    *bpf_sys_exit_tp_link[SYSCALL_MAX+1];
 static struct bpf_link    *bpf_sys_enter_link = NULL;
@@ -79,21 +72,17 @@ static bpf_type support_version = NOBPF;
 
 void ebpf_telemetry_close_all(){
     
-/*
-    if ( support_version == BPF_TP ){
-        bpf_link__destroy(bpf_sys_enter_openat_link);
-        bpf_link__destroy(bpf_sys_enter_execve_link);
-        bpf_link__destroy(bpf_sys_enter_connect_link);
-        bpf_link__destroy(bpf_sys_enter_accept_link);
-        bpf_link__destroy(bpf_sys_exit_accept_link);
-    }
-    else{
-*/
+    if ( support_version == BPF_TP ) {
+        for (int i=0; i<=SYSCALL_MAX; i++) {
+            if (bpf_sys_enter_tp_link[i])
+                bpf_link__destroy(bpf_sys_enter_tp_link[i]);
+            if (bpf_sys_exit_tp_link[i])
+                bpf_link__destroy(bpf_sys_exit_tp_link[i]);
+        }
+    } else {
         bpf_link__destroy(bpf_sys_enter_link);
         bpf_link__destroy(bpf_sys_exit_link);
-/*
     }
-*/
 
     bpf_object__close(bpf_obj);
 }
@@ -307,15 +296,6 @@ bool populate_syscall_conf(char *filename, config_s *config, int sysconf_map_fd)
         syscall = strtok_r(whitespace, " \n", &strtok_ctx);
         if (!syscall)
             continue;
-/*
-    syscall_names_s k;
-    strcpy(k.name, "openat");
-    syscall_names_s *r = bsearch(&k, syscall_name_to_num, SYSCALL_MAX+1, sizeof(syscall_names_s), comp_syscalls);
-    if (!r)
-        printf("Cannot find 'openat'\n");
-    else
-        printf("syscall 'openat' = %d\n", r->nr);
-*/
         syscall_num = atoi(syscall);
         if (syscall_num > SYSCALL_MAX)
             continue;
@@ -529,38 +509,6 @@ int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int
             fprintf(stderr, "ERROR: failed to find program: '%s' '%s'\n", program_name, strerror(errno));
         }
         bpf_program__set_type(bpf_sys_exit, BPF_PROG_TYPE_TRACEPOINT);
-
-
-
-/*
-          bpf_sys_enter_tp[0] = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_enter0")))    &&
-         ( NULL != ( bpf_sys_enter_tp[0] = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_enter1")))    &&
-         ( NULL != ( bpf_sys_enter_tp[0] = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_enter2")))    &&
-         ( NULL != ( bpf_sys_enter_tp[0] = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_enter3")))    &&
-         ( NULL != ( bpf_sys_enter_tp[0] = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_enter4")))    &&
-         ( NULL != ( bpf_sys_enter_tp[0] = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_enter5")))    &&
-         ( NULL != ( bpf_sys_enter_tp[0] = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_enter6")))    &&
-         ( NULL != ( bpf_sys_exit  = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_exit")))  ) 
-*/
-/*
-         ( NULL != ( bpf_sys_enter_openat  = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_enter_open")))    &&
-         ( NULL != ( bpf_sys_enter_execve  = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_enter_execve")))  && 
-         ( NULL != ( bpf_sys_enter_connect = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_enter_connect"))) &&
-         ( NULL != ( bpf_sys_enter_accept  = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_enter_accept")))  &&
-         ( NULL != ( bpf_sys_exit_accept   = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_exit_accept")))   )
-*/
-/*
-    {
-        bpf_program__set_type(bpf_sys_enter, BPF_PROG_TYPE_TRACEPOINT);
-        bpf_program__set_type(bpf_sys_exit, BPF_PROG_TYPE_TRACEPOINT);
-*/
-/*
-        bpf_program__set_type(bpf_sys_enter_openat, BPF_PROG_TYPE_TRACEPOINT);
-        bpf_program__set_type(bpf_sys_enter_execve, BPF_PROG_TYPE_TRACEPOINT);
-        bpf_program__set_type(bpf_sys_enter_connect, BPF_PROG_TYPE_TRACEPOINT);
-        bpf_program__set_type(bpf_sys_enter_accept, BPF_PROG_TYPE_TRACEPOINT);
-        bpf_program__set_type(bpf_sys_exit_accept, BPF_PROG_TYPE_TRACEPOINT);
-*/
     }
     else if ( ( support_version ==  BPF_RAW_TP ) &&
               ( NULL != ( bpf_sys_enter = bpf_object__find_program_by_title(bpf_obj,"raw_tracepoint/sys_enter")))  &&
@@ -614,12 +562,11 @@ int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int
 
         for (unsigned int i=0; i<=SYSCALL_MAX; i++) {
             int j;
+            memset(bpf_sys_enter_tp_link, 0, sizeof(bpf_sys_enter_tp_link));
             if (config.active[i] & ACTIVE_SYSCALL) {
                 char tracepoint[SYSCALL_NAME_LEN * 2];
                 snprintf(tracepoint, SYSCALL_NAME_LEN * 2, "sys_enter_%s", syscall_num_to_name[i].name);
-printf("\n\n%s\n\n", tracepoint);
                 j = syscall_num_to_name[i].num_args;
-printf("   %d\n", j);
                 bpf_sys_enter_tp_link[i] = bpf_program__attach_tracepoint(bpf_sys_enter_tp[j], "syscalls", tracepoint);
                 if (libbpf_get_error(bpf_sys_enter_tp_link[i]))
                     return 2;
@@ -629,27 +576,6 @@ printf("   %d\n", j);
                     return 2;
             }
         }
-
-//        bpf_sys_enter_link = bpf_program__attach_tracepoint(bpf_sys_enter, "syscalls", "sys_enter_openat");
-//        bpf_sys_exit_link = bpf_program__attach_tracepoint(bpf_sys_exit, "syscalls", "sys_exit_openat");
-        
-//        if ( (libbpf_get_error(bpf_sys_enter_link)) || 
-//             (libbpf_get_error(bpf_sys_exit_link))  )
-//        return 2;
-/*
-        bpf_sys_enter_openat_link  = bpf_program__attach_tracepoint(bpf_sys_enter_openat, "syscalls", "sys_enter_open");
-        bpf_sys_enter_execve_link  = bpf_program__attach_tracepoint(bpf_sys_enter_execve, "syscalls", "sys_enter_execve");
-        bpf_sys_enter_connect_link = bpf_program__attach_tracepoint(bpf_sys_enter_connect,"syscalls", "sys_enter_connect");
-        bpf_sys_enter_accept_link  = bpf_program__attach_tracepoint(bpf_sys_enter_accept, "syscalls", "sys_enter_accept");
-        bpf_sys_exit_accept_link   = bpf_program__attach_tracepoint(bpf_sys_exit_accept,  "syscalls", "sys_exit_accept");
-
-        if ( (libbpf_get_error(bpf_sys_enter_openat_link)) || 
-             (libbpf_get_error(bpf_sys_enter_execve_link)) ||
-             (libbpf_get_error(bpf_sys_enter_connect_link))||
-             (libbpf_get_error(bpf_sys_enter_accept_link)) ||
-             (libbpf_get_error(bpf_sys_exit_accept_link))  )
-                return 2;
-*/
     }
     else{
          
