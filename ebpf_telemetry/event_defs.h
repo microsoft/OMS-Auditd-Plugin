@@ -99,6 +99,12 @@ typedef struct e_socket {
     struct sockaddr_in addr;
 } event_socket_s;
 
+// Event arguments structure
+typedef struct a_rec {
+    unsigned long      syscall_id;
+    unsigned long      a[8]; // Should only be 6 but this helps with verifier
+} args_s;
+
 // Event structure
 typedef struct e_rec {
     unsigned long int  code_bytes_start; //Always 0xdeadbeef = 3735928559
@@ -192,9 +198,9 @@ typedef struct conf {
 // is_signed represents whether the operation should be a signed one
 // value is the value to compare with
 typedef struct sysconf {
-    char               arg;
-    char               op;
-    char               is_signed;
+    unsigned char      arg;
+    unsigned char      op;
+    unsigned char      is_signed;
     unsigned long      value;
 } sysconf_s;
 

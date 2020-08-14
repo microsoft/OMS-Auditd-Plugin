@@ -472,9 +472,6 @@ int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int
         support_version = BPF_RAW_TP;   
     }
 
-    fprintf(stderr, "Enabling traditional Tracepoints\n");
-    support_version = BPF_TP;
-
     struct rlimit lim = {
         .rlim_cur = RLIM_INFINITY,
         .rlim_max = RLIM_INFINITY,
