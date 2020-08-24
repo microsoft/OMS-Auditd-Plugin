@@ -44,8 +44,6 @@ public:
 
     bool IsClosed() { return _closed; }
 
-    uint64_t LossCount() { return _loss_count.load(); }
-
 private:
     std::mutex _mutex;
     std::condition_variable _cond;
@@ -53,7 +51,6 @@ private:
     std::list<Segment*> _ready;
     Segment* _current_in;
     Segment* _current_out;
-    std::atomic<uint64_t> _loss_count;
     std::atomic<bool> _closed;
 };
 

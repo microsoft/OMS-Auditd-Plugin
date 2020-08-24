@@ -42,6 +42,8 @@ private:
     std::shared_ptr<Metric> _free_mem_metric;
     std::shared_ptr<Metric> _num_cpu_metric;
     std::shared_ptr<Metric> _cpu_pct_metric;
+    std::shared_ptr<Metric> _disk_size;
+    std::shared_ptr<Metric> _disk_free;
 };
 
 

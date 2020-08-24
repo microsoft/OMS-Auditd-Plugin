@@ -117,16 +117,27 @@ public:
         _num_items = bucket->Items().size();
         _first_seq = bucket->MinSequence();
         _last_seq = bucket->MaxSequence();
-        _file_size = sizeof(FileHeader) + (sizeof(IndexEntry)*_num_items) + bucket->Size();
+        _file_size = Overhead(_num_items) + bucket->Size();
         _saved = false;
     }
 
     inline uint32_t Priority() const { return _priority; }
     inline uint64_t Sequence() const { return _file_seq; }
     inline size_t FileSize() const { return _file_size; }
+    inline size_t DataSize() const { return _file_size-Overhead(_num_items); }
     inline bool Saved() const { return _saved; }
 
     std::shared_ptr<QueueItemBucket> OpenBucket();
+
+    size_t BucketSize() const {
+        auto ptr = _bucket.lock();
+
+        if (!ptr) {
+            return 0;
+        }
+        return ptr->Size();
+    }
+
 
     bool Save();
     bool Remove();
@@ -178,23 +189,30 @@ private:
     std::weak_ptr<QueueItemBucket> _bucket;
 };
 
-class QueueCursor {
+class QueueCursorFile {
 public:
-    void Close();
+    explicit QueueCursorFile(const std::string& path): _path(path) {}
+    explicit QueueCursorFile(const std::string& path, const std::vector<uint64_t>& cursors): _path(path), _cursors(cursors) {}
 
-    // If queue is close, <nullptr, true>
-    // If timeout, <nullptr, false>
-    std::pair<std::shared_ptr<QueueItem>,bool> Get(long timeout, bool auto_commit = true);
-    void Rollback();
-    void Commit(uint32_t priority, uint64_t seq);
+    inline std::string Path() {
+        return _path;
+    }
+
+    inline void Get(std::vector<uint64_t>& cursors) const {
+        cursors = _cursors;
+    }
+
+    inline void Set(const std::vector<uint64_t>& cursors) {
+        _cursors = cursors;
+    }
+
+    bool Read();
+    bool Write() const;
+    bool Remove() const;
 
 private:
-    friend PriorityQueue;
-
     static constexpr uint64_t MAGIC = 0x4355525346494C45;
     static constexpr uint32_t FILE_VERSION = 0x00000001;
-    static constexpr long SAVE_DELAY_MS = 100;
-    static constexpr long SAVE_RETRY_WAIT_MS = 60000;
 
     class FileHeader {
     public:
@@ -206,33 +224,49 @@ private:
         uint32_t _num_priorities;
     };
 
-    QueueCursor(PriorityQueue* queue, const std::string& path, const std::vector<uint64_t>& max_seq);
+    std::string _path;
 
-    void open();
+    std::vector<uint64_t> _cursors;
+};
+
+class QueueCursorHandle;
+
+class QueueCursor {
+private:
+    friend PriorityQueue;
+    friend QueueCursorHandle;
+
+    static constexpr uint64_t MAGIC = 0x4355525346494C45;
+    static constexpr uint32_t FILE_VERSION = 0x00000001;
+
+    class FileHeader {
+    public:
+        FileHeader(): _magic(0), _version(0), _num_priorities(0) {}
+        explicit FileHeader(uint32_t num_priorities): _magic(MAGIC), _version(FILE_VERSION), _num_priorities(num_priorities) {}
+
+        uint64_t _magic;
+        uint32_t _version;
+        uint32_t _num_priorities;
+    };
+
+    QueueCursor(const std::string& path, const std::vector<uint64_t>& max_seq);
+
+    void init_from_file(const QueueCursorFile& file, const std::vector<uint64_t>& max_seq);
+
+    std::pair<std::shared_ptr<QueueItem>,bool> get(std::unique_lock<std::mutex>& lock, PriorityQueue* queue, bool& closed, long timeout, bool auto_commit = true);
+    void rollback();
+    void commit(uint32_t priority, uint64_t seq);
 
     void get_min_seq(std::vector<uint64_t>& min_seq);
-
-    bool data_available();
-
-    std::pair<long,bool> check_save_cursor(std::unique_lock<std::mutex>& lock);
+    bool data_available(const std::vector<uint64_t>& max_seq);
 
     void notify(int priority, uint64_t seq);
 
-    bool read_cursor_file();
-    bool write_cursor_file(std::unique_lock<std::mutex>& lock);
-    bool remove_cursor_file();
-
-    std::mutex _mutex;
     std::condition_variable _cond;
 
-    PriorityQueue* _queue;
     std::string _path;
-    bool _closed;
 
-    bool _data_available;
     bool _need_save;
-    bool _last_write_status;
-    std::chrono::steady_clock::time_point _last_save;
 
     // The last consumed seq for each priority
     std::vector<uint64_t> _cursors;
@@ -240,19 +274,77 @@ private:
     // The last committed seq for each priority
     std::vector<uint64_t> _committed;
 
-    // The maximum known seq for each priority
-    std::vector<uint64_t> _max_seq;
-
     // The current bucket for each priority
     std::vector<std::shared_ptr<QueueItemBucket>> _buckets;
 };
 
-class QueueItemId {
-public:
-    QueueItemId(uint32_t priority, uint64_t seq): _priority(priority), _seq(seq) {};
+class QueueCursorHandle {
+private:
+    friend PriorityQueue;
+    friend QueueCursor;
 
-    uint32_t _priority;
-    uint64_t _seq;
+    QueueCursorHandle(const std::shared_ptr<QueueCursor>& cursor, uint64_t id): _cursor(cursor), _id(id), _closed(false) {}
+
+    void close() {
+        if (!_closed) {
+            _closed = true;
+            _cursor->_cond.notify_all();
+        }
+    }
+
+    std::shared_ptr<QueueCursor> _cursor;
+    uint64_t _id;
+    bool _closed;
+};
+
+class PriorityQueueStats {
+public:
+    PriorityQueueStats(): _priority_stats(), _fs_size(0), _fs_free(0), _fs_allowed_bytes(0) {}
+    explicit PriorityQueueStats(int num_priority): _priority_stats(num_priority), _fs_size(0), _fs_free(0), _fs_allowed_bytes(0) {}
+
+    class Stats {
+    public:
+        Stats(): _num_items_added(0), _bytes_fs(0), _bytes_mem(0), _bytes_unsaved(0), _bytes_dropped(0), _bytes_written(0) {}
+
+        void Reset(bool all = false) {
+            _bytes_fs = 0;
+            _bytes_mem = 0;
+            _bytes_unsaved = 0;
+            if (all) {
+                _num_items_added = 0;
+                _bytes_dropped = 0;
+                _bytes_written = 0;
+            }
+        }
+
+        uint64_t _num_items_added;
+        uint64_t _bytes_fs;
+        uint64_t _bytes_mem;
+        uint64_t _bytes_unsaved;
+        uint64_t _bytes_dropped;
+        uint64_t _bytes_written;
+    };
+
+    void UpdateTotals() {
+        _total.Reset(true);
+
+        for (auto& p: _priority_stats) {
+            _total._num_items_added += p._num_items_added;
+            _total._bytes_fs += p._bytes_fs;
+            _total._bytes_mem += p._bytes_mem;
+            _total._bytes_unsaved += p._bytes_unsaved;
+            _total._bytes_dropped += p._bytes_dropped;
+            _total._bytes_written += p._bytes_written;
+        }
+    }
+
+    std::vector<Stats> _priority_stats;
+
+    Stats _total;
+
+    double _fs_size;
+    double _fs_free;
+    uint64_t _fs_allowed_bytes;
 };
 
 class PriorityQueue {
@@ -260,17 +352,26 @@ public:
     static constexpr size_t MAX_ITEM_SIZE = 1024*256;
 
     static std::shared_ptr<PriorityQueue> Open(const std::string& dir, uint32_t num_priorities, size_t max_file_data_size, size_t max_unsaved_files, uint64_t max_fs_bytes, double max_fs_pct, double min_fs_free_pct);
+
+    uint32_t NumPriorities() { return _num_priorities; }
+
     void Close();
 
-    std::shared_ptr<QueueCursor> OpenCursor(const std::string& name);
+    std::shared_ptr<QueueCursorHandle> OpenCursor(const std::string& name);
     void RemoveCursor(const std::string& name);
+
+    std::pair<std::shared_ptr<QueueItem>,bool> Get(const std::shared_ptr<QueueCursorHandle>& cursor_handle, long timeout, bool auto_commit = true);
+    void Rollback(const std::shared_ptr<QueueCursorHandle>& cursor_handle);
+    void Commit(const std::shared_ptr<QueueCursorHandle>& cursor_handle, uint32_t priority, uint64_t seq);
+    void Close(const std::shared_ptr<QueueCursorHandle>& cursor_handle);
 
     bool Put(uint32_t priority, const void* data, size_t size);
 
-    void Save(long save_delay);
+    void Save(long save_delay, bool final_save = false);
     void Saver(long save_delay);
     void StartSaver(long save_delay);
 
+    void GetStats(PriorityQueueStats& stats);
 private:
     friend QueueCursor;
 
@@ -291,11 +392,13 @@ private:
     bool open();
 
     std::shared_ptr<QueueItemBucket> cycle_bucket(uint32_t priority);
-    std::shared_ptr<QueueItemBucket> get_next_bucket(uint32_t priority, uint64_t last_seq);
+    std::shared_ptr<QueueItemBucket> get_next_bucket(std::unique_lock<std::mutex>& lock, uint32_t priority, uint64_t last_seq);
     void update_min_seq();
+    void flush_current_buckets();
+    void clean_unsaved();
 
     bool save_needed(long save_delay);
-    bool save(std::unique_lock<std::mutex>& lock, long save_delay);
+    bool save(std::unique_lock<std::mutex>& lock, long save_delay, bool final_save);
 
     std::string _dir;
     std::string _data_dir;
@@ -308,12 +411,12 @@ private:
     double _min_fs_free_pct;
 
     std::mutex _mutex;
-    std::mutex _cursors_mutex;
     std::condition_variable _saver_cond;
 
     bool _closed;
 
     uint64_t _next_seq;
+    uint64_t _next_cursor_id;
 
     // The minimum seq for each priority
     std::vector<uint64_t> _min_seq;
@@ -334,11 +437,13 @@ private:
     std::vector<std::map<uint64_t, _UnsavedEntry>> _unsaved;
 
     std::unordered_map<std::string, std::shared_ptr<QueueCursor>> _cursors;
+    std::unordered_map<uint64_t, std::shared_ptr<QueueCursorHandle>> _cursor_handles;
 
-    std::chrono::steady_clock::time_point _next_save_needed;
     std::chrono::steady_clock::time_point _last_save_warning;
 
     std::thread _saver_thread;
+
+    PriorityQueueStats _stats;
 };
 
 

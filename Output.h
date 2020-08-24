@@ -42,7 +42,7 @@ public:
         return _max_size;
     }
 
-    void Init(std::shared_ptr<QueueCursor> cursor);
+    void Init(const std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<QueueCursorHandle>& cursor_handle);
 
     void Close();
 
@@ -77,7 +77,8 @@ private:
     std::unordered_map<EventId, uint64_t> _event_ids;
     std::map<uint64_t, _CursorEntry> _cursors;
     size_t _max_size;
-    std::shared_ptr<QueueCursor> _cursor;
+    std::shared_ptr<PriorityQueue> _queue;
+    std::shared_ptr<QueueCursorHandle> _cursor_handle;
     bool _closed;
     bool _have_auto_cursor;
     uint64_t _next_seq;
@@ -107,7 +108,6 @@ protected:
     std::string _name;
     std::shared_ptr<IEventWriter> _event_writer;
     std::shared_ptr<IOBase> _writer;
-    std::shared_ptr<QueueCursor> _cursor;
     std::shared_ptr<AckQueue> _queue;
 };
 
@@ -191,7 +191,7 @@ protected:
     bool _ack_mode;
     long _ack_timeout;
     std::unique_ptr<Config> _config;
-    std::shared_ptr<QueueCursor> _cursor;
+    std::shared_ptr<QueueCursorHandle> _cursor_handle;
     std::shared_ptr<IEventWriter> _event_writer;
     std::shared_ptr<IEventFilter> _event_filter;
     std::shared_ptr<IOBase> _writer;

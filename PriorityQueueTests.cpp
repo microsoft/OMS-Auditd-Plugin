@@ -59,7 +59,7 @@ BOOST_AUTO_TEST_CASE( queue_simple ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor = queue->OpenCursor("test");
+    auto cursor_handle = queue->OpenCursor("test");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -70,7 +70,7 @@ BOOST_AUTO_TEST_CASE( queue_simple ) {
             BOOST_FAIL("queue->Put() failed!");
         }
 
-        auto val = cursor->Get(0);
+        auto val = queue->Get(cursor_handle, 0);
         if (val.second) {
             BOOST_FAIL("cursor->Get() returned closed==true!");
         }
@@ -81,7 +81,7 @@ BOOST_AUTO_TEST_CASE( queue_simple ) {
         BOOST_REQUIRE_EQUAL(i, x);
     }
 
-    auto val = cursor->Get(0);
+    auto val = queue->Get(cursor_handle,0);
     if (val.second) {
         BOOST_FAIL("cursor->Get() returned closed==true!");
     }
@@ -91,13 +91,22 @@ BOOST_AUTO_TEST_CASE( queue_simple ) {
 
     queue->Close();
 
-    val = cursor->Get(0);
+    val = queue->Get(cursor_handle,0);
     if (!val.second) {
         BOOST_FAIL("cursor->Get() returned closed!=true!");
     }
     if (val.first) {
         BOOST_FAIL("cursor->Get() did not return nullptr!");
     }
+
+    PriorityQueueStats stats;
+    queue->GetStats(stats);
+
+    BOOST_CHECK_EQUAL(stats._total_num_items_added, 10);
+    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 10*1024);
+    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
+    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
 }
 
 BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
@@ -108,7 +117,7 @@ BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor = queue->OpenCursor("test");
+    auto cursor_handle = queue->OpenCursor("test");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -121,7 +130,7 @@ BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
     }
 
     for (uint8_t i = 1; i <= 10; i++) {
-        auto val = cursor->Get(0, false);
+        auto val = queue->Get(cursor_handle,0, false);
         if (val.second) {
             BOOST_FAIL("cursor->Get() returned closed==true!");
         }
@@ -132,10 +141,10 @@ BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
         BOOST_REQUIRE_EQUAL(i, x);
     }
 
-    cursor->Rollback();
+    queue->Rollback(cursor_handle);
 
     for (uint8_t i = 1; i <= 10; i++) {
-        auto val = cursor->Get(0);
+        auto val = queue->Get(cursor_handle,0);
         if (val.second) {
             BOOST_FAIL("cursor->Get() returned closed==true!");
         }
@@ -146,7 +155,7 @@ BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
         BOOST_REQUIRE_EQUAL(i, x);
     }
 
-    auto val = cursor->Get(0);
+    auto val = queue->Get(cursor_handle,0);
     if (val.second) {
         BOOST_FAIL("cursor->Get() returned closed==true!");
     }
@@ -156,13 +165,23 @@ BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
 
     queue->Close();
 
-    val = cursor->Get(0);
+    val = queue->Get(cursor_handle,0);
     if (!val.second) {
         BOOST_FAIL("cursor->Get() returned closed!=true!");
     }
     if (val.first) {
         BOOST_FAIL("cursor->Get() did not return nullptr!");
     }
+
+    PriorityQueueStats stats;
+    queue->GetStats(stats);
+
+    BOOST_CHECK_EQUAL(stats._total_num_items_added, 10);
+    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 10*1024);
+    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, QueueFile::Overhead(4)*2 + 8*1024);
+    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
+    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
 }
 
 BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
@@ -173,7 +192,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor1 = queue->OpenCursor("test1");
+    auto cursor_handle1 = queue->OpenCursor("test1");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -185,7 +204,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
         }
     }
 
-    auto cursor2 = queue->OpenCursor("test2");
+    auto cursor_handle2 = queue->OpenCursor("test2");
 
     for (uint8_t i = 6; i <= 10; i++) {
         data[0] = i;
@@ -195,7 +214,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
     }
 
     for (uint8_t i = 1; i <= 10; i++) {
-        auto val = cursor1->Get(0);
+        auto val = queue->Get(cursor_handle1,0);
         if (val.second) {
             BOOST_FAIL("cursor1->Get() returned closed==true!");
         }
@@ -207,7 +226,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
     }
 
     for (uint8_t i = 6; i <= 10; i++) {
-        auto val = cursor2->Get(0);
+        auto val = queue->Get(cursor_handle2,0);
         if (val.second) {
             BOOST_FAIL("cursor2->Get() returned closed==true!");
         }
@@ -218,7 +237,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
         BOOST_REQUIRE_EQUAL(i, x);
     }
 
-    auto val = cursor1->Get(0);
+    auto val = queue->Get(cursor_handle1,0);
     if (val.second) {
         BOOST_FAIL("cursor1->Get() returned closed==true!");
     }
@@ -226,7 +245,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
         BOOST_FAIL("cursor1->Get() did not return nullptr!");
     }
 
-    val = cursor2->Get(0);
+    val = queue->Get(cursor_handle2,0);
     if (val.second) {
         BOOST_FAIL("cursor2->Get() returned closed==true!");
     }
@@ -236,7 +255,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
 
     queue->Close();
 
-    val = cursor1->Get(0);
+    val = queue->Get(cursor_handle1,0);
     if (!val.second) {
         BOOST_FAIL("cursor1->Get() returned closed!=true!");
     }
@@ -244,13 +263,23 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
         BOOST_FAIL("cursor1->Get() did not return nullptr!");
     }
 
-    val = cursor2->Get(0);
+    val = queue->Get(cursor_handle2,0);
     if (!val.second) {
         BOOST_FAIL("cursor2->Get() returned closed!=true!");
     }
     if (val.first) {
         BOOST_FAIL("cursor2->Get() did not return nullptr!");
     }
+
+    PriorityQueueStats stats;
+    queue->GetStats(stats);
+
+    BOOST_CHECK_EQUAL(stats._total_num_items_added, 10);
+    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 10*1024);
+    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, QueueFile::Overhead(4)*2 + 8*1024);
+    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
+    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
 }
 
 BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
@@ -264,7 +293,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
 
         queue->StartSaver(0);
 
-        auto cursor1 = queue->OpenCursor("test1");
+        auto cursor_handle1 = queue->OpenCursor("test1");
 
         std::array<uint8_t, 1024> data;
         data.fill(0);
@@ -276,7 +305,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
             }
         }
 
-        auto cursor2 = queue->OpenCursor("test2");
+        auto cursor_handle2 = queue->OpenCursor("test2");
 
         for (uint8_t i = 6; i <= 10; i++) {
             data[0] = i;
@@ -286,6 +315,18 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
         }
 
         queue->Close();
+
+        PriorityQueueStats stats;
+        queue->GetStats(stats);
+
+        constexpr long file_total = QueueFile::Overhead(4)*2 + QueueFile::Overhead(2) + 10*1024;
+
+        BOOST_CHECK_EQUAL(stats._total_num_items_added, 10);
+        BOOST_CHECK_EQUAL(stats._total_bytes_fs, file_total);
+        BOOST_CHECK_EQUAL(stats._total_bytes_mem, 0);
+        BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, 0);
+        BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
+        BOOST_CHECK_EQUAL(stats._total_bytes_written, file_total);
     }
 
     {
@@ -294,11 +335,13 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
             BOOST_FAIL("Failed to open queue");
         }
 
-        auto cursor1 = queue->OpenCursor("test1");
-        auto cursor2 = queue->OpenCursor("test2");
+        queue->StartSaver(0);
+
+        auto cursor_handle1 = queue->OpenCursor("test1");
+        auto cursor_handle2 = queue->OpenCursor("test2");
 
         for (uint8_t i = 1; i <= 10; i++) {
-            auto val = cursor1->Get(0);
+            auto val = queue->Get(cursor_handle1,0);
             if (val.second) {
                 BOOST_FAIL("cursor1->Get() returned closed==true!");
             }
@@ -310,7 +353,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
         }
 
         for (uint8_t i = 6; i <= 10; i++) {
-            auto val = cursor2->Get(0);
+            auto val = queue->Get(cursor_handle2,0);
             if (val.second) {
                 BOOST_FAIL("cursor2->Get() returned closed==true!");
             }
@@ -321,7 +364,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
             BOOST_REQUIRE_EQUAL(i, x);
         }
 
-        auto val = cursor1->Get(0);
+        auto val = queue->Get(cursor_handle1,0);
         if (val.second) {
             BOOST_FAIL("cursor1->Get() returned closed==true!");
         }
@@ -329,7 +372,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
             BOOST_FAIL("cursor1->Get() did not return nullptr!");
         }
 
-        val = cursor2->Get(0);
+        val = queue->Get(cursor_handle2,0);
         if (val.second) {
             BOOST_FAIL("cursor2->Get() returned closed==true!");
         }
@@ -339,7 +382,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
 
         queue->Close();
 
-        val = cursor1->Get(0);
+        val = queue->Get(cursor_handle1,0);
         if (!val.second) {
             BOOST_FAIL("cursor1->Get() returned closed!=true!");
         }
@@ -347,13 +390,22 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
             BOOST_FAIL("cursor1->Get() did not return nullptr!");
         }
 
-        val = cursor2->Get(0);
+        val = queue->Get(cursor_handle2,0);
         if (!val.second) {
             BOOST_FAIL("cursor2->Get() returned closed!=true!");
         }
         if (val.first) {
             BOOST_FAIL("cursor2->Get() did not return nullptr!");
         }
+
+        PriorityQueueStats stats;
+        queue->GetStats(stats);
+
+        BOOST_CHECK_EQUAL(stats._total_num_items_added, 0);
+        BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
+        BOOST_CHECK_EQUAL(stats._total_bytes_mem, 0);
+        BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
+        BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
     }
 }
 
@@ -365,7 +417,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_priority ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor = queue->OpenCursor("test");
+    auto cursor_handle = queue->OpenCursor("test");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -409,7 +461,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_priority ) {
     }
 
     for (auto expected: expected_output) {
-        auto val = cursor->Get(0);
+        auto val = queue->Get(cursor_handle,0);
         if (val.second) {
             BOOST_FAIL("cursor->Get() returned closed==true!");
         }
@@ -420,7 +472,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_priority ) {
         BOOST_REQUIRE_EQUAL(expected, actual);
     }
 
-    auto val = cursor->Get(0);
+    auto val = queue->Get(cursor_handle,0);
     if (val.second) {
         BOOST_FAIL("cursor->Get() returned closed==true!");
     }
@@ -430,7 +482,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_priority ) {
 
     queue->Close();
 
-    val = cursor->Get(0);
+    val = queue->Get(cursor_handle,0);
     if (!val.second) {
         BOOST_FAIL("cursor->Get() returned closed!=true!");
     }
@@ -447,7 +499,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_priority2 ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor = queue->OpenCursor("test");
+    auto cursor_handle = queue->OpenCursor("test");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -460,7 +512,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_priority2 ) {
                 BOOST_FAIL("queue->Put() failed!");
             }
 
-            auto val = cursor->Get(0);
+            auto val = queue->Get(cursor_handle,0);
             if (val.second) {
                 BOOST_FAIL("cursor->Get() returned closed==true!");
             }
@@ -472,7 +524,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_priority2 ) {
         }
     }
 
-    auto val = cursor->Get(0);
+    auto val = queue->Get(cursor_handle,0);
     if (val.second) {
         BOOST_FAIL("cursor->Get() returned closed==true!");
     }
@@ -482,7 +534,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_priority2 ) {
 
     queue->Close();
 
-    val = cursor->Get(0);
+    val = queue->Get(cursor_handle,0);
     if (!val.second) {
         BOOST_FAIL("cursor->Get() returned closed!=true!");
     }
@@ -499,7 +551,7 @@ BOOST_AUTO_TEST_CASE( queue_max_unsaved_files ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor = queue->OpenCursor("test");
+    auto cursor_handle = queue->OpenCursor("test");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -702,6 +754,18 @@ BOOST_AUTO_TEST_CASE( queue_max_unsaved_files ) {
         }
     }
 
+    PriorityQueueStats stats;
+    queue->GetStats(stats);
+
+    long file_size = QueueFile::Overhead(4)*16 + 64*1024;
+
+    BOOST_CHECK_EQUAL(stats._total_num_items_added, 72);
+    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 72*1024);
+    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
+    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, file_size);
+    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
+
     // This set of inputs should exceed the max mem limits
     for (auto& in: input2_pairs) {
         data[0] = in.first;
@@ -710,8 +774,17 @@ BOOST_AUTO_TEST_CASE( queue_max_unsaved_files ) {
         }
     }
 
+    queue->GetStats(stats);
+
+    BOOST_CHECK_EQUAL(stats._total_num_items_added, 84);
+    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 72*1024);
+    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 12*1024);
+    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, file_size);
+    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
+
     for (auto expected: expected_output) {
-        auto val = cursor->Get(0);
+        auto val = queue->Get(cursor_handle,0);
         if (val.second) {
             BOOST_FAIL("cursor->Get() returned closed==true!");
         }
@@ -722,7 +795,7 @@ BOOST_AUTO_TEST_CASE( queue_max_unsaved_files ) {
         BOOST_REQUIRE_EQUAL(expected, actual);
     }
 
-    auto val = cursor->Get(0);
+    auto val = queue->Get(cursor_handle,0);
     if (val.second) {
         BOOST_FAIL("cursor->Get() returned closed==true!");
     }
@@ -732,13 +805,22 @@ BOOST_AUTO_TEST_CASE( queue_max_unsaved_files ) {
 
     queue->Close();
 
-    val = cursor->Get(0);
+    val = queue->Get(cursor_handle,0);
     if (!val.second) {
         BOOST_FAIL("cursor->Get() returned closed!=true!");
     }
     if (val.first) {
         BOOST_FAIL("cursor->Get() did not return nullptr!");
     }
+
+    queue->GetStats(stats);
+
+    BOOST_CHECK_EQUAL(stats._total_num_items_added, 84);
+    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 72*1024);
+    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 12*1024);
+    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, file_size);
+    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
 }
 
 long get_queue_data_size(const std::string& dir, int num_priority) {
@@ -919,8 +1001,8 @@ BOOST_AUTO_TEST_CASE( queue_multi_cursor_fs_loss ) {
             BOOST_FAIL("Failed to open queue");
         }
 
-        auto cursor1 = queue->OpenCursor("test1");
-        auto cursor2 = queue->OpenCursor("test2");
+        auto cursor_handle1 = queue->OpenCursor("test1");
+        auto cursor_handle2 = queue->OpenCursor("test2");
 
         std::array<uint8_t, 1024> data;
         data.fill(0);
@@ -934,7 +1016,7 @@ BOOST_AUTO_TEST_CASE( queue_multi_cursor_fs_loss ) {
         }
 
         for (auto expected: expected_output1_cursor1) {
-            auto val = cursor1->Get(0);
+            auto val = queue->Get(cursor_handle1,0);
             if (val.second) {
                 BOOST_FAIL("cursor1->Get() returned closed==true!");
             }
@@ -946,8 +1028,8 @@ BOOST_AUTO_TEST_CASE( queue_multi_cursor_fs_loss ) {
         }
 
 
-        queue->Close(); // Will cycle current buckets into _unsaved;
-        queue->Save(0);
+        queue->Close();
+        queue->Save(0, true);
     }
 
     {
@@ -956,12 +1038,12 @@ BOOST_AUTO_TEST_CASE( queue_multi_cursor_fs_loss ) {
             BOOST_FAIL("Failed to open queue");
         }
 
-        auto cursor1 = queue->OpenCursor("test1");
-        auto cursor2 = queue->OpenCursor("test2");
+        auto cursor_handle1 = queue->OpenCursor("test1");
+        auto cursor_handle2 = queue->OpenCursor("test2");
 
 
         for (auto expected: expected_output2_cursor1) {
-            auto val = cursor1->Get(0);
+            auto val = queue->Get(cursor_handle1,0);
             if (val.second) {
                 BOOST_FAIL("cursor1->Get() returned closed==true!");
             }
@@ -973,7 +1055,7 @@ BOOST_AUTO_TEST_CASE( queue_multi_cursor_fs_loss ) {
         }
 
         for (auto expected: expected_output1_cursor2) {
-            auto val = cursor2->Get(0);
+            auto val = queue->Get(cursor_handle2,0);
             if (val.second) {
                 BOOST_FAIL("cursor2->Get() returned closed==true!");
             }
@@ -997,14 +1079,14 @@ BOOST_AUTO_TEST_CASE( queue_multi_cursor_concurrent ) {
     }
     queue->StartSaver(0);
 
-    auto cursor1 = queue->OpenCursor("test1");
-    auto cursor2 = queue->OpenCursor("test2");
+    auto cursor_handle1 = queue->OpenCursor("test1");
+    auto cursor_handle2 = queue->OpenCursor("test2");
 
     int max_id = 10000;
 
-    auto get_fn = [max_id](const std::shared_ptr<QueueCursor>& cursor, std::condition_variable* cond, std::atomic<int>* idx, std::atomic<int>* last) {
+    auto get_fn = [max_id](std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<QueueCursorHandle>& cursor_handle, std::condition_variable* cond, std::atomic<int>* idx, std::atomic<int>* last) {
         int next_i = 1;
-        for (auto item = cursor->Get(-1); item.first; item = cursor->Get(-1)) {
+        for (auto item = queue->Get(cursor_handle, -1); item.first; item = queue->Get(cursor_handle, -1)) {
             auto i = reinterpret_cast<int*>(item.first->Data())[0];
             if (last->load() == 0) {
                 if (i != next_i || i >= max_id) {
@@ -1024,8 +1106,8 @@ BOOST_AUTO_TEST_CASE( queue_multi_cursor_concurrent ) {
     std::atomic<int> cursor1_last(false);
     std::atomic<int> cursor2_last(false);
 
-    std::thread _cursor1_thread(std::bind(get_fn, cursor1, &cond, &cursor1_idx, &cursor1_last));
-    std::thread _cursor2_thread(std::bind(get_fn, cursor2, &cond, &cursor2_idx, &cursor2_last));
+    std::thread _cursor1_thread(std::bind(get_fn, queue, cursor_handle1, &cond, &cursor1_idx, &cursor1_last));
+    std::thread _cursor2_thread(std::bind(get_fn, queue, cursor_handle2, &cond, &cursor2_idx, &cursor2_last));
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -1072,8 +1154,8 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_multi_cursor ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor1 = queue->OpenCursor("test1");
-    auto cursor2 = queue->OpenCursor("test2");
+    auto cursor_handle1 = queue->OpenCursor("test1");
+    auto cursor_handle2 = queue->OpenCursor("test2");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -1094,7 +1176,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_multi_cursor ) {
     BOOST_REQUIRE_EQUAL(queue_size, max_fs_bytes);
 
     for (int i = 0; i < num_items; i++) {
-        auto val = cursor1->Get(0);
+        auto val = queue->Get(cursor_handle1,0);
         if (val.second) {
             BOOST_FAIL("cursor1->Get() returned closed==true!");
         }
@@ -1112,7 +1194,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_multi_cursor ) {
     BOOST_REQUIRE_EQUAL(queue_size, max_fs_bytes);
 
     for (int i = 0; i < num_items/2; i++) {
-        auto val = cursor2->Get(0);
+        auto val = queue->Get(cursor_handle2,0);
         if (val.second) {
             BOOST_FAIL("cursor2->Get() returned closed==true!");
         }
@@ -1131,7 +1213,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_multi_cursor ) {
     BOOST_REQUIRE_EQUAL(queue_size, original_queue_size/2);
 
     for (int i = 0; i < num_items/2; i++) {
-        auto val = cursor2->Get(0);
+        auto val = queue->Get(cursor_handle2,0);
         if (val.second) {
             BOOST_FAIL("cursor2->Get() returned closed==true!");
         }
@@ -1167,8 +1249,8 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_remove_cursor ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor1 = queue->OpenCursor("test1");
-    auto cursor2 = queue->OpenCursor("test2");
+    auto cursor_handle1 = queue->OpenCursor("test1");
+    auto cursor_handle2 = queue->OpenCursor("test2");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -1189,7 +1271,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_remove_cursor ) {
     BOOST_REQUIRE_EQUAL(queue_size, max_fs_bytes);
 
     for (int i = 0; i < num_items; i++) {
-        auto val = cursor1->Get(0);
+        auto val = queue->Get(cursor_handle1,0);
         if (val.second) {
             BOOST_FAIL("cursor1->Get() returned closed==true!");
         }
@@ -1219,8 +1301,6 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_remove_cursor ) {
     queue->Close();
 }
 
-// Cursor remove (rm -rf) fs clean test
-
 BOOST_AUTO_TEST_CASE( queue_fs_clean_delete_cursor ) {
     TempDir dir("/tmp/PriorityQueueTests");
 
@@ -1238,8 +1318,8 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_delete_cursor ) {
             BOOST_FAIL("Failed to open queue");
         }
 
-        auto cursor1 = queue->OpenCursor("test1");
-        auto cursor2 = queue->OpenCursor("test2");
+        auto cursor_handle1 = queue->OpenCursor("test1");
+        auto cursor_handle2 = queue->OpenCursor("test2");
 
         std::array<uint8_t, 1024> data;
         data.fill(0);
@@ -1260,7 +1340,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_delete_cursor ) {
         BOOST_REQUIRE_EQUAL(queue_size, max_fs_bytes);
 
         for (int i = 0; i < num_items; i++) {
-            auto val = cursor1->Get(0);
+            auto val = queue->Get(cursor_handle1,0);
             if (val.second) {
                 BOOST_FAIL("cursor1->Get() returned closed==true!");
             }
@@ -1307,15 +1387,20 @@ BOOST_AUTO_TEST_CASE( queue_max_fs_bytes ) {
 
     constexpr int num_priorities = 8;
     constexpr int num_items = 32;
+    constexpr int num_items_dropped = 20;
+    constexpr int num_items_per_file = 4;
+    constexpr int num_written_files = 8;
+    constexpr int num_saved_files = 3;
     constexpr size_t max_file_data_size = 4096;
     constexpr size_t max_fs_bytes = 1024*16;
+
 
     auto queue = PriorityQueue::Open(dir.Path(), num_priorities, max_file_data_size, num_items/4, max_fs_bytes, 100, 0);
     if (!queue) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor1 = queue->OpenCursor("test1");
+    auto cursor_handle1 = queue->OpenCursor("test1");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -1327,7 +1412,8 @@ BOOST_AUTO_TEST_CASE( queue_max_fs_bytes ) {
         }
     }
 
-    queue->Save(0);
+    queue->Close();
+    queue->Save(0, true);
 
     auto queue_size = get_queue_data_size(dir.Path() + "/data", num_priorities);
     if (queue_size < 0) {
@@ -1335,7 +1421,19 @@ BOOST_AUTO_TEST_CASE( queue_max_fs_bytes ) {
     }
     BOOST_REQUIRE_LE(queue_size, max_fs_bytes);
 
-    queue->Close();
+
+    PriorityQueueStats stats;
+    queue->GetStats(stats);
+
+    long file_size = QueueFile::Overhead(num_items_per_file)*num_saved_files + num_items_per_file*num_saved_files*1024;
+    long unsaved_size = QueueFile::Overhead(num_items_per_file)*(num_written_files-num_saved_files) + num_items_dropped*1024;
+
+    BOOST_CHECK_EQUAL(stats._total_num_items_added, num_items);
+    BOOST_CHECK_EQUAL(stats._total_bytes_fs, file_size);
+    BOOST_CHECK_EQUAL(stats._total_bytes_mem, num_items_dropped*1024);
+    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
+    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, unsaved_size);
+    BOOST_CHECK_EQUAL(stats._total_bytes_written, file_size);
 }
 
 BOOST_AUTO_TEST_CASE( queue_max_fs_pct ) {
@@ -1362,7 +1460,7 @@ BOOST_AUTO_TEST_CASE( queue_max_fs_pct ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor1 = queue->OpenCursor("test1");
+    auto cursor_handle1 = queue->OpenCursor("test1");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -1416,7 +1514,7 @@ BOOST_AUTO_TEST_CASE( queue_min_fs_free_pct ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor1 = queue->OpenCursor("test1");
+    auto cursor_handle1 = queue->OpenCursor("test1");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -1450,7 +1548,7 @@ BOOST_AUTO_TEST_CASE( queue_save_delay ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor1 = queue->OpenCursor("test1");
+    auto cursor_handle1 = queue->OpenCursor("test1");
 
     std::array<uint8_t, 1024> data;
     data.fill(0);
@@ -1492,7 +1590,7 @@ BOOST_AUTO_TEST_CASE( queue_cursor_commit ) {
         }
         queue->StartSaver(60000);
 
-        auto cursor1 = queue->OpenCursor("test1");
+        auto cursor_handle1 = queue->OpenCursor("test1");
 
         std::array<uint8_t, 1024> data;
         data.fill(0);
@@ -1505,7 +1603,7 @@ BOOST_AUTO_TEST_CASE( queue_cursor_commit ) {
         }
 
         for (int i = 0; i < 16; i++) {
-            auto val = cursor1->Get(0, false);
+            auto val = queue->Get(cursor_handle1, 0, false);
             if (val.second) {
                 BOOST_FAIL("cursor->Get() returned closed==true!");
             }
@@ -1514,11 +1612,11 @@ BOOST_AUTO_TEST_CASE( queue_cursor_commit ) {
             }
             auto actual = static_cast<int>(reinterpret_cast<uint8_t*>(val.first->Data())[0]);
             BOOST_REQUIRE_EQUAL(i, actual);
-            cursor1->Commit(val.first->Priority(), val.first->Sequence());
+            queue->Commit(cursor_handle1, val.first->Priority(), val.first->Sequence());
         }
 
         for (int i = 16; i < 32; i++) {
-            auto val = cursor1->Get(0, false);
+            auto val = queue->Get(cursor_handle1, 0, false);
             if (val.second) {
                 BOOST_FAIL("cursor->Get() returned closed==true!");
             }
@@ -1538,10 +1636,10 @@ BOOST_AUTO_TEST_CASE( queue_cursor_commit ) {
         }
         queue->StartSaver(60000);
 
-        auto cursor1 = queue->OpenCursor("test1");
+        auto cursor_handle1 = queue->OpenCursor("test1");
 
         for (int i = 16; i < 32; i++) {
-            auto val = cursor1->Get(0, false);
+            auto val = queue->Get(cursor_handle1, 0, false);
             if (val.second) {
                 BOOST_FAIL("cursor->Get() returned closed==true!");
             }
@@ -1550,7 +1648,7 @@ BOOST_AUTO_TEST_CASE( queue_cursor_commit ) {
             }
             auto actual = static_cast<int>(reinterpret_cast<uint8_t*>(val.first->Data())[0]);
             BOOST_REQUIRE_EQUAL(i, actual);
-            cursor1->Commit(val.first->Priority(), val.first->Sequence());
+            queue->Commit(cursor_handle1, val.first->Priority(), val.first->Sequence());
         }
         queue->Close();
     }
@@ -1572,7 +1670,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_force_clean ) {
         BOOST_FAIL("Failed to open queue");
     }
 
-    auto cursor = queue->OpenCursor("test");
+    auto cursor_handle = queue->OpenCursor("test");
 
     std::array<uint8_t, item_size> data;
     data.fill(0);
@@ -1671,7 +1769,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_force_clean ) {
     BOOST_REQUIRE_LE(queue_size, max_fs_bytes);
 
     for (auto expected: expected_output1) {
-        auto val = cursor->Get(0);
+        auto val = queue->Get(cursor_handle,0);
         if (val.second) {
             BOOST_FAIL("cursor->Get() returned closed==true!");
         }
@@ -1698,7 +1796,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_force_clean ) {
     BOOST_REQUIRE_LE(queue_size, max_fs_bytes);
 
     for (auto expected: expected_output2) {
-        auto val = cursor->Get(0);
+        auto val = queue->Get(cursor_handle,0);
         if (val.second) {
             BOOST_FAIL("cursor->Get() returned closed==true!");
         }
@@ -1709,7 +1807,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_force_clean ) {
         BOOST_REQUIRE_EQUAL(expected, actual);
     }
 
-    auto val = cursor->Get(0);
+    auto val = queue->Get(cursor_handle,0);
     if (val.second) {
         BOOST_FAIL("cursor->Get() returned closed==true!");
     }
@@ -1734,7 +1832,7 @@ BOOST_AUTO_TEST_CASE( queue_empty_cursor_reset ) {
         }
         queue->StartSaver(250);
 
-        auto cursor1 = queue->OpenCursor("test1");
+        auto cursor_handle1 = queue->OpenCursor("test1");
 
         std::array<uint8_t, 1024> data;
         data.fill(0);
@@ -1747,7 +1845,7 @@ BOOST_AUTO_TEST_CASE( queue_empty_cursor_reset ) {
         }
 
         for (int i = 0; i < 32; i++) {
-            auto val = cursor1->Get(0);
+            auto val = queue->Get(cursor_handle1,0);
             if (val.second) {
                 BOOST_FAIL("cursor->Get() returned closed==true!");
             }
@@ -1767,7 +1865,7 @@ BOOST_AUTO_TEST_CASE( queue_empty_cursor_reset ) {
         }
         queue->StartSaver(250);
 
-        auto cursor1 = queue->OpenCursor("test1");
+        auto cursor_handle1 = queue->OpenCursor("test1");
 
         std::array<uint8_t, 1024> data;
         data.fill(0);
@@ -1780,7 +1878,7 @@ BOOST_AUTO_TEST_CASE( queue_empty_cursor_reset ) {
         }
 
         for (int i = 0; i < 32; i++) {
-            auto val = cursor1->Get(0);
+            auto val = queue->Get(cursor_handle1,0);
             if (val.second) {
                 BOOST_FAIL("cursor->Get() returned closed==true!");
             }

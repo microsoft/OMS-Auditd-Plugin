@@ -327,7 +327,7 @@ int main(int argc, char**argv) {
     auto system_metrics = std::make_shared<SystemMetrics>(metrics);
     system_metrics->Start();
 
-    auto proc_metrics = std::make_shared<ProcMetrics>("auoms", metrics, rss_limit, virt_limit, []() {
+    auto proc_metrics = std::make_shared<ProcMetrics>("auoms", queue, metrics, rss_limit, virt_limit, []() {
         Logger::Error("A memory limit was exceeded, exiting immediately");
         exit(1);
     });

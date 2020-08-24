@@ -31,7 +31,7 @@ BOOST_AUTO_TEST_CASE( test )
     auto queue = PriorityQueue::Open(dir.Path(), 8, 16*1024,8, 0, 100, 0);
     auto event_queue = std::make_shared<EventQueue>(queue);
 
-    auto cursor = queue->OpenCursor("event_test");
+    auto cursor_handle = queue->OpenCursor("event_test");
 
     EventBuilder builder(event_queue, DefaultPrioritizer::Create(0));
 
@@ -82,7 +82,7 @@ BOOST_AUTO_TEST_CASE( test )
         BOOST_FAIL("EndEvent failed: " + std::to_string(ret));
     }
 
-    auto rval = cursor->Get(0);
+    auto rval = queue->Get(cursor_handle, 0);
     if (!rval.first) {
         BOOST_FAIL("Queue didn't have any data in it!");
     }
@@ -220,7 +220,7 @@ BOOST_AUTO_TEST_CASE( test )
         BOOST_FAIL("EndEvent failed: " + std::to_string(ret));
     }
 
-    rval = cursor->Get(0);
+    rval = queue->Get(cursor_handle, 0);
     if (!rval.first) {
         BOOST_FAIL("Queue didn't have any data in it!");
     }

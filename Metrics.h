@@ -35,6 +35,12 @@ enum class MetricPeriod: int {
     HOUR = 3600000,
 };
 
+enum class MetricType {
+    METRIC_BY_ACCUMULATION,
+    METRIC_BY_FILL,
+    METRIC_FROM_TOTAL,
+};
+
 struct MetricAggregateSnapshot {
     std::string namespace_name;
     std::string name;
@@ -50,26 +56,37 @@ struct MetricAggregateSnapshot {
 class MetricData {
 public:
     MetricData(std::chrono::system_clock::time_point start_time, MetricPeriod sample_period, MetricPeriod agg_period):
-        _start_time(start_time), _sample_period(sample_period), _agg_period(agg_period), _counts() {
+        _start_time(start_time), _sample_period(sample_period), _agg_period(agg_period), _counts(), _last_index(-1) {
         if (static_cast<long>(agg_period) < static_cast<long>(sample_period)) {
             _agg_period = _sample_period;
         }
         _counts.resize(static_cast<long>(_agg_period)/static_cast<long>(_sample_period), 0.0);
     }
 
+    inline void Add(int idx, double value) {
+        _counts.at(idx) += value;
+        _last_index = idx;
+    }
+
+    inline void Set(int idx, double value) {
+        _counts.at(idx) = value;
+        _last_index = idx;
+    }
+
     std::chrono::system_clock::time_point _start_time;
     MetricPeriod _sample_period;
     MetricPeriod _agg_period;
     std::vector<double> _counts;
+    int _last_index;
 };
 
 class Metric {
 public:
-    Metric(const std::string namespace_name, const std::string name, MetricPeriod sample_period, MetricPeriod agg_period):
+    Metric(const std::string& namespace_name, const std::string& name, MetricPeriod sample_period, MetricPeriod agg_period):
         _nsname(namespace_name), _name(name), _sample_period(sample_period), _agg_period(agg_period), _data() {
 
         // We need the stead_clock for calculating where in the sample period we are
-        // but we need the system_clock to report the metrict start/end times.
+        // but we need the system_clock to report the metric start/end times.
         // We cannot convert between system_clock and steady_clock
         // so we get both, and keep trying until the delta between the two is small enough
         // most of the time the delta will be very small, but it is possible for the thread
@@ -87,20 +104,17 @@ public:
         _current_data = std::make_shared<MetricData>(_agg_start_time, _sample_period, _agg_period);
     }
 
-    void Add(double count) {
-        std::lock_guard<std::mutex> lock(_mutex);
-        auto idx = GetCountsIdx();
-        _current_data->_counts.at(idx) += count;
-    }
-
-    void Set(double count) {
-        std::lock_guard<std::mutex> lock(_mutex);
-        auto idx = GetCountsIdx();
-        _current_data->_counts.at(idx) = count;
-    }
+    virtual void Update(double value) = 0;
 
     bool GetAggregateSnapshot(MetricAggregateSnapshot *snap) {
         std::lock_guard<std::mutex> lock(_mutex);
+
+        // The side effect of GetCountsIdx is that _current_data is pushed to _data if _current_data has "expired"
+        // If _current_data has any values set (_last_index > -1) then call GetCountsIdx() just-in-case it has "expired".
+        if (_current_data->_last_index > -1) {
+            GetCountsIdx();
+        }
+
         if (_data.empty()) {
             return false;
         } else {
@@ -132,7 +146,7 @@ public:
         }
     }
 
-private:
+protected:
     inline long GetCountsIdx() {
         auto now = std::chrono::steady_clock::now();
         auto idx = std::lround(static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(now-_agg_start_steady).count())/static_cast<double>(_sample_period));
@@ -163,12 +177,81 @@ private:
     std::list<std::shared_ptr<MetricData>> _data;
 };
 
+// The update value is added to any previous value in the sample time slot
+class AccumulatorMetric: public Metric {
+public:
+    AccumulatorMetric(const std::string& namespace_name, const std::string& name, MetricPeriod sample_period, MetricPeriod agg_period):
+            Metric(namespace_name, name, sample_period, agg_period) {}
+
+    void Update(double value) override {
+        std::lock_guard<std::mutex> lock(_mutex);
+        auto idx = GetCountsIdx();
+        _current_data->Add(idx, value);
+    }
+
+};
+
+// The update value replaces any previous sample time slot value
+class FillMetric: public Metric {
+public:
+    FillMetric(const std::string& namespace_name, const std::string& name, MetricPeriod sample_period, MetricPeriod agg_period):
+            Metric(namespace_name, name, sample_period, agg_period) {}
+
+    void Update(double value) override {
+        std::lock_guard<std::mutex> lock(_mutex);
+        auto idx = GetCountsIdx();
+        _current_data->Set(idx, value);
+    }
+
+};
+
+/*
+ * Some system metrics (e.g. /proc/self/io) only increase for the live of the process
+ * Each update calculates the value delta and the value/sample_period.
+ */
+class MetricFromTotal: public Metric {
+public:
+    MetricFromTotal(const std::string& namespace_name, const std::string& name, MetricPeriod sample_period, MetricPeriod agg_period):
+            Metric(namespace_name, name, sample_period, agg_period), _last_total(0.0), _last_total_index(-1) {}
+
+    void Update(double value) override {
+        std::lock_guard<std::mutex> lock(_mutex);
+        auto idx = GetCountsIdx();
+        if (_last_total_index >= 0 && value < _last_total) {
+            auto subtotal = value - _last_total;
+            auto sample_time =
+                    _agg_start_steady + std::chrono::milliseconds(idx * static_cast<long>(_sample_period));
+            auto last_sample_time = _last_total_time_steady + std::chrono::milliseconds(
+                    _last_total_index * static_cast<long>(_sample_period));
+            auto num_samples =
+                    (sample_time - last_sample_time) / std::chrono::milliseconds(static_cast<long>(_sample_period));
+            double part = 0.0;
+            if (num_samples <= 1) {
+                part = subtotal;
+            } else {
+                part = subtotal / static_cast<double>(num_samples);
+            }
+
+            for (auto i = _last_total_index + 1; i <= idx; i++) {
+                _current_data->Set(i, part);
+            }
+        }
+        _last_total = value;
+        _last_total_index = idx;
+        _last_total_time_steady = _agg_start_steady;
+    }
+private:
+    double _last_total;
+    long _last_total_index;
+    std::chrono::steady_clock::time_point _last_total_time_steady;
+};
+
 class Metrics: public RunBase {
 public:
     explicit Metrics(std::shared_ptr<EventBuilder> builder): _builder(std::move(builder)) {}
     explicit Metrics(std::shared_ptr<PriorityQueue> queue): _builder(std::make_shared<EventBuilder>(std::make_shared<EventQueue>(std::move(queue)), nullptr)) {}
 
-    std::shared_ptr<Metric> AddMetric(const std::string namespace_name, const std::string name, MetricPeriod sample_period, MetricPeriod agg_period);
+    std::shared_ptr<Metric> AddMetric(MetricType metric_type, const std::string& namespace_name, const std::string& name, MetricPeriod sample_period, MetricPeriod agg_period);
 
 protected:
     void run() override;

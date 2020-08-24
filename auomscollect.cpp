@@ -100,8 +100,8 @@ void DoStdinCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& bytes_
                 return;
             }
             if (loss_bytes > 0) {
-                lost_bytes_metric->Add(loss_bytes);
-                lost_segments_metric->Add(1);
+                lost_bytes_metric->Update(loss_bytes);
+                lost_segments_metric->Update(1);
                 loss_bytes = 0;
             }
             *reinterpret_cast<RecordType*>(ptr) = RecordType::UNKNOWN;
@@ -110,8 +110,8 @@ void DoStdinCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& bytes_
             });
             if (nr > 0) {
                 raw_queue.Commit(nr+sizeof(RecordType));
-                bytes_metric->Add(nr);
-                records_metric->Add(1.0);
+                bytes_metric->Update(nr);
+                records_metric->Update(1.0);
             } else if (nr == StdinReader::TIMEOUT) {
                 if (Signals::IsExit()) {
                     Logger::Info("Exiting input loop");
@@ -167,15 +167,15 @@ bool DoNetlinkCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& byte
                 return false;
             }
             if (loss_bytes > 0) {
-                lost_bytes_metric->Add(loss_bytes);
-                lost_segments_metric->Add(1);
+                lost_bytes_metric->Update(loss_bytes);
+                lost_segments_metric->Update(1);
                 loss_bytes = 0;
             }
             *reinterpret_cast<RecordType*>(ptr) = static_cast<RecordType>(type);
             std::memcpy(ptr+sizeof(RecordType), data, len);
             raw_queue.Commit(len+sizeof(RecordType));
-            bytes_metric->Add(len);
-            records_metric->Add(1.0);
+            bytes_metric->Update(len);
+            records_metric->Update(1.0);
         }
         return false;
     };
@@ -508,7 +508,7 @@ int main(int argc, char**argv) {
     auto metrics = std::make_shared<Metrics>(queue);
     metrics->Start();
 
-    auto proc_metrics = std::make_shared<ProcMetrics>("auomscollect", metrics, rss_limit, virt_limit, []() {
+    auto proc_metrics = std::make_shared<ProcMetrics>("auomscollect", queue, metrics, rss_limit, virt_limit, []() {
         Logger::Error("A memory limit was exceeded, exiting immediately");
         exit(1);
     });
@@ -536,10 +536,10 @@ int main(int argc, char**argv) {
         }
     });
 
-    auto ingest_bytes_metric = metrics->AddMetric("ingest", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
-    auto ingest_records_metric = metrics->AddMetric("ingest", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
-    auto lost_bytes_metric = metrics->AddMetric("ingest", "lost_bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
-    auto lost_segments_metric = metrics->AddMetric("ingest", "lost_segments", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    auto ingest_bytes_metric = metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "ingest", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    auto ingest_records_metric = metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "ingest", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    auto lost_bytes_metric = metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "ingest", "lost_bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    auto lost_segments_metric = metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "ingest", "lost_segments", MetricPeriod::SECOND, MetricPeriod::HOUR);
 
     std::thread proc_thread([&]() {
         std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();

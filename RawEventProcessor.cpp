@@ -36,9 +36,9 @@ void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
 
     Event event(data, data_len);
 
-    _bytes_metric->Add(static_cast<double>(data_len));
-    _record_metric->Add(static_cast<double>(event.NumRecords()));
-    _event_metric->Add(1.0);
+    _bytes_metric->Update(static_cast<double>(data_len));
+    _record_metric->Update(static_cast<double>(event.NumRecords()));
+    _event_metric->Update(1.0);
 
     auto ret = event.Validate();
     if (ret != 0) {

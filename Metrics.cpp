@@ -24,7 +24,7 @@
 #include <sstream>
 #include <iomanip>
 
-std::shared_ptr<Metric> Metrics::AddMetric(const std::string namespace_name, const std::string name, MetricPeriod sample_period, MetricPeriod agg_period) {
+std::shared_ptr<Metric> Metrics::AddMetric(MetricType metric_type, const std::string& namespace_name, const std::string& name, MetricPeriod sample_period, MetricPeriod agg_period) {
     std::lock_guard<std::mutex> lock(_mutex);
 
     auto key = namespace_name + name;
@@ -32,7 +32,22 @@ std::shared_ptr<Metric> Metrics::AddMetric(const std::string namespace_name, con
     if (it != _metrics.end()) {
         return it->second;
     } else {
-        auto r = _metrics.emplace(std::make_pair(key, std::make_shared<Metric>(namespace_name, name, sample_period, agg_period)));
+        std::shared_ptr<Metric> metric;
+        switch(metric_type) {
+            case MetricType::METRIC_BY_ACCUMULATION:
+                metric = std::shared_ptr<Metric>(new AccumulatorMetric(namespace_name, name, sample_period, agg_period));
+                break;
+            case MetricType::METRIC_BY_FILL:
+                metric = std::shared_ptr<Metric>(new FillMetric(namespace_name, name, sample_period, agg_period));
+                break;
+            case MetricType::METRIC_FROM_TOTAL:
+                metric = std::shared_ptr<Metric>(new MetricFromTotal(namespace_name, name, sample_period, agg_period));
+                break;
+            default:
+                metric = std::shared_ptr<Metric>(new AccumulatorMetric(namespace_name, name, sample_period, agg_period));
+                break;
+        }
+        auto r = _metrics.emplace(std::make_pair(key, metric));
         return r.first->second;
     }
 }
@@ -40,8 +55,8 @@ std::shared_ptr<Metric> Metrics::AddMetric(const std::string namespace_name, con
 void Metrics::run() {
     Logger::Info("Metrics starting");
 
-    // Check for metrics to send once per second without drift
-    while(!_sleep(1000)) {
+    // Check for metrics to send once per minute
+    while(!_sleep(60000)) {
         if (!send_metrics()) {
             return;
         }

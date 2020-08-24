@@ -38,8 +38,9 @@ extern "C" {
 
 AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _have_auto_cursor(false), _next_seq(0), _auto_cursor_seq(0) {}
 
-void AckQueue::Init(std::shared_ptr<QueueCursor> cursor) {
-    _cursor = cursor;
+void AckQueue::Init(const std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<QueueCursorHandle>& cursor_handle) {
+    _queue = queue;
+    _cursor_handle = cursor_handle;
     _closed = false;
     _event_ids.clear();
     _cursors.clear();
@@ -85,7 +86,7 @@ void AckQueue::ProcessAutoCursor() {
 
     if (_have_auto_cursor) {
         for (auto& c : _auto_cursors) {
-            _cursor->Commit(c.first, c.second);
+            _queue->Commit(_cursor_handle, c.first, c.second);
         }
         _auto_cursors.clear();
         _have_auto_cursor = false;
@@ -150,7 +151,7 @@ void AckQueue::Ack(const EventId& event_id) {
     }
 
     for (auto& c : found_seq) {
-        _cursor->Commit(c.first, c.second);
+        _queue->Commit(_cursor_handle, c.first, c.second);
     }
 }
 
@@ -334,10 +335,10 @@ bool Output::check_open()
 }
 
 bool Output::handle_events(bool checkOpen) {
-    _cursor->Rollback();
+    _queue->Rollback(_cursor_handle);
 
     if (_ack_mode) {
-        _ack_queue->Init(_cursor);
+        _ack_queue->Init(_queue, _cursor_handle);
         _ack_reader->Init(_event_writer, _writer, _ack_queue);
         _ack_reader->Start();
     }
@@ -345,7 +346,7 @@ bool Output::handle_events(bool checkOpen) {
     while(!IsStopping() && (!checkOpen || _writer->IsOpen())) {
         std::pair<std::shared_ptr<QueueItem>,bool> get_ret;
         do {
-            get_ret = _cursor->Get(100, !_ack_mode);
+            get_ret = _queue->Get(_cursor_handle, 100, !_ack_mode);
         } while((!get_ret.first && !get_ret.second) && (!checkOpen || _writer->IsOpen()));
 
         if (get_ret.first && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
@@ -377,13 +378,13 @@ bool Output::handle_events(bool checkOpen) {
                 }
 
                 if (!_ack_mode) {
-                    _cursor->Commit(get_ret.first->Priority(), get_ret.first->Sequence());
+                    _queue->Commit(_cursor_handle, get_ret.first->Priority(), get_ret.first->Sequence());
                 }
             } else {
                 if (_ack_mode) {
                     _ack_queue->SetAutoCursor(get_ret.first->Priority(), get_ret.first->Sequence());
                 } else {
-                    _cursor->Commit(get_ret.first->Priority(), get_ret.first->Sequence());
+                    _queue->Commit(_cursor_handle, get_ret.first->Priority(), get_ret.first->Sequence());
                 }
             }
         }
@@ -410,7 +411,7 @@ bool Output::handle_events(bool checkOpen) {
 
 void Output::on_stopping() {
     Logger::Info("Output(%s): Stopping", _name.c_str());
-    _cursor->Close();
+    _queue->Close(_cursor_handle);
     if (_writer) {
         _writer->CloseWrite();
     }
@@ -432,8 +433,8 @@ void Output::on_stop() {
 void Output::run() {
     Logger::Info("Output(%s): Started", _name.c_str());
 
-    _cursor = _queue->OpenCursor(_name);
-    if (!_cursor) {
+    _cursor_handle = _queue->OpenCursor(_name);
+    if (!_cursor_handle) {
         Logger::Error("Output(%s): Aborting because cursor is invalid", _name.c_str());
         return;
     }

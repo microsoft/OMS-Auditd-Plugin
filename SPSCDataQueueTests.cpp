@@ -87,14 +87,17 @@ BOOST_AUTO_TEST_CASE( queue_stress_with_sleep ) {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<> dis(8, DATA_SIZE);
+    uint64_t loss_bytes = 0;
 
-    std::thread _thread([&queue,&data, &gen, &dis](){
+    std::thread _thread([&queue,&data, &gen, &dis, &loss_bytes](){
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         for (int i = 0; i < LOOP_COUNT; ++i) {
             size_t dsize = dis(gen);
             reinterpret_cast<uint32_t*>(data.data())[0] = static_cast<uint32_t>(i);
             reinterpret_cast<uint32_t*>(data.data())[1] = static_cast<uint32_t>(dsize);
-            auto in_ptr = queue.Allocate(dsize);
+            uint64_t loss = 0;
+            auto in_ptr = queue.Allocate(dsize, &loss);
+            loss_bytes += loss;
             ::memcpy(in_ptr, data.data(), dsize);
             queue.Commit(dsize);
             std::this_thread::sleep_for(std::chrono::microseconds (1));
@@ -117,7 +120,9 @@ BOOST_AUTO_TEST_CASE( queue_stress_with_sleep ) {
     }
     _thread.join();
 
-    BOOST_REQUIRE_LE(loss_count, queue.LossCount());
+    if (loss_count > 0) {
+        BOOST_REQUIRE_GT(loss_bytes, 0);
+    }
 }
 
 BOOST_AUTO_TEST_CASE( queue_close ) {

@@ -95,7 +95,9 @@ std::shared_ptr<QueueItemBucket> QueueFile::OpenBucket() {
     auto ptr = _bucket.lock();
 
     if (!ptr) {
-        return Read();
+        auto ptr = Read();
+        _bucket = ptr;
+        return ptr;
     }
     return ptr;
 }
@@ -175,7 +177,7 @@ bool QueueFile::Save() {
 bool QueueFile::Remove() {
     if (unlink(_path.c_str()) != 0) {
         if (errno != ENOENT) {
-            Logger::Error("QueueFile(%s)::Save: Failed to remove incomplete file: %s", _path.c_str(), std::strerror(errno));
+            Logger::Error("QueueFile(%s)::Save: Failed to remove file: %s", _path.c_str(), std::strerror(errno));
             return false;
         }
     }
@@ -286,93 +288,148 @@ std::shared_ptr<QueueItemBucket> QueueFile::Read() {
 }
 
 /**********************************************************************************************************************
+ ** QueueCursorFile
+ *********************************************************************************************************************/
+
+bool QueueCursorFile::Read() {
+    int fd = ::open(_path.c_str(), O_CLOEXEC|O_RDONLY);
+    if (fd <= 0) {
+        Logger::Error("QueueCursorFile(%s): Failed to open: %s", _path.c_str(), std::strerror(errno));
+        return false;
+    }
+
+    // Read header
+    FileHeader header;
+    int ret = read(fd, &header, sizeof(FileHeader));
+    if (ret != sizeof(FileHeader)) {
+        if (ret < 0) {
+            Logger::Error("QueueCursorFile(%s): Failed to read header: %s", _path.c_str(), std::strerror(errno));
+        } else {
+            Logger::Error("QueueCursorFile(%s): Invalid or corrupted file", _path.c_str());
+        }
+        close(fd);
+        return false;
+    }
+
+    // Verify header
+    if (header._magic != MAGIC || header._version != FILE_VERSION) {
+        Logger::Error("QueueCursorFile(%s): Invalid or corrupted file", _path.c_str());
+        return false;
+    }
+
+    _cursors.resize(header._num_priorities);
+
+    // Read index
+    ret = read(fd, &_cursors[0], sizeof(uint64_t)*_cursors.size());
+    if (ret != sizeof(uint64_t)*_cursors.size()) {
+        if (ret < 0) {
+            Logger::Error("QueueCursorFile(%s): Failed to read cursor: %s", _path.c_str(), std::strerror(errno));
+        } else {
+            Logger::Error("QueueCursorFile(%s): Invalid or corrupted file", _path.c_str());
+        }
+        close(fd);
+        return false;
+    }
+
+    return true;
+}
+
+// This assumed cursor is locked
+bool QueueCursorFile::Write() const {
+    int fd = ::open(_path.c_str(), O_CLOEXEC|O_CREAT|O_TRUNC|O_WRONLY, 0664);
+    if (fd <= 0) {
+        Logger::Error("QueueCursorFile(%s): Failed to open: %s", _path.c_str(), std::strerror(errno));
+        return false;
+    }
+
+    FileHeader header(_cursors.size());
+    struct iovec vec[2];
+    vec[0].iov_base = &header;
+    vec[0].iov_len = sizeof(header);
+    vec[1].iov_base = const_cast<uint64_t*>(&_cursors[0]);
+    vec[1].iov_len = _cursors.size() * sizeof(uint64_t);
+    uint32_t idx = 2;
+    int ret = writev(fd, vec, 2);
+    if (ret != sizeof(FileHeader)+(_cursors.size()*sizeof(uint64_t))) {
+        Logger::Error("QueueCursorFile(%s): Failed to write cursor: %s", _path.c_str(), std::strerror(errno));
+
+        close(fd);
+
+        if (unlink(_path.c_str()) != 0) {
+            Logger::Error("QueueCursorFile(%s): Failed to remove incomplete file: %s", _path.c_str(), std::strerror(errno));
+        }
+        return false;
+    }
+    close(fd);
+
+    return true;
+}
+
+bool QueueCursorFile::Remove() const {
+    if (unlink(_path.c_str()) != 0) {
+        Logger::Error("QueueCursorFile: Failed to remove cursor file '%s': %s", _path.c_str(), std::strerror(errno));
+        return false;
+    }
+    return true;
+}
+
+/**********************************************************************************************************************
  ** QueueCursor
  *********************************************************************************************************************/
 
-QueueCursor::QueueCursor(PriorityQueue* queue, const std::string& path, const std::vector<uint64_t>& max_seq)
-    : _queue(queue), _path(path), _closed(false), _data_available(false), _need_save(true), _last_write_status(true), _last_save(std::chrono::steady_clock::now()),
-    _cursors(max_seq), _committed(max_seq), _max_seq(max_seq), _buckets(queue->_num_priorities)
+QueueCursor::QueueCursor(const std::string& path, const std::vector<uint64_t>& max_seq)
+    : _path(path), _need_save(true), _cursors(max_seq), _committed(max_seq), _buckets(max_seq.size())
 {}
 
-void QueueCursor::Close() {
-    std::unique_lock<std::mutex> lock(_mutex);
-    _closed = true;
+void QueueCursor::init_from_file(const QueueCursorFile& file, const std::vector<uint64_t>& max_seq) {
+    std::vector<uint64_t> cursors;
+    file.Get(cursors);
+    std::fill(_cursors.begin(), _cursors.end(), 0);
+    std::copy_n(cursors.begin(), std::min(_cursors.size(), cursors.size()), _cursors.begin());
 
-    if (_need_save) {
-        write_cursor_file(lock);
+    // The _max_seq might be less than the cursor. This can happen if the queue is empty.
+    for (int p = 0; p < _cursors.size(); ++p) {
+        if (_cursors[p] > max_seq[p]) {
+            _cursors[p] = max_seq[p];
+        }
     }
 
-    _cond.notify_all();
+    _committed = _cursors;
 }
 
-std::pair<std::shared_ptr<QueueItem>,bool> QueueCursor::Get(long timeout, bool auto_commit) {
-    std::unique_lock<std::mutex> lock(_mutex);
-
-    // Calculate wake_time based on timeout
-    // timeout < 0 == wait forever == std::chrono::steady_clock::time_point::max()
-    // timeout == 0 == don't wait == std::chrono::steady_clock::time_point::min()
-    // timeout > 0 == wait == std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout)
-
-    auto wake_time = std::chrono::steady_clock::time_point::min();
-    if (timeout > 0) {
-        wake_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
-    } else if (timeout < 0) {
-        wake_time = std::chrono::steady_clock::time_point::max();
-    }
-
+std::pair<std::shared_ptr<QueueItem>,bool> QueueCursor::get(std::unique_lock<std::mutex>& lock, PriorityQueue* queue, bool& closed, long timeout, bool auto_commit) {
 start:
-    while(!_closed && !data_available()) {
-        // check_save_cursor maybe saves the cursor and return > 0 if save is needed in return milliseconds
-        auto check_ret = check_save_cursor(lock);
-        if (check_ret.second) {
-            // A save was performed so the status of (!_closed && !data_available()) may have changed
-            continue;
-        }
-        auto save_wake_time = std::chrono::steady_clock::time_point::min();
-        if (check_ret.first > 0) {
-            save_wake_time = std::chrono::steady_clock::now() + std::chrono::milliseconds(check_ret.first);
-        }
-
-        // Figure out which wake time to use
-        auto cond_wake_time = wake_time;
-        if (wake_time < save_wake_time) {
-            cond_wake_time = save_wake_time;
-        }
-
-        if (cond_wake_time == std::chrono::steady_clock::time_point::max()) {
+    while(!closed && !data_available(queue->_max_seq)) {
+        if (timeout < 0) {
             _cond.wait(lock);
-        } else if (cond_wake_time == std::chrono::steady_clock::time_point::min()) {
+        } else if (timeout == 0) {
             return std::make_pair<std::shared_ptr<QueueItem>,bool>(nullptr, false);
         } else {
-            if (_cond.wait_until(lock, cond_wake_time) == std::cv_status::timeout) {
-                // If we are timed out due to save_wait_time, then restart the loop
-                if (save_wake_time > std::chrono::steady_clock::time_point::min() &&  save_wake_time < wake_time) {
-                    continue;
-                }
+            if (_cond.wait_for(lock, std::chrono::milliseconds(timeout)) == std::cv_status::timeout) {
                 return std::make_pair<std::shared_ptr<QueueItem>,bool>(nullptr, false);
             }
         }
     }
 
-    if (_closed) {
+    if (closed) {
         return std::make_pair<std::shared_ptr<QueueItem>,bool>(nullptr, true);
     }
 
     std::shared_ptr<QueueItem> item;
 
     for (uint32_t p = 0; p < _cursors.size(); ++p) {
-        if (_cursors[p] < _max_seq[p]) {
+        if (_cursors[p] < queue->_max_seq[p]) {
             if (!_buckets[p]) {
-                _buckets[p] = _queue->get_next_bucket(p, _cursors[p]);
+                _buckets[p] = queue->get_next_bucket(lock, p, _cursors[p]);
             }
             item = _buckets[p]->Get(_cursors[p]+1);
             if (!item) {
-                _buckets[p] = _queue->get_next_bucket(p, _cursors[p]);
+                _buckets[p] = queue->get_next_bucket(lock, p, _cursors[p]);
                 item = _buckets[p]->Get(_cursors[p]+1);
             }
             if (!item) {
                 Logger::Error("QueueCursor: unexpected empty bucket (%d, %ld)", p, _cursors[p]);
-                _cursors[p] = _max_seq[p];
+                _cursors[p] = queue->_max_seq[p];
                 continue;
             }
             _cursors[p] = item->Sequence();
@@ -386,29 +443,25 @@ start:
     }
 
     if (auto_commit) {
-        _committed[item->Priority()] = item->Sequence();
         _need_save = true;
+        _committed[item->Priority()] = item->Sequence();
     }
 
     return std::make_pair(item, false);
 }
 
-void QueueCursor::Rollback() {
-    std::unique_lock<std::mutex> lock(_mutex);
-
+void QueueCursor::rollback() {
     for (uint32_t p = 0; p < _committed.size(); p++) {
         if (_cursors[p] != _committed[p]) {
             _cursors[p] = _committed[p];
             if (_buckets[p]) {
-                _buckets[p] = _queue->get_next_bucket(p, _cursors[p]);
+                _buckets[p].reset();
             }
         }
     }
 }
 
-void QueueCursor::Commit(uint32_t priority, uint64_t seq) {
-    std::unique_lock<std::mutex> lock(_mutex);
-
+void QueueCursor::commit(uint32_t priority, uint64_t seq) {
     if (priority >= _committed.size()) {
         return;
     }
@@ -416,13 +469,7 @@ void QueueCursor::Commit(uint32_t priority, uint64_t seq) {
     if (_committed[priority] < seq) {
         _committed[priority] = seq;
         _need_save = true;
-        check_save_cursor(lock);
     }
-}
-
-void QueueCursor::open() {
-    std::unique_lock<std::mutex> lock(_mutex);
-    _closed = false;
 }
 
 void QueueCursor::get_min_seq(std::vector<uint64_t>& min_seq) {
@@ -433,158 +480,21 @@ void QueueCursor::get_min_seq(std::vector<uint64_t>& min_seq) {
     }
 }
 
-bool QueueCursor::data_available() {
+bool QueueCursor::data_available(const std::vector<uint64_t>& max_seq) {
     for (uint32_t p = 0; p < _cursors.size(); ++p) {
-        if (_cursors[p] < _max_seq[p]) {
+        if (_cursors[p] < max_seq[p]) {
             return true;
         }
     }
     return false;
 }
 
-std::pair<long,bool> QueueCursor::check_save_cursor(std::unique_lock<std::mutex>& lock) {
-    bool do_save = false;
-    long save_lag = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - _last_save).count();
-
-    if (!_last_write_status) {
-        if (save_lag < SAVE_RETRY_WAIT_MS) {
-            return std::make_pair(SAVE_RETRY_WAIT_MS - save_lag, false);
-        }
-        do_save = true;
-    } else if (_need_save) {
-        if (save_lag < SAVE_DELAY_MS) {
-            return std::make_pair(SAVE_DELAY_MS - save_lag, false);
-        }
-        do_save = true;
-    }
-
-    if (do_save) {
-        _last_write_status = write_cursor_file(lock);
-        if (_last_write_status) {
-            return std::make_pair(0, true);
-        }
-        return std::make_pair(SAVE_RETRY_WAIT_MS, true);
-    }
-
-    return std::make_pair(0, false);
-}
-
 void QueueCursor::notify(int priority, uint64_t seq) {
-    std::lock_guard<std::mutex> lock(_mutex);
-    _max_seq[priority] = seq;
-
     if (_cursors[priority] < seq) {
         _cond.notify_all();
     }
 }
 
-bool QueueCursor::read_cursor_file() {
-    int fd = ::open(_path.c_str(), O_CLOEXEC|O_RDONLY);
-    if (fd <= 0) {
-        Logger::Error("QueueCursor(%s): Failed to open: %s", _path.c_str(), std::strerror(errno));
-        return false;
-    }
-
-    // Read header
-    FileHeader header;
-    int ret = read(fd, &header, sizeof(FileHeader));
-    if (ret != sizeof(FileHeader)) {
-        if (ret < 0) {
-            Logger::Error("QueueCursor(%s): Failed to read header: %s", _path.c_str(), std::strerror(errno));
-        } else {
-            Logger::Error("QueueCursor(%s): Invalid or corrupted file", _path.c_str());
-        }
-        close(fd);
-        return false;
-    }
-
-    // Verify header
-    if (header._magic != MAGIC || header._version != FILE_VERSION) {
-        Logger::Error("QueueCursor(%s): Invalid or corrupted file", _path.c_str());
-        return false;
-    }
-
-    auto np = header._num_priorities;
-    if (np > _queue->_num_priorities) {
-        np = _queue->_num_priorities;
-    }
-
-    // Read index
-    ret = read(fd, &_cursors[0], sizeof(uint64_t)*np);
-    if (ret != sizeof(uint64_t)*np) {
-        if (ret < 0) {
-            Logger::Error("QueueCursor(%s): Failed to read cursor: %s", _path.c_str(), std::strerror(errno));
-        } else {
-            Logger::Error("QueueCursor(%s): Invalid or corrupted file", _path.c_str());
-        }
-        close(fd);
-        return false;
-    }
-
-    // The _max_seq might be less than the cursor. This can happen if the queue is empty.
-    for (int p = 0; p < _cursors.size(); ++p) {
-        if (_cursors[p] > _max_seq[p]) {
-            _cursors[p] = _max_seq[p];
-        }
-    }
-
-    _committed = _cursors;
-
-    return true;
-}
-
-// This assumed cursor is locked
-bool QueueCursor::write_cursor_file(std::unique_lock<std::mutex>& lock) {
-    std::vector<uint64_t> cursors(_committed.size());
-    for (int i = 0; i < _committed.size(); ++i) {
-        cursors[i] = _committed[i];
-    }
-
-    lock.unlock();
-
-    int fd = ::open(_path.c_str(), O_CLOEXEC|O_CREAT|O_TRUNC|O_WRONLY, 0664);
-    if (fd <= 0) {
-        Logger::Error("QueueCursor(%s): Failed to open: %s", _path.c_str(), std::strerror(errno));
-        lock.lock();
-        return false;
-    }
-
-    FileHeader header(cursors.size());
-    struct iovec vec[2];
-    vec[0].iov_base = &header;
-    vec[0].iov_len = sizeof(header);
-    vec[1].iov_base = &cursors[0];
-    vec[1].iov_len = cursors.size() * sizeof(uint64_t);
-    uint32_t idx = 2;
-    int ret = writev(fd, vec, 2);
-    if (ret != sizeof(FileHeader)+(cursors.size()*sizeof(uint64_t))) {
-        Logger::Error("QueueCursor(%s): Failed to write cursor: %s", _path.c_str(), std::strerror(errno));
-
-        close(fd);
-
-        if (unlink(_path.c_str()) != 0) {
-            Logger::Error("QueueCursor(%s): Failed to remove incomplete file: %s", _path.c_str(), std::strerror(errno));
-        }
-        lock.lock();
-        return false;
-    }
-    close(fd);
-
-    lock.lock();
-
-    _need_save = false;
-    _last_save = std::chrono::steady_clock::now();
-
-    return true;
-}
-
-bool QueueCursor::remove_cursor_file() {
-    if (unlink(_path.c_str()) != 0) {
-        Logger::Error("QueueCursor: Failed to remove cursor file '%s': %s", _path.c_str(), std::strerror(errno));
-        return false;
-    }
-    return true;
-}
 /**********************************************************************************************************************
  ** PriorityQueue
  *********************************************************************************************************************/
@@ -592,9 +502,9 @@ bool QueueCursor::remove_cursor_file() {
 PriorityQueue::PriorityQueue(const std::string& dir, uint32_t num_priorities, size_t max_file_data_size, size_t max_unsaved_files, uint64_t max_fs_bytes, double max_fs_pct, double min_fs_free_pct)
     : _dir(dir), _data_dir(dir+"/data"), _cursors_dir(dir+"/cursors"), _num_priorities(num_priorities),
       _max_file_data_size(max_file_data_size), _max_unsaved_files(max_unsaved_files), _max_fs_consumed_bytes(max_fs_bytes), _max_fs_consumed_pct(max_fs_pct), _min_fs_free_pct(min_fs_free_pct),
-      _closed(false), _next_seq(1),
-      _min_seq(num_priorities, 0xFFFFFFFFFFFFFFFF), _max_seq(num_priorities, 0), _max_file_seq(num_priorities, 0), _current_buckets(num_priorities), _files(num_priorities), _unsaved(num_priorities), _cursors(),
-      _last_save_warning()
+      _closed(false), _next_seq(1), _next_cursor_id(1),
+      _min_seq(num_priorities, 0xFFFFFFFFFFFFFFFF), _max_seq(num_priorities, 0), _max_file_seq(num_priorities, 0), _current_buckets(num_priorities), _files(num_priorities), _unsaved(num_priorities), _cursors(), _cursor_handles(),
+      _last_save_warning(), _stats(num_priorities)
 {
     for (uint32_t i = 0; i < num_priorities; i++) {
         _current_buckets[i] = std::make_shared<QueueItemBucket>(i);
@@ -628,21 +538,14 @@ std::shared_ptr<PriorityQueue> PriorityQueue::Open(const std::string& dir, uint3
 
 void PriorityQueue::Close() {
     std::unique_lock<std::mutex> lock(_mutex);
-    std::unique_lock<std::mutex> cursors_lock(_cursors_mutex);
 
     if (_closed) {
         return;
     }
     _closed = true;
 
-    for (auto& c : _cursors) {
-        c.second->Close();
-    }
-
-    for (int p = 0; p < _num_priorities; ++p) {
-        if (_current_buckets[p]->Size() > 0) {
-            _current_buckets[p] = cycle_bucket(p);
-        }
+    for (auto &c : _cursor_handles) {
+        c.second->close();
     }
 
     _saver_cond.notify_all();
@@ -656,45 +559,85 @@ void PriorityQueue::Close() {
     }
 }
 
-std::shared_ptr<QueueCursor> PriorityQueue::OpenCursor(const std::string& name) {
+std::shared_ptr<QueueCursorHandle> PriorityQueue::OpenCursor(const std::string& name) {
     std::unique_lock<std::mutex> lock(_mutex);
     if (_closed) {
         return nullptr;
     }
 
     auto max_seq = _max_seq;
-    lock.unlock();
 
-    std::unique_lock<std::mutex> cursors_lock(_cursors_mutex);
+    std::shared_ptr<QueueCursor> cursor;
 
     auto itr = _cursors.find(name);
     if (itr != _cursors.end()) {
-        itr->second->open();
-        return itr->second;
+        cursor = itr->second;
+    } else {
+        cursor = std::shared_ptr<QueueCursor>(new QueueCursor(_cursors_dir + "/" + name, max_seq));
+        _cursors.emplace(name, cursor);
     }
 
-    auto c = std::shared_ptr<QueueCursor>(new QueueCursor(this, _cursors_dir + "/" + name, max_seq));
-    _cursors.emplace(name, c);
+    auto handle = std::shared_ptr<QueueCursorHandle>(new QueueCursorHandle(cursor, _next_cursor_id));
+    _next_cursor_id += 1;
 
-    return c;
+    _cursor_handles.emplace(std::make_pair(handle->_id, handle));
+
+    return handle;
 }
 
 void PriorityQueue::RemoveCursor(const std::string& name) {
     std::unique_lock<std::mutex> lock(_mutex);
-    if (_closed) {
-        return;
-    }
-    lock.unlock();
 
-    std::lock_guard<std::mutex> cursors_lock(_cursors_mutex);
+    std::shared_ptr<QueueCursor> cursor;
 
     auto itr = _cursors.find(name);
     if (itr != _cursors.end()) {
-        auto c = itr->second;
+        cursor = itr->second;
         _cursors.erase(itr);
-        c->Close();
-        c->remove_cursor_file();
     }
+
+    if (cursor) {
+        // Locate, close, and remove and cursor handles associated with cursor.
+        std::vector<uint64_t> ids;
+        for (auto& e: _cursor_handles) {
+            if (e.second->_cursor->_path == cursor->_path) {
+                ids.push_back(e.second->_id);
+                e.second->close();
+            }
+        }
+        for (auto id: ids) {
+            _cursor_handles.erase(id);
+        }
+
+        QueueCursorFile file(cursor->_path);
+
+        lock.unlock();
+
+        file.Remove();
+    }
+}
+
+std::pair<std::shared_ptr<QueueItem>,bool> PriorityQueue::Get(const std::shared_ptr<QueueCursorHandle>& cursor_handle, long timeout, bool auto_commit) {
+    std::unique_lock<std::mutex> lock(_mutex);
+
+    return cursor_handle->_cursor->get(lock, this, cursor_handle->_closed, timeout, auto_commit);
+}
+
+void PriorityQueue::Rollback(const std::shared_ptr<QueueCursorHandle>& cursor_handle) {
+    std::unique_lock<std::mutex> lock(_mutex);
+    cursor_handle->_cursor->rollback();
+}
+
+void PriorityQueue::Commit(const std::shared_ptr<QueueCursorHandle>& cursor_handle, uint32_t priority, uint64_t seq) {
+    std::unique_lock<std::mutex> lock(_mutex);
+    cursor_handle->_cursor->commit(priority, seq);
+}
+
+void PriorityQueue::Close(const std::shared_ptr<QueueCursorHandle>& cursor_handle) {
+    std::unique_lock<std::mutex> lock(_mutex);
+
+    cursor_handle->close();
+    _cursor_handles.erase(cursor_handle->_id);
 }
 
 bool PriorityQueue::Put(uint32_t priority, const void* data, size_t size) {
@@ -722,37 +665,35 @@ bool PriorityQueue::Put(uint32_t priority, const void* data, size_t size) {
 
     _max_seq[priority] = item->Sequence();
 
-    std::unique_lock<std::mutex> cursors_lock(_cursors_mutex);
-    lock.unlock();
+    _stats._priority_stats[priority]._num_items_added += 1;
 
+    std::vector<std::shared_ptr<QueueCursor>> cursors;
+    cursors.reserve(_cursors.size());
     for (auto& c : _cursors) {
-        c.second->notify(priority, item->Sequence());
+        cursors.emplace_back(c.second);
+    }
+
+    for (auto& c : cursors) {
+        c->notify(priority, item->Sequence());
     }
 
     return true;
 }
 
-void PriorityQueue::Save(long save_delay) {
+void PriorityQueue::Save(long save_delay, bool final_save) {
     std::unique_lock<std::mutex> lock(_mutex);
-    save(lock, save_delay);
+    save(lock, save_delay, final_save);
 }
 
 void PriorityQueue::Saver(long save_delay) {
     std::unique_lock<std::mutex> lock(_mutex);
 
-    bool save_success = true;
     do {
-        if (_next_save_needed.time_since_epoch().count() > 0) {
-            _saver_cond.wait_until(lock, _next_save_needed, [this,save_delay]() { return _closed || save_needed(save_delay); });
-        } else if(save_success) {
-            _saver_cond.wait(lock, [this,save_delay]() { return _closed || save_needed(save_delay); });
-        } else {
-            _saver_cond.wait_for(lock, std::chrono::seconds(1), [this,save_delay]() { return _closed; });
-        }
-        save_success = save(lock, save_delay);
+        _saver_cond.wait_for(lock, std::chrono::milliseconds(save_delay), [this,save_delay]() { return _closed; });
+        save(lock, save_delay, false);
     } while (!_closed);
-
-    save(lock, save_delay);
+    // Final save
+    save(lock, 0, true);
 }
 
 void PriorityQueue::StartSaver(long save_delay) {
@@ -841,9 +782,11 @@ bool PriorityQueue::open() {
     try {
         auto fv = GetDirList(_cursors_dir);
         for (auto& f : fv) {
-            auto c = std::shared_ptr<QueueCursor>(new QueueCursor(this, _cursors_dir + "/" + f, _max_seq));
-            if (c->read_cursor_file()) {
-                _cursors.emplace(f, c);
+            QueueCursorFile cfile(_cursors_dir + "/" + f);
+            if (cfile.Read()) {
+                auto cursor = std::shared_ptr<QueueCursor>(new QueueCursor(cfile.Path(), _max_seq));
+                cursor->init_from_file(cfile, _max_seq);
+                _cursors.emplace(f, cursor);
             }
         }
     } catch (std::exception& ex) {
@@ -875,17 +818,23 @@ std::shared_ptr<QueueItemBucket> PriorityQueue::cycle_bucket(uint32_t priority) 
     }
 
     // Remove unsaved items starting with the oldest and lowest priority
-    for (auto pitr = _unsaved.rbegin(); num_unsaved > _max_unsaved_files && pitr != _unsaved.rend(); ++pitr) {
-        auto fitr = pitr->begin();
-        while (fitr != pitr->end() && num_unsaved > _max_unsaved_files) {
-            auto file = fitr->second._file;
-            auto bucket = fitr->second._bucket;
-            num_unsaved -= 1;
-            Logger::Warn("PriorityQueue: Unsaved items (priority = %d, sequence [%ld to %ld]) where removed due to memory limit being exceeded",
-                         file->Priority(), bucket->MinSequence(), bucket->MaxSequence());
-            _files[file->Priority()].erase(file->Sequence());
-            pitr->erase(fitr);
-            fitr = pitr->begin();
+    if (num_unsaved > _max_unsaved_files) {
+        clean_unsaved();
+
+        for (auto pitr = _unsaved.rbegin(); num_unsaved > _max_unsaved_files && pitr != _unsaved.rend(); ++pitr) {
+            auto fitr = pitr->begin();
+            while (fitr != pitr->end() && num_unsaved > _max_unsaved_files) {
+                auto file = fitr->second._file;
+                auto bucket = fitr->second._bucket;
+                num_unsaved -= 1;
+                Logger::Warn(
+                        "PriorityQueue: Unsaved items (priority = %d, sequence [%ld to %ld]) where removed due to memory limit being exceeded",
+                        file->Priority(), bucket->MinSequence(), bucket->MaxSequence());
+                _stats._priority_stats[bucket->Priority()]._bytes_dropped += bucket->Size();
+                _files[file->Priority()].erase(file->Sequence());
+                pitr->erase(fitr);
+                fitr = pitr->begin();
+            }
         }
     }
 
@@ -895,9 +844,7 @@ std::shared_ptr<QueueItemBucket> PriorityQueue::cycle_bucket(uint32_t priority) 
 /*
  * Return the bucket with the item that follows immediately after last_seq
  */
-std::shared_ptr<QueueItemBucket> PriorityQueue::get_next_bucket(uint32_t priority, uint64_t last_seq) {
-    std::unique_lock<std::mutex> lock(_mutex);
-
+std::shared_ptr<QueueItemBucket> PriorityQueue::get_next_bucket(std::unique_lock<std::mutex>& lock, uint32_t priority, uint64_t last_seq) {
     // Look in _files if last_seq is <= the max file seq.
     if (last_seq <= _max_file_seq[priority]) {
         auto& m = _files[priority];
@@ -907,6 +854,7 @@ std::shared_ptr<QueueItemBucket> PriorityQueue::get_next_bucket(uint32_t priorit
             auto file = itr->second;
             lock.unlock();
             auto bucket = file->OpenBucket();
+            lock.lock();
             if (bucket) {
                 return bucket;
             }
@@ -924,12 +872,44 @@ void PriorityQueue::update_min_seq() {
     std::vector<uint64_t> min_seq(_num_priorities, 0xFFFFFFFFFFFFFFFF);
 
     // Get the minimum sequence across all cursors for each priority
-    for (auto& c : _cursors) {
+    for (auto &c : _cursors) {
         c.second->get_min_seq(min_seq);
     }
 
     // Update global minimum sequence
     _min_seq = min_seq;
+}
+
+// This is only called as part of close/shutdown process
+void PriorityQueue::flush_current_buckets() {
+    for (int p = 0; p < _num_priorities; ++p) {
+        if (_current_buckets[p]->Size() > 0) {
+            _current_buckets[p] = cycle_bucket(p);
+        }
+    }
+}
+
+void PriorityQueue::clean_unsaved() {
+    update_min_seq();
+
+    std::vector<std::shared_ptr<QueueFile>> unsaved_to_remove;
+
+    // Find unsaved that are no longer needed
+    for (int32_t p = _files.size()-1; p >= 0; --p) {
+        auto min_seq = _min_seq[p];
+        auto &pf = _files[p];
+        for (auto& f : pf) {
+            if (!f.second->Saved() && f.first <= min_seq) {
+                _unsaved[p].erase(f.second->Sequence());
+                unsaved_to_remove.emplace_back(f.second);
+            }
+        }
+    }
+
+    // Remove unsaved that are not needed
+    for (auto& f : unsaved_to_remove) {
+        _files[f->Priority()].erase(f->Sequence());
+    }
 }
 
 // Only call while locked
@@ -953,12 +933,24 @@ bool PriorityQueue::save_needed(long save_delay) {
             }
         }
     }
+
+    for (auto &e : _cursors) {
+        if (e.second->_need_save) {
+            return true;
+        }
+    }
+
     return false;
 }
 
 // Only call while locked
-bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
+bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay, bool final_save) {
     update_min_seq();
+
+    if (final_save) {
+        // Flush non-empty current_buckets into unsaved
+        flush_current_buckets();
+    }
 
     struct statvfs st;
     ::memset(&st, 0, sizeof(st));
@@ -969,8 +961,9 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
         lock.unlock();
 
         if (statvfs(_data_dir.c_str(), &st) != 0) {
-            Logger::Error("PriorityQueue::write_unsaved(): statvfs(%s) failed: %s", _data_dir.c_str(),
+            Logger::Error("PriorityQueue::save(): statvfs(%s) failed: %s", _data_dir.c_str(),
                           std::strerror(errno));
+            st.f_blocks = 0;
         }
 
         // Relock
@@ -978,9 +971,9 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
 
         if (st.f_blocks > 0) {
             // Total filesystem size
-            double fs_size = static_cast<double>(st.f_blocks * st.f_frsize);
+            double fs_size = static_cast<double>(st.f_blocks) * static_cast<double>(st.f_frsize);
             // Amount of free space
-            double fs_free = static_cast<double>(st.f_bavail * st.f_bsize);
+            double fs_free = static_cast<double>(st.f_bavail) * static_cast<double>(st.f_bsize);
             // Percent of free space
             double pct_free = fs_free / fs_size;
             // Percent of fs that can be used (based on _min_fs_free_pct);
@@ -990,16 +983,33 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
             }
 
             // Max space that can be used based on _max_fs_consumed_pct
-            uint64_t max_allowed_fs = static_cast<uint64_t>(fs_size * (_max_fs_consumed_pct / 100));
+            uint64_t max_allowed_fs = 0;
+            // It is theoretically possible for fs_size to exceed the limits of uint64_t
+            if (static_cast<double>(_max_fs_consumed_bytes) < fs_size * (_max_fs_consumed_pct / 100)) {
+                max_allowed_fs = _max_fs_consumed_bytes;
+            } else {
+                max_allowed_fs = static_cast<uint64_t>(fs_size * (_max_fs_consumed_pct / 100));
+            }
             // Max space that can be used based on _min_fs_free_pct
-            uint64_t max_allowed_free = static_cast<uint64_t>(fs_size * (pct_free_avail / 100));
+            uint64_t max_allowed_free = 0;
+            // It is theoretically possible for fs_size to exceed the limits of uint64_t
+            if (static_cast<double>(_max_fs_consumed_bytes) < fs_size * (pct_free_avail / 100)) {
+                max_allowed_free = _max_fs_consumed_bytes;
+            } else {
+                max_allowed_free = static_cast<uint64_t>(fs_size * (pct_free_avail / 100));
+            }
             // Minimum of all possible fs limits
-            fs_bytes_allowed = std::min(std::min(max_allowed_fs, max_allowed_free), _max_fs_consumed_bytes);
+            fs_bytes_allowed = std::min(max_allowed_fs, max_allowed_free);
+
+            _stats._fs_size = fs_size;
+            _stats._fs_free = fs_free;
+            _stats._fs_allowed_bytes = fs_bytes_allowed;
         }
     }
 
     std::vector<std::shared_ptr<QueueFile>> to_remove;
     std::vector<std::shared_ptr<QueueFile>> can_remove;
+    std::vector<std::shared_ptr<QueueFile>> unsaved_to_remove;
 
     uint64_t bytes_saved = 0;
     // Find files that are no longer needed and count total bytes saved (excluding those that will be deleted)
@@ -1018,15 +1028,20 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
             } else {
                 if (f.first <= min_seq) {
                     _unsaved[p].erase(f.second->Sequence());
+                    unsaved_to_remove.emplace_back(f.second);
                 }
             }
         }
     }
 
+    // Remove unsaved files that are not needed
+    for (auto& f : unsaved_to_remove) {
+        _files[f->Priority()].erase(f->Sequence());
+    }
+
     std::vector<_UnsavedEntry> to_save;
 
     auto now = std::chrono::steady_clock::now();
-    auto next_save = now;
     auto min_age = now - std::chrono::milliseconds(save_delay);
 
     // Set min_age to now if closed
@@ -1047,19 +1062,15 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
             // If the entry is not the last or it is older than min_age then include in to_save
             if (f.first != last_seq || f.second._ts <= min_age) {
                 to_save.emplace_back(f.second);
-            } else {
-                num_delayed += 1;
-                if (f.second._ts < next_save) {
-                    next_save = f.second._ts;
-                }
             }
         }
     }
 
-    if (num_delayed > 0) {
-        _next_save_needed = next_save + std::chrono::milliseconds(save_delay);
-    } else {
-        _next_save_needed = std::chrono::steady_clock::time_point();
+    // Get cursors to save
+    std::vector<QueueCursorFile> cursors_to_save;
+    for (auto &e : _cursors) {
+        cursors_to_save.emplace_back(e.second->_path, e.second->_committed);
+        e.second->_need_save = false;
     }
 
     // Unlock before doing IO
@@ -1076,7 +1087,6 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
         }
     }
 
-    // Populate to_save and to_remove;
     int ridx = 0;
     int sidx = 0;
     uint64_t bytes_removed = 0;
@@ -1087,24 +1097,31 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
     for (; sidx < to_save.size(); ++sidx) {
         auto& ue = to_save[sidx];
         if (bytes_saved + ue._file->FileSize() > fs_bytes_allowed) {
+            // Loop through can_remove, but stop at first higher priority file.
             while (ridx < can_remove.size() && bytes_saved + ue._file->FileSize() > fs_bytes_allowed && can_remove[ridx]->Priority() >= ue._file->Priority()) {
-                if (can_remove[ridx]->Remove()) {
-                    removed.emplace_back(can_remove[ridx]);
-                    bytes_saved -= can_remove[ridx]->FileSize();
-                    bytes_removed += can_remove[ridx]->FileSize();
+                auto& remove_target = can_remove[ridx];
+                if (remove_target->Remove()) {
+                    removed.emplace_back(remove_target);
+                    bytes_saved -= remove_target->FileSize();
+                    bytes_removed += remove_target->FileSize();
                     ridx += 1;
+                    _stats._priority_stats[remove_target->Priority()]._bytes_dropped += remove_target->DataSize();
                 } else {
+                    // Remove failed, do not proceed
                     break;
                 }
             }
         }
         if (bytes_saved + ue._file->FileSize() > fs_bytes_allowed) {
+            // Either remove failed, or non enough lower priority data could be removed to make room for this file.
             break;
         } else {
             if (ue._file->Save()) {
                 saved.emplace_back(ue._file);
                 bytes_saved += ue._file->FileSize();
+                _stats._priority_stats[ue._file->Priority()]._bytes_written += ue._file->FileSize();
             } else {
+                // Save failed, do not proceed
                 break;
             }
         }
@@ -1113,6 +1130,11 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
     // Tally up unsaved bytes count
     for (; sidx < to_save.size(); ++sidx) {
         cannot_save_bytes += to_save[sidx]._file->FileSize();
+    }
+
+    // Save cursors
+    for (auto &cfile : cursors_to_save) {
+        cfile.Write();
     }
 
     // Relock before removing items from _unsaved;
@@ -1130,15 +1152,45 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay) {
     }
 
     if (bytes_removed > 0) {
-        Logger::Warn("PriorityQueue: Removed (%ld) bytes of unconsumed lower priority data to make from for new higher priority data", bytes_removed);
+        Logger::Warn("PriorityQueue: Removed (%ld) bytes of unconsumed lower priority data to make room for new higher priority data", bytes_removed);
     }
 
     if (cannot_save_bytes > 0) {
         if (now - _last_save_warning > std::chrono::milliseconds(MIN_SAVE_WARNING_GAP_MS)) {
             _last_save_warning = now;
-            Logger::Warn("PriorityQueue: File System quota (%ld) would be exceeded (%ld) bytes left unsaved", fs_bytes_allowed, cannot_save_bytes);
+            Logger::Warn("PriorityQueue: File System quota (%ld) would be exceeded, (%ld) bytes left unsaved", fs_bytes_allowed, cannot_save_bytes);
         }
     }
 
     return cannot_save_bytes == 0;
+}
+
+void PriorityQueue::GetStats(PriorityQueueStats& stats) {
+    std::unique_lock<std::mutex> lock(_mutex);
+
+    // Collect stats
+    for (int32_t p = 0; p < _files.size(); ++p) {
+        auto &pf = _files[p];
+        auto& stat = _stats._priority_stats[p];
+
+        stat.Reset();
+
+        for (auto& f : pf) {
+            stat._bytes_mem += f.second->BucketSize();
+            if (f.second->Saved()) {
+                stat._bytes_fs += f.second->FileSize();
+            } else {
+                stat._bytes_unsaved += f.second->FileSize();
+            }
+        }
+    }
+
+    for (auto& c : _current_buckets) {
+        auto& stat = _stats._priority_stats[c->Priority()];
+        stat._bytes_mem += c->Size();
+    }
+
+    _stats.UpdateTotals();
+
+    stats = _stats;
 }

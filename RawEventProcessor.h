@@ -29,9 +29,9 @@ public:
     _builder(builder), _user_db(user_db), _state_ptr(nullptr), _processTree(processTree), _filtersEngine(filtersEngine), _metrics(metrics),
         _event_flags(0), _pid(0), _ppid(0), _uid(-1), _last_proc_event_gen(0)
     {
-        _bytes_metric = _metrics->AddMetric("data", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
-        _record_metric = _metrics->AddMetric("data", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
-        _event_metric = _metrics->AddMetric("data", "events", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _bytes_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "data", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _record_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "data", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _event_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "data", "events", MetricPeriod::SECOND, MetricPeriod::HOUR);
     }
 
     void ProcessData(const void* data, size_t data_len);
