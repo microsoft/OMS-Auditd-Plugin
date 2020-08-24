@@ -249,8 +249,8 @@ int main(int argc, char**argv) {
         lock_file = config.GetString("lock_file");
     }
 
-    uint64_t rss_limit = 512*1024*1024;
-    uint64_t virt_limit = 1536*1024*1024;
+    uint64_t rss_limit = 384*1024*1024;
+    uint64_t virt_limit = 1024*1024*1024;
 
     if (config.HasKey("rss_limit")) {
         rss_limit = config.GetUint64("rss_limit");
@@ -271,6 +271,7 @@ int main(int argc, char**argv) {
 
     auto event_prioritizer = std::make_shared<EventPrioritizer>(num_priorities-1);
     if (!event_prioritizer->LoadFromConfig(config)) {
+        Logger::Error("Failed to load EventPrioritizer config, exiting");
         exit(1);
     }
 

@@ -379,7 +379,7 @@ int main(int argc, char**argv) {
 
     int num_priorities = 8;
     size_t max_file_data_size = 1024*1024;
-    size_t max_unsaved_files = 128;
+    size_t max_unsaved_files = 64;
     size_t max_fs_bytes = 128*1024*1024;
     double max_fs_pct = 10;
     double min_fs_free_pct = 5;
@@ -427,8 +427,8 @@ int main(int argc, char**argv) {
         lock_file = config.GetString("lock_file");
     }
 
-    uint64_t rss_limit = 250*1024*1024;
-    uint64_t virt_limit = 1536*1024*1024;
+    uint64_t rss_limit = 256*1024*1024;
+    uint64_t virt_limit = 1024*1024*1024;
 
     if (config.HasKey("rss_limit")) {
         rss_limit = config.GetUint64("rss_limit");
@@ -454,6 +454,7 @@ int main(int argc, char**argv) {
 
     auto event_prioritizer = std::make_shared<EventPrioritizer>(num_priorities-1);
     if (!event_prioritizer->LoadFromConfig(config)) {
+        Logger::Error("Failed to load EventPrioritizer config, exiting");
         exit(1);
     }
 
@@ -547,7 +548,6 @@ int main(int argc, char**argv) {
         ssize_t size;
 
         while((size = raw_queue.Get(&ptr)) > 0) {
-            auto rt_ptr = reinterpret_cast<RecordType*>(ptr);
             auto data_ptr = reinterpret_cast<char*>(ptr)+sizeof(RecordType);
             auto data_size = size-sizeof(RecordType);
             if (data_size <= RawEventRecord::MAX_RECORD_SIZE) {

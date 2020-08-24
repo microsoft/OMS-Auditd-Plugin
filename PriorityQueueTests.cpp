@@ -102,11 +102,11 @@ BOOST_AUTO_TEST_CASE( queue_simple ) {
     PriorityQueueStats stats;
     queue->GetStats(stats);
 
-    BOOST_CHECK_EQUAL(stats._total_num_items_added, 10);
-    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
-    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 10*1024);
-    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
-    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
+    BOOST_CHECK_EQUAL(stats._total._num_items_added, 10);
+    BOOST_CHECK_EQUAL(stats._total._bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total._bytes_mem, 10*1024);
+    BOOST_CHECK_EQUAL(stats._total._bytes_dropped, 0);
+    BOOST_CHECK_EQUAL(stats._total._bytes_written, 0);
 }
 
 BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
@@ -176,12 +176,12 @@ BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
     PriorityQueueStats stats;
     queue->GetStats(stats);
 
-    BOOST_CHECK_EQUAL(stats._total_num_items_added, 10);
-    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
-    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 10*1024);
-    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, QueueFile::Overhead(4)*2 + 8*1024);
-    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
-    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
+    BOOST_CHECK_EQUAL(stats._total._num_items_added, 10);
+    BOOST_CHECK_EQUAL(stats._total._bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total._bytes_mem, 10*1024);
+    BOOST_CHECK_EQUAL(stats._total._bytes_unsaved, QueueFile::Overhead(4)*2 + 8*1024);
+    BOOST_CHECK_EQUAL(stats._total._bytes_dropped, 0);
+    BOOST_CHECK_EQUAL(stats._total._bytes_written, 0);
 }
 
 BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
@@ -274,12 +274,12 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
     PriorityQueueStats stats;
     queue->GetStats(stats);
 
-    BOOST_CHECK_EQUAL(stats._total_num_items_added, 10);
-    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
-    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 10*1024);
-    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, QueueFile::Overhead(4)*2 + 8*1024);
-    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
-    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
+    BOOST_CHECK_EQUAL(stats._total._num_items_added, 10);
+    BOOST_CHECK_EQUAL(stats._total._bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total._bytes_mem, 10*1024);
+    BOOST_CHECK_EQUAL(stats._total._bytes_unsaved, QueueFile::Overhead(4)*2 + 8*1024);
+    BOOST_CHECK_EQUAL(stats._total._bytes_dropped, 0);
+    BOOST_CHECK_EQUAL(stats._total._bytes_written, 0);
 }
 
 BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
@@ -321,12 +321,12 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
 
         constexpr long file_total = QueueFile::Overhead(4)*2 + QueueFile::Overhead(2) + 10*1024;
 
-        BOOST_CHECK_EQUAL(stats._total_num_items_added, 10);
-        BOOST_CHECK_EQUAL(stats._total_bytes_fs, file_total);
-        BOOST_CHECK_EQUAL(stats._total_bytes_mem, 0);
-        BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, 0);
-        BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
-        BOOST_CHECK_EQUAL(stats._total_bytes_written, file_total);
+        BOOST_CHECK_EQUAL(stats._total._num_items_added, 10);
+        BOOST_CHECK_EQUAL(stats._total._bytes_fs, file_total);
+        BOOST_CHECK_EQUAL(stats._total._bytes_mem, 0);
+        BOOST_CHECK_EQUAL(stats._total._bytes_unsaved, 0);
+        BOOST_CHECK_EQUAL(stats._total._bytes_dropped, 0);
+        BOOST_CHECK_EQUAL(stats._total._bytes_written, file_total);
     }
 
     {
@@ -401,11 +401,11 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
         PriorityQueueStats stats;
         queue->GetStats(stats);
 
-        BOOST_CHECK_EQUAL(stats._total_num_items_added, 0);
-        BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
-        BOOST_CHECK_EQUAL(stats._total_bytes_mem, 0);
-        BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
-        BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
+        BOOST_CHECK_EQUAL(stats._total._num_items_added, 0);
+        BOOST_CHECK_EQUAL(stats._total._bytes_fs, 0);
+        BOOST_CHECK_EQUAL(stats._total._bytes_mem, 0);
+        BOOST_CHECK_EQUAL(stats._total._bytes_dropped, 0);
+        BOOST_CHECK_EQUAL(stats._total._bytes_written, 0);
     }
 }
 
@@ -759,12 +759,12 @@ BOOST_AUTO_TEST_CASE( queue_max_unsaved_files ) {
 
     long file_size = QueueFile::Overhead(4)*16 + 64*1024;
 
-    BOOST_CHECK_EQUAL(stats._total_num_items_added, 72);
-    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
-    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 72*1024);
-    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
-    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, file_size);
-    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
+    BOOST_CHECK_EQUAL(stats._total._num_items_added, 72);
+    BOOST_CHECK_EQUAL(stats._total._bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total._bytes_mem, 72*1024);
+    BOOST_CHECK_EQUAL(stats._total._bytes_dropped, 0);
+    BOOST_CHECK_EQUAL(stats._total._bytes_unsaved, file_size);
+    BOOST_CHECK_EQUAL(stats._total._bytes_written, 0);
 
     // This set of inputs should exceed the max mem limits
     for (auto& in: input2_pairs) {
@@ -776,12 +776,12 @@ BOOST_AUTO_TEST_CASE( queue_max_unsaved_files ) {
 
     queue->GetStats(stats);
 
-    BOOST_CHECK_EQUAL(stats._total_num_items_added, 84);
-    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
-    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 72*1024);
-    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 12*1024);
-    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, file_size);
-    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
+    BOOST_CHECK_EQUAL(stats._total._num_items_added, 84);
+    BOOST_CHECK_EQUAL(stats._total._bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total._bytes_mem, 72*1024);
+    BOOST_CHECK_EQUAL(stats._total._bytes_dropped, 12*1024);
+    BOOST_CHECK_EQUAL(stats._total._bytes_unsaved, file_size);
+    BOOST_CHECK_EQUAL(stats._total._bytes_written, 0);
 
     for (auto expected: expected_output) {
         auto val = queue->Get(cursor_handle,0);
@@ -815,12 +815,12 @@ BOOST_AUTO_TEST_CASE( queue_max_unsaved_files ) {
 
     queue->GetStats(stats);
 
-    BOOST_CHECK_EQUAL(stats._total_num_items_added, 84);
-    BOOST_CHECK_EQUAL(stats._total_bytes_fs, 0);
-    BOOST_CHECK_EQUAL(stats._total_bytes_mem, 72*1024);
-    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 12*1024);
-    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, file_size);
-    BOOST_CHECK_EQUAL(stats._total_bytes_written, 0);
+    BOOST_CHECK_EQUAL(stats._total._num_items_added, 84);
+    BOOST_CHECK_EQUAL(stats._total._bytes_fs, 0);
+    BOOST_CHECK_EQUAL(stats._total._bytes_mem, 72*1024);
+    BOOST_CHECK_EQUAL(stats._total._bytes_dropped, 12*1024);
+    BOOST_CHECK_EQUAL(stats._total._bytes_unsaved, file_size);
+    BOOST_CHECK_EQUAL(stats._total._bytes_written, 0);
 }
 
 long get_queue_data_size(const std::string& dir, int num_priority) {
@@ -1428,12 +1428,12 @@ BOOST_AUTO_TEST_CASE( queue_max_fs_bytes ) {
     long file_size = QueueFile::Overhead(num_items_per_file)*num_saved_files + num_items_per_file*num_saved_files*1024;
     long unsaved_size = QueueFile::Overhead(num_items_per_file)*(num_written_files-num_saved_files) + num_items_dropped*1024;
 
-    BOOST_CHECK_EQUAL(stats._total_num_items_added, num_items);
-    BOOST_CHECK_EQUAL(stats._total_bytes_fs, file_size);
-    BOOST_CHECK_EQUAL(stats._total_bytes_mem, num_items_dropped*1024);
-    BOOST_CHECK_EQUAL(stats._total_bytes_dropped, 0);
-    BOOST_CHECK_EQUAL(stats._total_bytes_unsaved, unsaved_size);
-    BOOST_CHECK_EQUAL(stats._total_bytes_written, file_size);
+    BOOST_CHECK_EQUAL(stats._total._num_items_added, num_items);
+    BOOST_CHECK_EQUAL(stats._total._bytes_fs, file_size);
+    BOOST_CHECK_EQUAL(stats._total._bytes_mem, num_items_dropped*1024);
+    BOOST_CHECK_EQUAL(stats._total._bytes_dropped, 0);
+    BOOST_CHECK_EQUAL(stats._total._bytes_unsaved, unsaved_size);
+    BOOST_CHECK_EQUAL(stats._total._bytes_written, file_size);
 }
 
 BOOST_AUTO_TEST_CASE( queue_max_fs_pct ) {
