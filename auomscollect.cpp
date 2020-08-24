@@ -572,10 +572,12 @@ int main(int argc, char**argv) {
     // The ingest tasks needs to run outside cgroup limits
     std::thread ingest_thread([&]() {
         // Move this thread back to the root cgroup (thus outside the auomscollect specific cgroup
-        try {
-            cgcpu_root->AddSelfThread();
-        } catch (std::runtime_error& ex) {
-            Logger::Error("Failed to move ingest thread to root cgroup: %s", ex.what());
+        if (cgcpu_root) {
+            try {
+                cgcpu_root->AddSelfThread();
+            } catch (std::runtime_error &ex) {
+                Logger::Error("Failed to move ingest thread to root cgroup: %s", ex.what());
+            }
         }
         if (netlink_mode) {
             bool restart;
