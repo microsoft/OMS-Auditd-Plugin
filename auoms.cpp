@@ -250,7 +250,7 @@ int main(int argc, char**argv) {
     }
 
     uint64_t rss_limit = 1024L*1024L*1024L;
-    uint64_t virt_limit = 2048L*1024L*1024L;
+    uint64_t virt_limit = 4096L*1024L*1024L;
     double rss_pct_limit = 5;
 
     if (config.HasKey("rss_limit")) {
