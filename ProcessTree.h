@@ -109,7 +109,7 @@ public:
     void AddPnForkQueue(int pid, int ppid);
     void AddPnExecQueue(int pid);
     void AddPnExitQueue(int pid);
-    std::shared_ptr<ProcessTreeItem> AddProcess(enum ProcessTreeSource source, int pid, int ppid, int uid, int gid, std::string exe, const std::string& cmdline);
+    std::shared_ptr<ProcessTreeItem> AddProcess(enum ProcessTreeSource source, int pid, int ppid, int uid, int gid, const std::string& exe, const std::string& cmdline);
     void Clean();
     std::shared_ptr<ProcessTreeItem> GetInfoForPid(int pid);
     void PopulateTree();
@@ -125,13 +125,10 @@ private:
     void AddPid(int pid, int ppid);
     void AddPid(int pid);
     void RemovePid(int pid);
-    std::string ReadFirstLine(const std::string& file);
-    std::string ReadParam(const std::string& file, const std::string& param);
     std::shared_ptr<ProcessTreeItem> ReadProcEntry(int pid);
-    bool is_number(char *s);
-    void ApplyFlags(std::shared_ptr<ProcessTreeItem> process);
-    void SetContainerId(std::shared_ptr<ProcessTreeItem> p, std::string containerid);
-    std::string ExtractContainerId(std::string exe, const std::string& cmdline);
+    void ApplyFlags(const std::shared_ptr<ProcessTreeItem>& process);
+    void SetContainerId(const std::shared_ptr<ProcessTreeItem>& p, const std::string& containerid);
+    std::string ExtractContainerId(const std::string& exe, const std::string& cmdline);
 
     std::shared_ptr<UserDB> _user_db;
     std::shared_ptr<FiltersEngine> _filtersEngine;

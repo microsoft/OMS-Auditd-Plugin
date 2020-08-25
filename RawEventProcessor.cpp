@@ -626,6 +626,9 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     std::string cmdline;
 
     if (!_syscall.empty() && starts_with(_syscall, "execve")) {
+        if (!exe.empty() && exe.front() == '"' && exe.back() == '"') {
+            exe = exe.substr(1, exe.length() - 2);
+        }
         p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, _cmdline);
     } else if (!_syscall.empty()) {
         p = _processTree->GetInfoForPid(_pid);

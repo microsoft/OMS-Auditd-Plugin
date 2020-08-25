@@ -91,18 +91,28 @@ bool ProcMetrics::collect_metrics() {
                 Logger::Error("Failed to parse /proc/self/statm");
                 return false;
             }
+        } else {
+            Logger::Error("Failed to read /proc/self/statm: No contents!");
+            return false;
         }
     } catch (std::exception& ex) {
         Logger::Error("Failed to read /proc/self/statm: %s", ex.what());
         return false;
     }
 
-    auto mem_pct = (static_cast<double>(resident*_page_size)/static_cast<double>(_total_system_memory))*100.0;
     uint64_t rss = resident*_page_size;
     uint64_t virt = total*_page_size;
+    auto rss_mem_pct = (static_cast<double>(rss)/static_cast<double>(_total_system_memory))*100.0;
+    auto virt_mem_pct = (static_cast<double>(virt)/static_cast<double>(_total_system_memory))*100.0;
 
     if (rss > _rss_limit) {
         Logger::Error("RSS Limit (%ld) exceeded (%ld)", _rss_limit, rss);
+        _limit_fn();
+        return false;
+    }
+
+    if (rss_mem_pct > _rss_pct_limit) {
+        Logger::Error("RSS %%MEM Limit (%lf) exceeded (%lf)", _rss_pct_limit, rss_mem_pct);
         _limit_fn();
         return false;
     }
@@ -113,7 +123,13 @@ bool ProcMetrics::collect_metrics() {
         return false;
     }
 
-    _mem_pct_metric->Update(mem_pct);
+    if (virt_mem_pct > _virt_pct_limit) {
+        Logger::Error("Virt %%MEM Limit (%lf) exceeded (%lf)", _virt_pct_limit, virt_mem_pct);
+        _limit_fn();
+        return false;
+    }
+
+    _mem_pct_metric->Update(rss_mem_pct);
     _rss_metric->Update(static_cast<double>(rss));
     _virt_metric->Update(static_cast<double>(virt));
 
@@ -124,13 +140,17 @@ bool ProcMetrics::collect_metrics() {
 
         for (auto& line: lines) {
             if (starts_with(line, "read_bytes: ")) {
-                if (std::sscanf(lines[0].c_str(), "read_bytes: %lu", &read_bytes) != 1) {
-                    Logger::Error("Failed to parse /proc/self/io");
+                try {
+                    read_bytes = std::stoul(line.substr(12));
+                } catch (std::exception& ex) {
+                    Logger::Error("Failed to parse read_bytes in /proc/self/io: %s", ex.what());
                     return false;
                 }
             } else if (starts_with(line, "write_bytes: ")) {
-                if (std::sscanf(lines[0].c_str(), "write_bytes: %lu", &write_bytes) != 1) {
-                    Logger::Error("Failed to parse /proc/self/io");
+                try {
+                    write_bytes = std::stoul(line.substr(13));
+                } catch (std::exception& ex) {
+                    Logger::Error("Failed to parse write_bytes in /proc/self/io: %s", ex.what());
                     return false;
                 }
             }

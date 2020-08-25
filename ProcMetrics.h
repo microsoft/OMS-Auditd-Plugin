@@ -54,8 +54,8 @@ private:
 
 class ProcMetrics: public RunBase {
 public:
-    ProcMetrics(const std::string& nsname, const std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<Metrics>& metrics, uint64_t rss_limit, uint64_t virt_limit, std::function<void()> limit_fn)
-    : _queue(queue), _metrics(metrics), _rss_limit(rss_limit), _virt_limit(virt_limit), _limit_fn(std::move(limit_fn)), _total_system_memory(0), _page_size(0), _clock(0),
+    ProcMetrics(const std::string& nsname, const std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<Metrics>& metrics, uint64_t rss_limit, uint64_t virt_limit, double rss_pct_limit, double virt_pct_limit, std::function<void()> limit_fn)
+    : _queue(queue), _metrics(metrics), _rss_limit(rss_limit), _virt_limit(virt_limit), _rss_pct_limit(rss_pct_limit), _virt_pct_limit(virt_pct_limit), _limit_fn(std::move(limit_fn)), _total_system_memory(0), _page_size(0), _clock(0),
       _queue_total_metrics(metrics, nsname, "queue.total.")
     {
         _cpu_metric = _metrics->AddMetric(MetricType::METRIC_BY_FILL, nsname, "%cpu", MetricPeriod::SECOND, MetricPeriod::HOUR);
@@ -84,6 +84,8 @@ private:
     std::shared_ptr<Metrics> _metrics;
     uint64_t _rss_limit;
     uint64_t _virt_limit;
+    double _rss_pct_limit;
+    double _virt_pct_limit;
     std::function<void()> _limit_fn;
     uint64_t _total_system_memory;
     long _page_size;
