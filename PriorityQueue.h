@@ -226,6 +226,8 @@ private:
 
     std::string _path;
 
+    bool _saved;
+
     std::vector<uint64_t> _cursors;
 };
 
@@ -267,6 +269,7 @@ private:
     std::string _path;
 
     bool _need_save;
+    bool _saved;
 
     // The last consumed seq for each priority
     std::vector<uint64_t> _cursors;

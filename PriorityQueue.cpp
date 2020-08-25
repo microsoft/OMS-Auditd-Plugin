@@ -367,8 +367,11 @@ bool QueueCursorFile::Write() const {
 
 bool QueueCursorFile::Remove() const {
     if (unlink(_path.c_str()) != 0) {
-        Logger::Error("QueueCursorFile: Failed to remove cursor file '%s': %s", _path.c_str(), std::strerror(errno));
-        return false;
+        if (errno != ENOENT) {
+            Logger::Error("QueueCursorFile: Failed to remove cursor file '%s': %s", _path.c_str(),
+                          std::strerror(errno));
+            return false;
+        }
     }
     return true;
 }
@@ -378,7 +381,7 @@ bool QueueCursorFile::Remove() const {
  *********************************************************************************************************************/
 
 QueueCursor::QueueCursor(const std::string& path, const std::vector<uint64_t>& max_seq)
-    : _path(path), _need_save(true), _cursors(max_seq), _committed(max_seq), _buckets(max_seq.size())
+    : _path(path), _need_save(false), _saved(false), _cursors(max_seq), _committed(max_seq), _buckets(max_seq.size())
 {}
 
 void QueueCursor::init_from_file(const QueueCursorFile& file, const std::vector<uint64_t>& max_seq) {
@@ -1012,6 +1015,7 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay, bo
     std::vector<std::shared_ptr<QueueFile>> unsaved_to_remove;
 
     uint64_t bytes_saved = 0;
+    bool have_saved_data = false;
     // Find files that are no longer needed and count total bytes saved (excluding those that will be deleted)
     // Also fill in can_remove with items in the order they can be removed to make space for higher priority data
     for (int32_t p = _files.size()-1; p >= 0; --p) {
@@ -1023,6 +1027,7 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay, bo
                 if (f.first <= min_seq) {
                     to_remove.emplace_back(f.second);
                 } else {
+                    have_saved_data = true;
                     can_remove.emplace_back(f.second);
                 }
             } else {
@@ -1049,8 +1054,6 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay, bo
         min_age = now;
     }
 
-    int num_delayed = 0;
-
     // Get the list of buckets that can be saved, in the order they need to be saved.
     for (auto& p : _unsaved) {
         uint64_t last_seq = 0xFFFFFFFFFFFFFFFF;
@@ -1068,9 +1071,24 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay, bo
 
     // Get cursors to save
     std::vector<QueueCursorFile> cursors_to_save;
-    for (auto &e : _cursors) {
-        cursors_to_save.emplace_back(e.second->_path, e.second->_committed);
-        e.second->_need_save = false;
+    std::vector<QueueCursorFile> cursors_to_remove;
+    if (have_saved_data || !to_save.empty()) {
+        // Only save the cursors if there are files saved to disk
+        for (auto &e : _cursors) {
+            if (e.second->_need_save || !(e.second->_saved)) {
+                cursors_to_save.emplace_back(e.second->_path, e.second->_committed);
+                e.second->_need_save = false;
+                e.second->_saved = true;
+            }
+        }
+    } else {
+        // Remove cursor files if there is no data saved to disk
+        for (auto &e : _cursors) {
+            if (e.second->_saved) {
+                cursors_to_remove.emplace_back(e.second->_path, e.second->_committed);
+                e.second->_saved = false;
+            }
+        }
     }
 
     // Unlock before doing IO
@@ -1132,7 +1150,10 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay, bo
         cannot_save_bytes += to_save[sidx]._file->FileSize();
     }
 
-    // Save cursors
+    // Save (or remove) cursors
+    for (auto &cfile : cursors_to_remove) {
+        cfile.Remove();
+    }
     for (auto &cfile : cursors_to_save) {
         cfile.Write();
     }
