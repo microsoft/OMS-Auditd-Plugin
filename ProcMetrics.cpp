@@ -103,7 +103,6 @@ bool ProcMetrics::collect_metrics() {
     uint64_t rss = resident*_page_size;
     uint64_t virt = total*_page_size;
     auto rss_mem_pct = (static_cast<double>(rss)/static_cast<double>(_total_system_memory))*100.0;
-    auto virt_mem_pct = (static_cast<double>(virt)/static_cast<double>(_total_system_memory))*100.0;
 
     if (rss > _rss_limit) {
         Logger::Error("RSS Limit (%ld) exceeded (%ld)", _rss_limit, rss);
@@ -119,12 +118,6 @@ bool ProcMetrics::collect_metrics() {
 
     if (virt > _virt_limit) {
         Logger::Error("Virt Limit (%ld) exceeded (%ld)", _virt_limit, virt);
-        _limit_fn();
-        return false;
-    }
-
-    if (virt_mem_pct > _virt_pct_limit) {
-        Logger::Error("Virt %%MEM Limit (%lf) exceeded (%lf)", _virt_pct_limit, virt_mem_pct);
         _limit_fn();
         return false;
     }

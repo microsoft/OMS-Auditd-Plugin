@@ -430,7 +430,6 @@ int main(int argc, char**argv) {
     uint64_t rss_limit = 256L*1024L*1024L;
     uint64_t virt_limit = 1024L*1024L*1024L;
     double rss_pct_limit = 2;
-    double virt_pct_limit = 15;
 
     if (config.HasKey("rss_limit")) {
         rss_limit = config.GetUint64("rss_limit");
@@ -442,10 +441,6 @@ int main(int argc, char**argv) {
 
     if (config.HasKey("virt_limit")) {
         virt_limit = config.GetUint64("virt_limit");
-    }
-
-    if (config.HasKey("virt_pct_limit")) {
-        virt_pct_limit = config.GetDouble("virt_pct_limit");
     }
 
     int cpu_nice = -20;
@@ -519,7 +514,7 @@ int main(int argc, char**argv) {
     auto metrics = std::make_shared<Metrics>(queue);
     metrics->Start();
 
-    auto proc_metrics = std::make_shared<ProcMetrics>("auomscollect", queue, metrics, rss_limit, virt_limit, rss_pct_limit, virt_pct_limit, []() {
+    auto proc_metrics = std::make_shared<ProcMetrics>("auomscollect", queue, metrics, rss_limit, virt_limit, rss_pct_limit, []() {
         Logger::Error("A memory limit was exceeded, exiting immediately");
         exit(1);
     });
