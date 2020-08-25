@@ -398,6 +398,8 @@ void QueueCursor::init_from_file(const QueueCursorFile& file, const std::vector<
     }
 
     _committed = _cursors;
+    _need_save = false;
+    _saved = true;
 }
 
 std::pair<std::shared_ptr<QueueItem>,bool> QueueCursor::get(std::unique_lock<std::mutex>& lock, PriorityQueue* queue, bool& closed, long timeout, bool auto_commit) {
@@ -1085,7 +1087,7 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay, bo
         // Remove cursor files if there is no data saved to disk
         for (auto &e : _cursors) {
             if (e.second->_saved) {
-                cursors_to_remove.emplace_back(e.second->_path, e.second->_committed);
+                cursors_to_remove.emplace_back(e.second->_path);
                 e.second->_saved = false;
             }
         }
