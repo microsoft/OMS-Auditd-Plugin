@@ -122,8 +122,6 @@ SPSCDataQueue::SPSCDataQueue(size_t segment_size, size_t num_segments) {
 uint8_t* SPSCDataQueue::Allocate(size_t size, size_t* loss_bytes) {
     std::unique_lock<std::mutex> lock(_mutex);
     if (_closed) {
-        lock.unlock();
-        _current_in->Seal();
         return nullptr;
     }
     uint8_t* ptr;
@@ -163,26 +161,35 @@ void SPSCDataQueue::Commit(size_t size) {
 }
 
 void SPSCDataQueue::Close() {
-    std::lock_guard<std::mutex> lock(_mutex);
+    std::unique_lock<std::mutex> lock(_mutex);
     _closed = true;
-    _current_out->Seal();
+    auto out = _current_out;
+    auto in = _current_in;
+    lock.unlock();
+    in->Seal();
+    out->Seal();
     _cond.notify_all();
 }
 
 ssize_t SPSCDataQueue::Get(uint8_t** ptr) {
+    std::unique_lock<std::mutex> lock(_mutex);
     ssize_t ret = 0;
-    ret = _current_out->Get(ptr);
+    auto out = _current_out;
+    lock.unlock();
+    ret = out->Get(ptr);
     if (ret < 0) {
         return ret;
     }
-    std::unique_lock<std::mutex> lock(_mutex);
     while (ret == 0) {
+        lock.lock();
         _cond.wait(lock, [this](){ return !_ready.empty() || _closed; });
         if (!_ready.empty()) {
             _free.push_back(_current_out);
             _current_out = _ready.front();
             _ready.pop_front();
-            ret = _current_out->Get(ptr);
+            out = _current_out;
+            lock.unlock();
+            ret = out->Get(ptr);
             continue;
         }
         // _ready is empty, therefore _close must == true
@@ -192,5 +199,8 @@ ssize_t SPSCDataQueue::Get(uint8_t** ptr) {
 }
 
 void SPSCDataQueue::Release() {
-    _current_out->Release();
+    std::unique_lock<std::mutex> lock(_mutex);
+    auto out = _current_out;
+    lock.unlock();
+    out->Release();
 }

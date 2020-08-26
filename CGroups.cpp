@@ -102,7 +102,7 @@ void CGroupCPU::SetCFSQuotaUS(uint64_t val) {
 
 std::shared_ptr<CGroupCPU> CGroups::OpenCPU(const std::string& name) {
     if (!PathExists(CGROUP_CPU_ROOT)) {
-        throw std::runtime_error(std::string("Cgroups mount is mising: ") + CGROUP_CPU_ROOT);
+        throw std::runtime_error(std::string("Cgroups mount is missing: ") + CGROUP_CPU_ROOT);
     }
 
     std::string path = CGROUP_CPU_ROOT;

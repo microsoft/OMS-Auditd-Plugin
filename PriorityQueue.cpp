@@ -63,7 +63,7 @@ std::shared_ptr<QueueItem> QueueItemBucket::Get(uint64_t seq) {
 
 std::shared_ptr<QueueFile> QueueFile::Open(const std::string& path) {
     int fd = open(path.c_str(), O_CLOEXEC|O_RDONLY);
-    if (fd <= 0) {
+    if (fd < 0) {
         Logger::Error("QueueFile(%s): Failed to open: %s", path.c_str(), std::strerror(errno));
         return nullptr;
     }
@@ -77,12 +77,22 @@ std::shared_ptr<QueueFile> QueueFile::Open(const std::string& path) {
             Logger::Error("QueueFile(%s): Invalid or corrupted file", path.c_str());
         }
         close(fd);
+        if (unlink(path.c_str()) != 0) {
+            if (errno != ENOENT) {
+                Logger::Error("QueueFile(%s)::Open: Failed to remove invalid file: %s", path.c_str(), std::strerror(errno));
+            }
+        }
         return nullptr;
     }
     close(fd);
 
     if (header._magic != MAGIC || header._version != FILE_VERSION) {
         Logger::Error("QueueFile(%s): Invalid or corrupted file", path.c_str());
+        if (unlink(path.c_str()) != 0) {
+            if (errno != ENOENT) {
+                Logger::Error("QueueFile(%s)::Open: Failed to remove invalid file: %s", path.c_str(), std::strerror(errno));
+            }
+        }
         return nullptr;
     }
 
@@ -111,7 +121,7 @@ bool QueueFile::Save() {
     }
 
     int fd = open(_path.c_str(), O_CLOEXEC|O_CREAT|O_TRUNC|O_WRONLY, 0644);
-    if (fd <= 0) {
+    if (fd < 0) {
         Logger::Error("QueueFile(%s)::Save: Failed to open: %s", _path.c_str(), std::strerror(errno));
         return false;
     }
@@ -189,7 +199,7 @@ std::shared_ptr<QueueItemBucket> QueueFile::Read() {
     std::map<uint64_t, std::shared_ptr<QueueItem>> items;
 
     int fd = open(_path.c_str(), O_CLOEXEC|O_RDONLY);
-    if (fd <= 0) {
+    if (fd < 0) {
         Logger::Error("QueueFile(%s)::Read: Failed to open: %s", _path.c_str(), std::strerror(errno));
         return nullptr;
     }
@@ -293,7 +303,7 @@ std::shared_ptr<QueueItemBucket> QueueFile::Read() {
 
 bool QueueCursorFile::Read() {
     int fd = ::open(_path.c_str(), O_CLOEXEC|O_RDONLY);
-    if (fd <= 0) {
+    if (fd < 0) {
         Logger::Error("QueueCursorFile(%s): Failed to open: %s", _path.c_str(), std::strerror(errno));
         return false;
     }
@@ -337,7 +347,7 @@ bool QueueCursorFile::Read() {
 // This assumed cursor is locked
 bool QueueCursorFile::Write() const {
     int fd = ::open(_path.c_str(), O_CLOEXEC|O_CREAT|O_TRUNC|O_WRONLY, 0664);
-    if (fd <= 0) {
+    if (fd < 0) {
         Logger::Error("QueueCursorFile(%s): Failed to open: %s", _path.c_str(), std::strerror(errno));
         return false;
     }
@@ -1111,6 +1121,7 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay, bo
     int sidx = 0;
     uint64_t bytes_removed = 0;
     uint64_t cannot_save_bytes = 0;
+    bool save_failed = false;
 
     // Iterate through to_save
     // for each bucket to save, if the save would exceed the quote, remove from can_remove until below quota
@@ -1128,6 +1139,7 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay, bo
                     _stats._priority_stats[remove_target->Priority()]._bytes_dropped += remove_target->DataSize();
                 } else {
                     // Remove failed, do not proceed
+                    save_failed = true;
                     break;
                 }
             }
@@ -1181,7 +1193,11 @@ bool PriorityQueue::save(std::unique_lock<std::mutex>& lock, long save_delay, bo
     if (cannot_save_bytes > 0) {
         if (now - _last_save_warning > std::chrono::milliseconds(MIN_SAVE_WARNING_GAP_MS)) {
             _last_save_warning = now;
-            Logger::Warn("PriorityQueue: File System quota (%ld) would be exceeded, (%ld) bytes left unsaved", fs_bytes_allowed, cannot_save_bytes);
+            if (save_failed) {
+                Logger::Warn("PriorityQueue: Errors encountered while saving data, (%ld) bytes left unsaved", cannot_save_bytes);
+            } else {
+                Logger::Warn("PriorityQueue: File System quota (%ld) would be exceeded, (%ld) bytes left unsaved", fs_bytes_allowed, cannot_save_bytes);
+            }
         }
     }
 
