@@ -112,7 +112,7 @@ void Outputs::run() {
  */
 
 std::unique_ptr<Config> Outputs::read_and_validate_config(const std::string& name, const std::string& path) {
-    Logger::Error("Output(%s): Reading config from %s", name.c_str(), path.c_str());
+    Logger::Info("Output(%s): Reading config from %s", name.c_str(), path.c_str());
 
     std::unique_ptr<Config> config(new Config());
     try {
@@ -237,7 +237,7 @@ void Outputs::do_conf_sync() {
         bool load = false;
         if (it != _outputs.end()) {
             if (it->second->IsConfigDifferent(*config)) {
-                Logger::Error("Output(%s): Config has changed", ent.first.c_str());
+                Logger::Info("Output(%s): Config has changed", ent.first.c_str());
                 it->second->Stop();
                 load = true;
             }
