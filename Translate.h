@@ -39,6 +39,8 @@ int SyscallNameToNumber(MachineType mtype, const std::string_view& syscall_name)
 std::string_view RecordTypeToName(RecordType code, std::string& unknown_str);
 std::string RecordTypeToName(RecordType code);
 RecordType RecordNameToType(const std::string_view& name);
+std::string RecordTypeCategoryToName(RecordTypeCategory code);
+RecordTypeCategory RecordTypeCategoryNameToCategory(const std::string_view& name);
 
 field_type_t FieldNameToType(const std::string_view& name);
 field_type_t FieldNameToType(RecordType rtype, const std::string_view& name, const std::string_view& val);

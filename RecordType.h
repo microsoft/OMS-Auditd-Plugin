@@ -259,8 +259,65 @@ enum class RecordType: int {
     AUOMS_EXECVE              = 14688,
 };
 
+enum class RecordTypeCategory: int {
+    UNKNOWN = 0,
+    KERNEL = 1,
+    USER_MSG = 2,
+    DAEMON = 3,
+    EVENT = 4,
+    SELINUX = 5,
+    APPARMOR = 6,
+    KERN_CRYPTO_MSG = 7,
+    KERN_ANOM_MSG = 8,
+    INTEGRITY_MSG = 9,
+    ANOM_MSG = 10,
+    ANOM_RESP = 11,
+    USER_LSPP_MSG = 12,
+    CRYPTO_MSG = 13,
+    VIRT_MSG = 14,
+    USER_MSG2 = 15,
+    AUOMS_MSG = 16,
+};
+
 constexpr bool IsSingleRecordEvent(RecordType rtype) {
     return rtype != RecordType::EOE && (rtype < RecordType::FIRST_EVENT || rtype >= RecordType::FIRST_ANOM_MSG || rtype == RecordType::KERNEL);
 }
 
+constexpr RecordTypeCategory RecordTypeToCategory(RecordType rtype) {
+    if (rtype < RecordType::FIRST_USER_MSG) {
+        return RecordTypeCategory::KERNEL;
+    } else if (rtype >= RecordType::FIRST_USER_MSG && rtype <= RecordType::LAST_USER_MSG) {
+        return RecordTypeCategory::USER_MSG;
+    } else if (rtype >= RecordType::FIRST_DAEMON && rtype <= RecordType::LAST_DAEMON) {
+        return RecordTypeCategory::DAEMON;
+    } else if (rtype >= RecordType::FIRST_EVENT && rtype <= RecordType::LAST_EVENT) {
+        return RecordTypeCategory::EVENT;
+    } else if (rtype >= RecordType::FIRST_SELINUX && rtype <= RecordType::LAST_SELINUX) {
+        return RecordTypeCategory::SELINUX;
+    } else if (rtype >= RecordType::FIRST_APPARMOR && rtype <= RecordType::LAST_APPARMOR) {
+        return RecordTypeCategory::APPARMOR;
+    } else if (rtype >= RecordType::FIRST_KERN_CRYPTO_MSG && rtype <= RecordType::LAST_KERN_CRYPTO_MSG) {
+        return RecordTypeCategory::KERN_CRYPTO_MSG;
+    } else if (rtype >= RecordType::FIRST_KERN_ANOM_MSG && rtype <= RecordType::LAST_KERN_ANOM_MSG) {
+        return RecordTypeCategory::KERN_ANOM_MSG;
+    } else if (rtype >= RecordType::INTEGRITY_FIRST_MSG && rtype <= RecordType::INTEGRITY_LAST_MSG) {
+        return RecordTypeCategory::INTEGRITY_MSG;
+    } else if (rtype >= RecordType::FIRST_ANOM_MSG && rtype <= RecordType::LAST_ANOM_MSG) {
+        return RecordTypeCategory::ANOM_MSG;
+    } else if (rtype >= RecordType::FIRST_ANOM_RESP && rtype <= RecordType::LAST_ANOM_RESP) {
+        return RecordTypeCategory::ANOM_RESP;
+    } else if (rtype >= RecordType::FIRST_USER_LSPP_MSG && rtype <= RecordType::LAST_USER_LSPP_MSG) {
+        return RecordTypeCategory::USER_LSPP_MSG;
+    } else if (rtype >= RecordType::FIRST_CRYPTO_MSG && rtype <= RecordType::LAST_CRYPTO_MSG) {
+        return RecordTypeCategory::CRYPTO_MSG;
+    } else if (rtype >= RecordType::FIRST_VIRT_MSG && rtype <= RecordType::LAST_VIRT_MSG) {
+        return RecordTypeCategory::VIRT_MSG;
+    } else if (rtype >= RecordType::FIRST_USER_MSG2 && rtype <= RecordType::LAST_USER_MSG2) {
+        return RecordTypeCategory::USER_MSG2;
+    } else if (rtype >= RecordType::FIRST_AUOMS_MSG && rtype <= RecordType::LAST_AUOMS_MSG) {
+        return RecordTypeCategory::AUOMS_MSG;
+    } else {
+        return RecordTypeCategory::UNKNOWN;
+    }
+}
 #endif //AUOMS_RECORDTYPE_H

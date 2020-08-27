@@ -18,6 +18,54 @@
 
 #include "Logger.h"
 #include "Translate.h"
+#include "StringUtils.h"
+
+template <typename T>
+inline bool field_to_int(const EventRecordField& field, T& val, int base) {
+    errno = 0;
+    val = static_cast<T>(strtol(field.RawValuePtr(), nullptr, base));
+    return errno == 0;
+}
+
+template <typename T>
+inline bool field_to_uint(const EventRecordField& field, T& val, int base) {
+    errno = 0;
+    val = static_cast<T>(strtoul(field.RawValuePtr(), nullptr, base));
+    return errno == 0;
+}
+
+void interpret_syscall_field(std::string& syscall_name, const EventRecord& record) {
+    static std::string_view SV_SYSCALL = "syscall";
+    static std::string_view SV_ARCH = "arch";
+
+    auto syscall_field = record.FieldByName(SV_SYSCALL);
+    if (!syscall_field) {
+        syscall_name = "unknown-syscall()";
+        return;
+    }
+    auto arch_field = record.FieldByName(SV_ARCH);
+    if (!arch_field) {
+        syscall_name = "unknown-syscall(" + std::string(syscall_field.RawValue()) + ")";
+        return;
+    }
+    uint32_t arch;
+    if (!field_to_uint(arch_field, arch, 16)) {
+        arch = 0;
+    }
+    auto mt = ArchToMachine(arch);
+    if (mt == MachineType::UNKNOWN) {
+        syscall_name = "unknown-syscall(" + std::string(syscall_field.RawValue()) + ")";
+        return;
+    }
+
+    int syscall;
+    if (field_to_int(syscall_field, syscall, 10)) {
+        SyscallToName(mt, syscall, syscall_name);
+    } else {
+        syscall_name = "unknown-syscall(" + std::string(syscall_field.RawValue()) + ")";
+    }
+}
+
 
 bool EventPrioritizer::LoadFromConfig(Config& config) {
 
@@ -38,10 +86,32 @@ bool EventPrioritizer::LoadFromConfig(Config& config) {
             auto rt_name = std::string(it->name.GetString(), it->name.GetStringLength());
             auto rt = RecordNameToType(rt_name);
             if (rt == RecordType::UNKNOWN) {
-                Logger::Warn("Invalid Record Type Name in 'event_priority_by_record_type' in config: %s", rt_name.c_str());
+                Logger::Warn("Invalid Record Type Name in 'event_priority_by_record_type' in config: %s",
+                             rt_name.c_str());
                 return false;
             }
             _record_type_priorities.emplace(std::make_pair(rt, it->value.GetUint()));
+        }
+    }
+
+    if (config.HasKey("event_priority_by_record_type_category")) {
+        auto doc = config.GetJSON("event_priority_by_record_type_category");
+        if (!doc.IsObject()) {
+            return false;
+        }
+        for (auto it = doc.MemberBegin(); it != doc.MemberEnd(); ++it) {
+            if (!it->name.IsString() || !it->value.IsInt()) {
+                Logger::Warn("Invalid value in 'event_priority_by_record_type' in config");
+                return false;
+            }
+            auto rt_name = std::string(it->name.GetString(), it->name.GetStringLength());
+            auto rt = RecordTypeCategoryNameToCategory(rt_name);
+            if (rt == RecordTypeCategory::UNKNOWN) {
+                Logger::Warn("Invalid Record Type Category Name in 'event_priority_by_record_type_category' in config: %s",
+                             rt_name.c_str());
+                return false;
+            }
+            _record_type_category_priorities.emplace(std::make_pair(rt, it->value.GetUint()));
         }
     }
 
@@ -55,17 +125,8 @@ bool EventPrioritizer::LoadFromConfig(Config& config) {
                 Logger::Warn("Invalid value in 'event_priority_by_syscall' in config");
                 return false;
             }
-            auto sc = std::string(it->name.GetString(), it->name.GetStringLength());
-            auto sc_num = SyscallNameToNumber(DetectMachine(), sc);
-            if (sc_num < 0) {
-                errno = 0;
-                sc_num = static_cast<int>(strtol(sc.c_str(), nullptr, 10));
-                if (errno != 0) {
-                    Logger::Warn("Invalid Syscall in 'event_priority_by_syscall' in config: %s", sc.c_str());
-                    return false;
-                }
-            }
-            _syscall_priorities.emplace(std::make_pair(sc_num, it->value.GetUint()));
+            auto sc_name = std::string(it->name.GetString(), it->name.GetStringLength());
+            _syscall_priorities.emplace(std::make_pair(sc_name, it->value.GetUint()));
         }
     }
 
@@ -73,26 +134,33 @@ bool EventPrioritizer::LoadFromConfig(Config& config) {
 }
 
 uint16_t EventPrioritizer::Prioritize(const Event& event) {
-    static std::string_view SV_SYSCALL = "syscall";
+    static std::string S_STAR = "*";
 
     auto rec1 = event.begin();
 
-    if (static_cast<RecordType>(rec1.RecordType()) == RecordType::SYSCALL) {
-        auto syscall_field = rec1.FieldByName(SV_SYSCALL);
-        if (syscall_field) {
-            errno = 0;
-            int syscall = static_cast<int>(strtol(syscall_field.RawValuePtr(), nullptr, 10));
-            if (errno == 0) {
-                auto itr = _syscall_priorities.find(syscall);
-                if (itr != _syscall_priorities.end()) {
-                    return itr->second;
-                }
-            }
+    if (static_cast<RecordType>(rec1.RecordType()) == RecordType::AUOMS_EXECVE) {
+
+    } else if (static_cast<RecordType>(rec1.RecordType()) == RecordType::SYSCALL ||
+        static_cast<RecordType>(rec1.RecordType()) == RecordType::AUOMS_SYSCALL) {
+        _syscall_name.resize(0);
+        interpret_syscall_field(_syscall_name, rec1);
+        auto itr = _syscall_priorities.find(_syscall_name);
+        if (itr != _syscall_priorities.end()) {
+            return itr->second;
+        }
+        itr = _syscall_priorities.find(S_STAR);
+        if (itr != _syscall_priorities.end()) {
+            return itr->second;
         }
     } else {
         auto itr = _record_type_priorities.find(static_cast<RecordType>(rec1.RecordType()));
         if (itr != _record_type_priorities.end()) {
             return itr->second;
+        }
+        auto rtc = RecordTypeToCategory(static_cast<RecordType>(rec1.RecordType()));
+        auto itr2 = _record_type_category_priorities.find(rtc);
+        if (itr2 != _record_type_category_priorities.end()) {
+            return itr2->second;
         }
     }
 

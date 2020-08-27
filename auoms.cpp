@@ -274,7 +274,27 @@ int main(int argc, char**argv) {
         Logger::OpenSyslog("auoms", LOG_DAEMON);
     }
 
-    auto event_prioritizer = std::make_shared<EventPrioritizer>(num_priorities-1);
+    if (!config.HasKey("event_priority_by_syscall")) {
+        config.SetString("event_priority_by_syscall", R"json({"execve":2,"execveat":2,"*":3})json");
+    }
+
+    if (!config.HasKey("event_priority_by_record_type")) {
+        config.SetString("event_priority_by_record_type", R"json({"AUOMS_EXECVE":2,"AUOMS_SYSCALL":3,"AUOMS_PROCESS_INVENTORY":1})json");
+    }
+
+    if (!config.HasKey("event_priority_by_record_type_category")) {
+        config.SetString("event_priority_by_record_type_category", R"json({"AUOMS_MSG":0, "USER_MSG":1,"SELINUX":1,"APPARMOR":1})json");
+    }
+
+    int default_priority = 4;
+    if (config.HasKey("default_event_priority")) {
+        default_priority = static_cast<uint16_t>(config.GetUint64("default_event_priority"));
+    }
+    if (default_priority > num_priorities-1) {
+        default_priority = num_priorities-1;
+    }
+
+    auto event_prioritizer = std::make_shared<EventPrioritizer>(default_priority);
     if (!event_prioritizer->LoadFromConfig(config)) {
         Logger::Error("Failed to load EventPrioritizer config, exiting");
         exit(1);

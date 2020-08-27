@@ -25,9 +25,13 @@
 class Config {
 public:
     Config() = default;
-    explicit Config(std::unordered_map<std::string, std::string> map): _map(map) {}
+    explicit Config(std::unordered_map<std::string, std::string> map): _map(std::move(map)) {}
 
     void Load(const std::string& path);
+
+    void SetString(const std::string& name, const std::string& value) {
+        _map[name] = value;
+    }
 
     bool HasKey(const std::string& name) const;
     bool GetBool(const std::string& name) const;

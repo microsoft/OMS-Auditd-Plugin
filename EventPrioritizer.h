@@ -25,7 +25,7 @@
 
 class EventPrioritizer: public IEventPrioritizer {
 public:
-    EventPrioritizer(uint16_t default_priority): _default_priority(default_priority)  {}
+    explicit EventPrioritizer(uint16_t default_priority): _default_priority(default_priority)  {}
 
     bool LoadFromConfig(Config& config);
 
@@ -34,7 +34,9 @@ public:
 private:
     uint16_t _default_priority;
     std::unordered_map<RecordType, uint16_t> _record_type_priorities;
-    std::unordered_map<int, uint16_t> _syscall_priorities;
+    std::unordered_map<RecordTypeCategory, uint16_t> _record_type_category_priorities;
+    std::unordered_map<std::string, uint16_t> _syscall_priorities;
+    std::string _syscall_name;
 };
 
 
