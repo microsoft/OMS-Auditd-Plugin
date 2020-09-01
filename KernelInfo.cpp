@@ -29,6 +29,7 @@
 #define MINIMUM_INTERFIELD_COMPARE_VERSION "3.10"
 #define MINIMUM_EXE_FIELD_VERSION "4.4"
 #define MINIMUM_SESSIONID_FIELD_VERSION "4.10"
+#define MINIMUM_AUDIT_MULTICAST_VERSION "3.16"
 
 static std::once_flag s_init_flag;
 
@@ -59,6 +60,7 @@ void KernelInfo::load() noexcept {
         _compare = kver >= Version(MINIMUM_INTERFIELD_COMPARE_VERSION);
         _exe_field = kver >= Version(MINIMUM_EXE_FIELD_VERSION);
         _session_id_field = kver >= Version(MINIMUM_SESSIONID_FIELD_VERSION);
+        _audit_multicast = kver >= Version(MINIMUM_AUDIT_MULTICAST_VERSION);
 
         std::string config_path = "/boot/config-" + _kver;
         try {

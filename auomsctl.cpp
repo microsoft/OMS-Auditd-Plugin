@@ -39,6 +39,7 @@
 #include <sstream>
 
 #include "env_config.h"
+#include "KernelInfo.h"
 
 #define AUOMS_SERVICE_NAME "auoms"
 #define AUDITD_SERVICE_NAME "auditd"
@@ -1167,6 +1168,50 @@ int tap_audit() {
 /**********************************************************************************************************************
  **
  *********************************************************************************************************************/
+
+int tap_audit_multicast() {
+    if (!check_permissions()) {
+        return 1;
+    }
+
+    try {
+        auto ki = KernelInfo::GetKernelInfo();
+        if (!ki.HasAuditMulticast()) {
+            Logger::Error("Audit multicast not supported in kerenel version %s", ki.KernelVersion().c_str());
+            return 1;
+        }
+    } catch (std::exception &ex) {
+        Logger::Error("Failed to determine if audit multicast is supported: %s", ex.what());
+    }
+
+    Netlink netlink;
+    Gate _stop_gate;
+
+    std::function handler = [](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
+        if (type >= AUDIT_FIRST_USER_MSG) {
+            std::cout << "type=" << RecordTypeToName(static_cast<RecordType>(type)) << " " << std::string_view(reinterpret_cast<const char*>(data), len) << std::endl;
+        }
+        return false;
+    };
+
+    Logger::Info("Connecting to AUDIT NETLINK socket");
+    auto ret = netlink.Open(std::move(handler), true);
+    if (ret != 0) {
+        Logger::Error("Failed to open AUDIT NETLINK connection: %s", std::strerror(-ret));
+        return 1;
+    }
+    Defer _close_netlink([&netlink]() { netlink.Close(); });
+
+    Signals::SetExitHandler([&_stop_gate]() { _stop_gate.Open(); });
+
+    _stop_gate.Wait(Gate::OPEN, -1);
+
+    return 0;
+}
+
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 void handle_raw_connection(int fd) {
     std::array<uint8_t, 1024*256> data;
 
@@ -1735,23 +1780,26 @@ int main(int argc, char**argv) {
         return disable_auoms();
     } else if (strcmp(argv[1], "start") == 0) {
         bool all = false;
-        if (argc > 2 && strcmp(argv[1], "all") == 0) {
+        if (argc > 2 && strcmp(argv[2], "all") == 0) {
             all = true;
         }
         return start_auoms(all);
     } else if (strcmp(argv[1], "restart") == 0) {
         bool all = false;
-        if (argc > 2 && strcmp(argv[1], "all") == 0) {
+        if (argc > 2 && strcmp(argv[2], "all") == 0) {
             all = true;
         }
         return restart_auoms(all);
     } else if (strcmp(argv[1], "stop") == 0) {
         bool all = false;
-        if (argc > 2 && strcmp(argv[1], "all") == 0) {
+        if (argc > 2 && strcmp(argv[2], "all") == 0) {
             all = true;
         }
         return stop_auoms(all);
     } else if (strcmp(argv[1], "tap") == 0) {
+        if (argc > 2 && strcmp(argv[2], "multicast") == 0) {
+            return tap_audit_multicast();
+        }
         return tap_audit();
     } else if (strcmp(argv[1], "monitor") == 0) {
         return monitor_auoms_events();

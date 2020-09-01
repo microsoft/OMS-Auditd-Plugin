@@ -30,7 +30,7 @@
 #define SOL_NETLINK	270
 #endif
 
-int Netlink::Open(reply_fn_t&& default_msg_handler_fn) {
+int Netlink::Open(reply_fn_t&& default_msg_handler_fn, bool multicast) {
     std::unique_lock<std::mutex> _lock(_run_mutex);
 
     if (_start) {
@@ -50,6 +50,33 @@ int Netlink::Open(reply_fn_t&& default_msg_handler_fn) {
         }
         return -saved_errno;
     }
+
+    sockaddr_nl addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.nl_family = AF_NETLINK;
+    addr.nl_pid = 0;
+    if (multicast) {
+        addr.nl_groups = 1; // AUDIT_NLGRP_READLOG
+    } else {
+        addr.nl_groups = 0;
+    }
+
+    if (bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+        auto saved_errno = errno;
+        Logger::Error("Failed to bind NETLINK socket: %s", std::strerror(errno));
+        close(fd);
+        return -saved_errno;
+    }
+
+    socklen_t addr_len = sizeof(addr);
+    if (getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+        auto saved_errno = errno;
+        Logger::Error("Failed to get assigned NETLINK 'port': %s", std::strerror(errno));
+        close(fd);
+        return -saved_errno;
+    }
+
+    _pid = addr.nl_pid;
 
     int on = 1;
     if (setsockopt(fd, SOL_NETLINK, NETLINK_NO_ENOBUFS, &on, sizeof(on)) != 0) {
@@ -94,6 +121,7 @@ int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t&& repl
     } while (_replies.count(seq) > 0 || _known_seq.count(seq) > 0);
 
     nl->nlmsg_seq = seq;
+    nl->nlmsg_pid = _pid;
 
     if (data != nullptr && len > 0) {
         nl->nlmsg_len = static_cast<uint32_t>(NLMSG_SPACE(len));

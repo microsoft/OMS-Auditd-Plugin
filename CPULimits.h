@@ -20,6 +20,9 @@
 #include "Config.h"
 #include "CGroups.h"
 
+#define CPU_HARD_LIMIT_NAME "cpu_per_core_limit"
+#define CPU_SOFT_LIMIT_NAME "cpu_soft_limit"
+
 class CPULimits {
 public:
     static constexpr double MAX_PCT = 100.0;

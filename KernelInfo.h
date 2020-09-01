@@ -33,9 +33,10 @@ public:
     static bool HasAuditInterfieldCompare() { return ptr()->_compare; };
     static bool HasAuditExeField() { return ptr()->_exe_field; };
     static bool HasAuditSessionIdField() { return ptr()->_session_id_field; };
+    static bool HasAuditMulticast() { return ptr()->_audit_multicast; };
 
 private:
-    KernelInfo(): _kver(), _is_64bit(false), _syscall(false), _compare(false), _exe_field(false), _session_id_field(false) {};
+    KernelInfo(): _kver(), _is_64bit(false), _syscall(false), _compare(false), _exe_field(false), _session_id_field(false), _audit_multicast(false) {};
 
     static void init();
     static KernelInfo* ptr();
@@ -49,6 +50,7 @@ private:
     bool _compare;
     bool _exe_field;
     bool _session_id_field;
+    bool _audit_multicast;
 };
 
 

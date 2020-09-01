@@ -229,6 +229,7 @@ add_executable(auomsctl
         UnixDomainListener.cpp
         Event.cpp
         UserDB.cpp
+        KernelInfo.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html

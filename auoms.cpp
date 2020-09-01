@@ -274,6 +274,16 @@ int main(int argc, char**argv) {
         Logger::OpenSyslog("auoms", LOG_DAEMON);
     }
 
+    // Set cgroup defaults
+    if (!config.HasKey(CPU_SOFT_LIMIT_NAME)) {
+        config.SetString(CPU_SOFT_LIMIT_NAME, "5");
+    }
+
+    if (!config.HasKey(CPU_HARD_LIMIT_NAME)) {
+        config.SetString(CPU_HARD_LIMIT_NAME, "25");
+    }
+
+    // Set EventPrioritizer defaults
     if (!config.HasKey("event_priority_by_syscall")) {
         config.SetString("event_priority_by_syscall", R"json({"execve":2,"execveat":2,"*":3})json");
     }

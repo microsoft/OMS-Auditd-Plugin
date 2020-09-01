@@ -50,7 +50,13 @@ public:
     // Return true if desired state reached, false on timeout
     bool Wait(state_t state, int timeout) {
         std::unique_lock lock(_mutex);
-        return _cond.wait_for(lock, std::chrono::milliseconds(timeout), [this,state]() { return _state == state; });
+        if (timeout < 0) {
+            _cond.wait(lock, [this, state]() { return _state == state; });
+            return true;
+        } else {
+            return _cond.wait_for(lock, std::chrono::milliseconds(timeout),
+                                  [this, state]() { return _state == state; });
+        }
     }
 
 private:

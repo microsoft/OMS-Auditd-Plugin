@@ -17,16 +17,14 @@
 #include "CPULimits.h"
 
 #define CG_NAME_CONFIG_NAME "cpu_cgroup_name"
-#define HARD_LIMIT_NAME "cpu_per_core_limit"
-#define SOFT_LIMIT_NAME "cpu_soft_limit"
 
 std::shared_ptr<CGroupCPU> CPULimits::CGFromConfig(const Config& config, const std::string& default_cg_name) {
     std::string cg_name = default_cg_name;
     double hard_limit = MAX_PCT;
     double soft_limit = MAX_PCT;
 
-    if (config.HasKey(HARD_LIMIT_NAME)) {
-        hard_limit = config.GetDouble(HARD_LIMIT_NAME);
+    if (config.HasKey(CPU_HARD_LIMIT_NAME)) {
+        hard_limit = config.GetDouble(CPU_HARD_LIMIT_NAME);
     }
 
     if (hard_limit > MAX_PCT) {
@@ -35,8 +33,8 @@ std::shared_ptr<CGroupCPU> CPULimits::CGFromConfig(const Config& config, const s
         hard_limit = MIN_PCT;
     }
 
-    if (config.HasKey(SOFT_LIMIT_NAME)) {
-        soft_limit = config.GetDouble(SOFT_LIMIT_NAME);
+    if (config.HasKey(CPU_SOFT_LIMIT_NAME)) {
+        soft_limit = config.GetDouble(CPU_SOFT_LIMIT_NAME);
     }
 
     if (soft_limit > MAX_PCT) {
