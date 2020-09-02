@@ -45,7 +45,7 @@ time_t boot_time() {
 
 bool read_file(const std::string& path, std::vector<uint8_t>& data, size_t limit, bool& truncated) {
     errno = 0;
-    int fd = ::open(path.c_str(), O_RDONLY);
+    int fd = ::open(path.c_str(), O_RDONLY|O_CLOEXEC);
     if (fd < 0) {
         return false;
     }
