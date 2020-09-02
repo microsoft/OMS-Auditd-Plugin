@@ -56,6 +56,10 @@ void CGroupCPU::AddSelfThread() {
     AppendUint64(_dir + CGROUP_TASKS_FILE, tid);
 }
 
+void CGroupCPU::AddThread(long tid) {
+    AppendUint64(_dir + CGROUP_TASKS_FILE, tid);
+}
+
 std::vector<uint64_t> CGroupCPU::GetProcs() {
     auto lines = ReadFile(_dir + CGROUP_PROCS_FILE);
     std::vector<uint64_t> pids;
@@ -118,4 +122,8 @@ std::shared_ptr<CGroupCPU> CGroups::OpenCPU(const std::string& name) {
     }
 
     return std::make_shared<CGroupCPU>(path);
+}
+
+long CGroups::GetSelfThreadId() {
+    return syscall(SYS_gettid);
 }

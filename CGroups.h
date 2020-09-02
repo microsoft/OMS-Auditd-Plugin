@@ -26,6 +26,7 @@ public:
 
     void AddSelf();
     void AddSelfThread();
+    void AddThread(long tid);
 
     std::vector<uint64_t> GetProcs();
     std::vector<uint64_t> GetTasks();
@@ -46,6 +47,7 @@ private:
 class CGroups {
 public:
     static std::shared_ptr<CGroupCPU> OpenCPU(const std::string& name);
+    static long GetSelfThreadId();
 };
 
 

@@ -274,6 +274,11 @@ int main(int argc, char**argv) {
         Logger::OpenSyslog("auoms", LOG_DAEMON);
     }
 
+    bool disable_cgroups = false;
+    if (config.HasKey("disable_cgroups")) {
+        disable_cgroups = config.GetBool("disable_cgroups");
+    }
+
     // Set cgroup defaults
     if (!config.HasKey(CPU_SOFT_LIMIT_NAME)) {
         config.SetString(CPU_SOFT_LIMIT_NAME, "5");
@@ -328,12 +333,24 @@ int main(int argc, char**argv) {
     Logger::Info("Acquire singleton lock");
 
     std::shared_ptr<CGroupCPU> cgcpu;
-    try {
-        cgcpu = CPULimits::CGFromConfig(config, "auoms");
-        cgcpu->AddSelf();
-    } catch (std::runtime_error& ex) {
-        Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
-        Logger::Warn("CPU Limits cannot be enforced");
+    if (!disable_cgroups) {
+        try {
+            cgcpu = CPULimits::CGFromConfig(config, "auoms");
+            // systemd may not have put auoms into the default cgroup at this point
+            // Wait a few seconds before moving into the right cgroup so we avoid getting moved back out by systemd
+            std::thread cg_thread([&cgcpu]() {
+                sleep(5);
+                try {
+                    cgcpu->AddSelf();
+                } catch (const std::exception &ex) {
+                    Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
+                    Logger::Warn("CPU Limits cannot be enforced");
+                }
+            });
+        } catch (std::runtime_error &ex) {
+            Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
+            Logger::Warn("CPU Limits cannot be enforced");
+        }
     }
 
     // This will block signals like SIGINT and SIGTERM
