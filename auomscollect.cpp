@@ -528,6 +528,7 @@ int main(int argc, char**argv) {
                     Logger::Warn("CPU Limits cannot be enforced");
                 }
             });
+            cg_thread.detach();
         } catch (std::runtime_error &ex) {
             Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
             Logger::Warn("CPU Limits cannot be enforced");
@@ -631,6 +632,7 @@ int main(int argc, char**argv) {
                     Logger::Error("Failed to move ingest thread to root cgroup: %s", ex.what());
                 }
             });
+            cg_thread.detach();
         }
         if (netlink_mode) {
             bool restart;

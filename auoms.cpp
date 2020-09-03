@@ -347,6 +347,7 @@ int main(int argc, char**argv) {
                     Logger::Warn("CPU Limits cannot be enforced");
                 }
             });
+            cg_thread.detach();
         } catch (std::runtime_error &ex) {
             Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
             Logger::Warn("CPU Limits cannot be enforced");
