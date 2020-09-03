@@ -42,14 +42,16 @@ void combine_paths(char *dest, event_path_s *path, char *pwd, bool resolvepath)
     char temp[PATH_MAX * 2];
     char abs_path[PATH_MAX];
 
-    if (path->dfd_path[0] == 'A')
+    if (path->dfd_path[0] == ABSOLUTE_PATH)
         snprintf(temp, PATH_MAX * 2, "%s", path->pathname);
-    else if (path->dfd_path[0] == 'C')
+    else if (path->dfd_path[0] == CWD_REL_PATH)
         snprintf(temp, PATH_MAX * 2, "%s/%s", pwd, path->pathname);
-    else if (path->dfd_path[0] != 'U')
-        snprintf(temp, PATH_MAX * 2, "%s/%s", path->dfd_path, path->pathname);
+    else if (path->dfd_path[0] == RELATIVE_PATH)
+        snprintf(temp, PATH_MAX * 2, "Relative to CWD /%s", path->pathname);
+    else if (path->dfd_path[0] == UNKNOWN_PATH)
+        snprintf(temp, PATH_MAX * 2, "Unknown %s", path->pathname);
     else
-        snprintf(temp, PATH_MAX * 2, "%s", path->pathname);
+        snprintf(temp, PATH_MAX * 2, "%s/%s", path->dfd_path, path->pathname);
 
     // don't resolve real path for symbolic links
     if (!resolvepath || !realpath(temp, dest))

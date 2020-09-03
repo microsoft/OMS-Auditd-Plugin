@@ -117,9 +117,13 @@ target_include_directories(ebpf_loader PUBLIC
 
 # list of ebpf programs to make
 set(EBPF_PROGS
-               ebpf_telemetry_kern_raw_tp 
+               ebpf_telemetry_kern_raw_tp_sub4096
+               ebpf_telemetry_kern_raw_tp_noloops
+               ebpf_telemetry_kern_raw_tp
                ebpf_telemetry_kern_tp
 )
+
+
 
 #################################################################################
 # Everything below this point should be fairly static.  Ensure LINUX_SRC points #
@@ -179,11 +183,15 @@ set(CLANG_INCLUDES -include "${LINUX_SRC}/include/linux/kconfig.h"
 function(build_ebpf ebpfsrc)
     add_custom_command(OUTPUT ${ebpfsrc}.o
                        COMMAND "${CLANG}" -nostdinc -isystem `gcc -print-file-name=include` ${CLANG_INCLUDES} ${CLANG_DEFINES} -O2 ${CLANG_OPTIONS} -emit-llvm -c "${CMAKE_SOURCE_DIR}/ebpf_loader/ebpf_kern/${ebpfsrc}.c" -o -| "${LLC}" -march=bpf -filetype=obj -o "${ebpfsrc}.o"
+#                       COMMAND "${CLANG}" -nostdinc -isystem `gcc -print-file-name=include` ${CLANG_INCLUDES} ${CLANG_DEFINES} -O2 ${CLANG_OPTIONS} -emit-llvm -c "${CMAKE_SOURCE_DIR}/ebpf_loader/ebpf_kern/${ebpfsrc}.c" -o -| opt -always-inline -inline | "${LLC}" -march=bpf -filetype=obj -o "${ebpfsrc}.o"
                        COMMENT "Building EBPF object ${ebpfsrc}.o"
                        DEPENDS ebpf_kern/${ebpfsrc}.c
                        DEPENDS libbpf
                        DEPENDS ../event_defs.h
+                       DEPENDS ebpf_kern/ebpf_kern_helpers.c
                        DEPENDS ebpf_kern/ebpf_kern_common.h
+                       DEPENDS ebpf_kern/ebpf_kern_tp.c
+                       DEPENDS ebpf_kern/ebpf_kern_raw_tp.c
                        )
 endfunction()
 

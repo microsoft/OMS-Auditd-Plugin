@@ -37,6 +37,8 @@
 #define DEBUGFS "/sys/kernel/debug/tracing/"
 
 #define KERN_TRACEPOINT_OBJ "ebpf_loader/ebpf_telemetry_kern_tp.o"
+#define KERN_RAW_TRACEPOINT_SUB4096_OBJ "ebpf_loader/ebpf_telemetry_kern_raw_tp_sub4096.o"
+#define KERN_RAW_TRACEPOINT_NOLOOPS_OBJ "ebpf_loader/ebpf_telemetry_kern_raw_tp_noloops.o"
 #define KERN_RAW_TRACEPOINT_OBJ "ebpf_loader/ebpf_telemetry_kern_raw_tp.o"
 
 #ifndef STOPLOOP
@@ -51,12 +53,6 @@ static int    sysconf_map_fd        = 0;
 static struct utsname     uname_s   = { 0 };
 static struct bpf_object  *bpf_obj  = NULL;
 
-static struct bpf_program *bpf_sys_enter_openat  = NULL;
-static struct bpf_program *bpf_sys_enter_execve  = NULL;
-static struct bpf_program *bpf_sys_enter_connect = NULL;
-static struct bpf_program *bpf_sys_enter_accept  = NULL;
-static struct bpf_program *bpf_sys_exit_accept   = NULL;
-
 static struct bpf_program *bpf_sys_enter_tp[7];
 static struct bpf_program *bpf_sys_enter = NULL;
 static struct bpf_program *bpf_sys_exit  = NULL;
@@ -66,7 +62,7 @@ static struct bpf_link    *bpf_sys_exit_tp_link[SYSCALL_MAX+1];
 static struct bpf_link    *bpf_sys_enter_link = NULL;
 static struct bpf_link    *bpf_sys_exit_link  = NULL;
 
-typedef enum bpf_type { NOBPF, BPF_TP, BPF_RAW_TP } bpf_type;
+typedef enum bpf_type { NOBPF, BPF_TP, BPF_RAW_TP_SUB4096, BPF_RAW_TP_NOLOOPS, BPF_RAW_TP } bpf_type;
 
 static bpf_type support_version = NOBPF;
 
@@ -170,12 +166,12 @@ bool insert_config_offsets(unsigned int *item, char *value)
 
     i = 0;
 
-    while (offset && i<NUM_REDIRECTS) {
+    while (offset && i < (NUM_REDIRECTS - 1)) {
         item[i] = atoi(offset);
         offset = strtok_r(NULL, " ,", &inner_strtok);
         i++;
     }
-    item[i] = -1;
+    item[i] = DEREF_END;
 
     return true;
 }
@@ -454,22 +450,28 @@ int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int
         return 1;
     }    
 
-    // <  4.12, no ebpf
-    // >= 4.12, tracepoints    - shouldn't this be 4.7?
-    // >= 4.17, raw_tracepoints
-    if ( ( major <= 4 ) && ( minor < 12 ) ){
+    // <  4.9, no ebpf
+    // 4.9  - 4.16 - tracepoints
+    // 4.17 - 5.0  - raw tracepoints, <4096 instructions, no loops
+    // 5.1  - 5.2  - raw tracepoints, <1M instructions, no loops
+    // >= 5.3      - raw tracepoints, <1M instructions, loops
+
+    if (major <= 4 && minor < 9) {
         support_version = NOBPF;
         fprintf(stderr, "Kernel Version %u.%u not supported\n", major, minor);
         return 1;    
-    }
-    else if ( ( major == 4 ) && ( minor < 17 ) ){
-        fprintf(stderr, "Using Tracepoints\n");
-        support_version = BPF_TP;   
-    }
-    else if ( ( ( major == 4 ) && ( minor >= 17 ) ) ||
-              (            major > 4             ) ){
-        fprintf(stderr, "Using Raw Tracepoints\n");
-        support_version = BPF_RAW_TP;   
+    } else if (major == 4 && minor < 17) {
+        support_version = BPF_TP;
+        fprintf(stderr, "Using Tracepoints, sub 4096 instructions, no loops\n");
+    } else if ((major == 4 && minor >= 17) || (major == 5 && minor < 1)) {
+        support_version = BPF_RAW_TP_SUB4096;
+        fprintf(stderr, "Using Raw Tracepoints, sub 4096 instructions, no loops\n");
+    } else if (major == 5 && minor < 3) {
+        support_version = BPF_RAW_TP_NOLOOPS;
+        fprintf(stderr, "Using Raw Tracepoints, sub 1M instructions, no loops\n");
+    } else {
+        support_version = BPF_RAW_TP;
+        fprintf(stderr, "Using Raw Tracepoints, sub 1M instructions, with loops\n");
     }
 
     struct rlimit lim = {
@@ -478,11 +480,23 @@ int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int
     };
     char filename[256];
 
-    if ( support_version == BPF_TP)
-        strncpy(filename, KERN_TRACEPOINT_OBJ, sizeof(filename));
-    else
-        strncpy(filename, KERN_RAW_TRACEPOINT_OBJ, sizeof(filename));
-   
+    switch (support_version) {
+        case BPF_TP:
+            strncpy(filename, KERN_TRACEPOINT_OBJ, sizeof(filename));
+            break;
+        case BPF_RAW_TP_SUB4096:
+            strncpy(filename, KERN_RAW_TRACEPOINT_SUB4096_OBJ, sizeof(filename));
+            break;
+        case BPF_RAW_TP_NOLOOPS:
+            strncpy(filename, KERN_RAW_TRACEPOINT_NOLOOPS_OBJ, sizeof(filename));
+            break;
+        case BPF_RAW_TP:
+            strncpy(filename, KERN_RAW_TRACEPOINT_OBJ, sizeof(filename));
+            break;
+    }
+
+    fprintf(stderr, "Using EBPF object: %s\n", filename);
+
     setrlimit(RLIMIT_MEMLOCK, &lim);
 
     bpf_obj = bpf_object__open(filename);
@@ -491,32 +505,36 @@ int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int
         return 1;
     }
 
-    if (support_version == BPF_TP) {
-        char program_name[] = "tracepoint/syscalls/sys_enter0";
-        unsigned int program_name_len = strlen(program_name);
-        for (char n=0; n<7; n++) {
-            program_name[program_name_len - 1] = '0' + n;
-            if ((bpf_sys_enter_tp[n] = bpf_object__find_program_by_title(bpf_obj, program_name)) == NULL) {
-                fprintf(stderr, "ERROR: failed to find program: '%s' '%s'\n", program_name, strerror(errno));
-                break;
+    switch (support_version) {
+        case BPF_TP: {
+            char program_name[] = "tracepoint/syscalls/sys_enter0";
+            unsigned int program_name_len = strlen(program_name);
+            for (char n=0; n<7; n++) {
+                program_name[program_name_len - 1] = '0' + n;
+                if ((bpf_sys_enter_tp[n] = bpf_object__find_program_by_title(bpf_obj, program_name)) == NULL) {
+                    fprintf(stderr, "ERROR: failed to find program: '%s' '%s'\n", program_name, strerror(errno));
+                    break;
+                }
+                bpf_program__set_type(bpf_sys_enter_tp[n], BPF_PROG_TYPE_TRACEPOINT);
             }
-            bpf_program__set_type(bpf_sys_enter_tp[n], BPF_PROG_TYPE_TRACEPOINT);
+            if ((bpf_sys_exit = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_exit")) == NULL) {
+                fprintf(stderr, "ERROR: failed to find program: '%s' '%s'\n", program_name, strerror(errno));
+            }
+            bpf_program__set_type(bpf_sys_exit, BPF_PROG_TYPE_TRACEPOINT);
+            break;
         }
-        if ((bpf_sys_exit = bpf_object__find_program_by_title(bpf_obj,"tracepoint/syscalls/sys_exit")) == NULL) {
-            fprintf(stderr, "ERROR: failed to find program: '%s' '%s'\n", program_name, strerror(errno));
-        }
-        bpf_program__set_type(bpf_sys_exit, BPF_PROG_TYPE_TRACEPOINT);
-    }
-    else if ( ( support_version ==  BPF_RAW_TP ) &&
-              ( NULL != ( bpf_sys_enter = bpf_object__find_program_by_title(bpf_obj,"raw_tracepoint/sys_enter")))  &&
-              ( NULL != ( bpf_sys_exit  = bpf_object__find_program_by_title(bpf_obj,"raw_tracepoint/sys_exit")))   )
-    {
-        bpf_program__set_type(bpf_sys_enter, BPF_PROG_TYPE_RAW_TRACEPOINT);
-        bpf_program__set_type(bpf_sys_exit, BPF_PROG_TYPE_RAW_TRACEPOINT);
-    }
-    else{
-        fprintf(stderr, "ERROR: failed to find program: '%s'\n", strerror(errno));
-        return 1;
+        case BPF_RAW_TP_SUB4096:
+        case BPF_RAW_TP_NOLOOPS:
+        case BPF_RAW_TP:
+            if (((bpf_sys_enter = bpf_object__find_program_by_title(bpf_obj,"raw_tracepoint/sys_enter")) != NULL)  &&
+                    ((bpf_sys_exit  = bpf_object__find_program_by_title(bpf_obj,"raw_tracepoint/sys_exit")) != NULL)) {
+                bpf_program__set_type(bpf_sys_enter, BPF_PROG_TYPE_RAW_TRACEPOINT);
+                bpf_program__set_type(bpf_sys_exit, BPF_PROG_TYPE_RAW_TRACEPOINT);
+            } else {
+                fprintf(stderr, "ERROR: failed to find program: '%s'\n", strerror(errno));
+                return 1;
+            }
+            break;
     }
 
     if (bpf_object__load(bpf_obj)) {
@@ -525,19 +543,19 @@ int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int
     }
 
     event_map_fd = bpf_object__find_map_fd_by_name(bpf_obj, "event_map");
-    if ( 0 >= event_map_fd){
+    if (event_map_fd <= 0) {
         fprintf(stderr, "ERROR: failed to load event_map_fd: '%s'\n", strerror(errno));
         return 1;
     }
 
     config_map_fd = bpf_object__find_map_fd_by_name(bpf_obj, "config_map");
-    if ( 0 >= config_map_fd) {
+    if (config_map_fd <= 0) {
         fprintf(stderr, "ERROR: failed to load config_map_fd: '%s'\n", strerror(errno));
         return 1;
     }
 
     sysconf_map_fd = bpf_object__find_map_fd_by_name(bpf_obj, "sysconf_map");
-    if ( 0 >= sysconf_map_fd) {
+    if (sysconf_map_fd <= 0) {
         fprintf(stderr, "ERROR: failed to load sysconf_map_fd: '%s'\n", strerror(errno));
         return 1;
     }

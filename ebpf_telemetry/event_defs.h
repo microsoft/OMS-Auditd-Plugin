@@ -26,23 +26,45 @@
 #define CONFIG_FILE "../ebpf_telemetry.conf"
 #define SYSCALL_FILE "../syscalls.conf"
 
-#define CMDLINE_MAX_ARGS 128
+#define READ_OKAY 0
+#define UPDATE_OKAY 0
+
 #define CMDLINE_MAX_LEN 32768 // must be power of 2
-
-#define FILEPATH_NUMDIRS 32
-
 #define TTYSIZE 64
+#define NOTTY_STRING "(none)"
 #define COMMSIZE 16
-
-#define NUM_REDIRECTS 8
-
 #define MAX_FDS 65535
-
 #define MAX_EVENT_SIZE (65536 - 8)
+
+// tunable parameters for building paths through iteration.
+// for SUB4096 it's about instruction count <4096
+// for NOLOOPS it's about instruction count <32768(ish - due to signed 16bit jumps)
+// for others it's about verification complexity <1M instructions
+// 
+// when adding code, change these to keep within these limits
+#ifdef SUB4096
+#define FILEPATH_NUMDIRS 9
+#else
+#ifdef NOLOOPS
+#define FILEPATH_NUMDIRS 18
+#else
+#define FILEPATH_NUMDIRS 95
+#endif
+#endif
+
+#define ABSOLUTE_PATH 'A'
+#define RELATIVE_PATH 'R'
+#define CWD_REL_PATH 'C'
+#define UNKNOWN_PATH 'U'
+
+#define NUM_REDIRECTS 4
+#define DEREF_END -1
+
 
 #define SYSCALL_MAX 335
 #define SYSCALL_NAME_LEN 64
 #define SYSCALL_ARRAY_SIZE 512
+#define SYSCALL_MAX_FILTERS 8
 #define COMP_ERROR 0
 #define COMP_EQ    1
 #define COMP_LT    2
@@ -50,7 +72,10 @@
 #define COMP_AND   4
 #define COMP_OR    5
 
+#define NUM_ARGS 6
+#define ARG_ARRAY_SIZE 8
 #define ARG_MASK 7
+
 #define ACTIVE_MASK 0x1f
 #define ACTIVE_SYSCALL 0x20
 #define ACTIVE_NOFAIL  0x40

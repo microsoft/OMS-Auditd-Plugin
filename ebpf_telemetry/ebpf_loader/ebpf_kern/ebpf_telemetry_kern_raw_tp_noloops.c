@@ -20,6 +20,7 @@
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
+#define NOLOOPS 1
 
 #include "ebpf_kern_raw_tp.c"
 
