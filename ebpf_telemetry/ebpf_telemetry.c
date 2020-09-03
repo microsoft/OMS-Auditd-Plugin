@@ -19,6 +19,7 @@
 #include "ebpf_loader/ebpf_telemetry_loader.h"
 #include "event_defs.h"
 #include <assert.h>
+#include <syslog.h>
 
 //Notes:
 //https://github.com/vmware/p4c-xdp/issues/58
@@ -36,6 +37,14 @@ unsigned long num_lost_events = 0;
 unsigned long num_fail = 0;
 unsigned long num_parsev = 0;
 struct utsname uname_data;
+
+bool o_syslog = false;
+bool quiet = false;
+bool superquiet = false;
+
+#define EVENT_BUFFER_SIZE (49 * 1024)
+#define EVENT_BUF1_SIZE (16 * 1024)
+#define EVENT_BUF2_SIZE (33 * 1024)
 
 void combine_paths(char *dest, event_path_s *path, char *pwd, bool resolvepath)
 {
@@ -60,6 +69,10 @@ void combine_paths(char *dest, event_path_s *path, char *pwd, bool resolvepath)
 
 static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 {
+    char e_buf[EVENT_BUFFER_SIZE];
+    char buf1[EVENT_BUF1_SIZE];
+    char buf2[EVENT_BUF2_SIZE];
+
     total_events++;
     event_s *event = (event_s *)data;
     if ( (size > sizeof(event_s)) && // make sure we have enough data
@@ -67,21 +80,22 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
          (event->code_bytes_end == CODE_BYTES) && // garbage check...
          (event->version    == VERSION) )     // version check...
     {   
-        if (event->status & STATUS_VALUE) {
+        if (!quiet && event->status & STATUS_VALUE) {
             printf("PARSEV!     ");
             num_parsev++;
         }
-        if (event->status & ~STATUS_VALUE) {
+        if (!quiet && event->status & ~STATUS_VALUE) {
             printf("FAIL!       ");
             num_fail++;
         }
 
-        printf("timestamp=%ld.%ld ", event->bootns / (1000 * 1000 * 1000), event->bootns % (1000 * 1000 * 1000));
-        printf("node=%s arch=%s syscall=%lu success=%s exit=%ld ", uname_data.nodename, uname_data.machine, event->syscall_id, (event->return_code >= 0 ? "yes" : "no"), event->return_code);
-        printf("a0=%lx a1=%lx a2=%lx a3=%lx a4=%lx a5=%lx ", event->a[0], event->a[1], event->a[2], event->a[3], event->a[4], event->a[5]);
-        printf("ppid=%u pid=%u ", event->ppid, event->pid);
-        printf("auid=%u uid=%u gid=%u euid=%u suid=%u fsuid=%u egid=%u sgid=%u fsgid=%u ", event->auid, event->uid, event->gid, event->euid, event->suid, event->fsuid, event->egid, event->sgid, event->fsgid);
-        printf("tty=%s ses=%u comm=%s exe=%s exe_mode=%o exe_ouid=%d exe_ogid=%d cwd=%s \n", event->tty, event->ses, event->comm, event->exe, event->exe_mode, event->exe_ouid, event->exe_ogid, event->pwd);
+        snprintf(buf1, EVENT_BUF1_SIZE, "timestamp=%ld.%ld node=%s arch=%s syscall=%lu success=%s exit=%ld a0=%lx a1=%lx a2=%lx a3=%lx a4=%lx a5=%lx ppid=%u pid=%u auid=%u uid=%u gid=%u euid=%u suid=%u fsuid=%u egid=%u sgid=%u fsgid=%u tty=\"%s\" ses=%u comm=\"%s\" exe=\"%s\" exe_mode=%o exe_ouid=%d exe_ogid=%d cwd=\"%s\"",
+            event->bootns / (1000 * 1000 * 1000), event->bootns % (1000 * 1000 * 1000),
+            uname_data.nodename, uname_data.machine, event->syscall_id, (event->return_code >= 0 ? "yes" : "no"), event->return_code,
+            event->a[0], event->a[1], event->a[2], event->a[3], event->a[4], event->a[5],
+            event->ppid, event->pid,
+            event->auid, event->uid, event->gid, event->euid, event->suid, event->fsuid, event->egid, event->sgid, event->fsgid,
+            event->tty, event->ses, event->comm, event->exe, event->exe_mode, event->exe_ouid, event->exe_ogid, event->pwd);
 
         switch(event->syscall_id)
         {    
@@ -106,7 +120,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
                 char abs_path[PATH_MAX];
 
                 combine_paths(abs_path, &event->fileop.path1, event->pwd, true);
-                printf(" %s\n", abs_path);
+                snprintf(buf2, EVENT_BUF2_SIZE, " path=\"%s\"", abs_path);
                 break;
             }
 
@@ -128,7 +142,7 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 
                 combine_paths(abs_path1, &event->fileop.path1, event->pwd, true);
                 combine_paths(abs_path2, &event->fileop.path2, event->pwd, resolvepath);
-                printf(" %s  %s\n", abs_path1, abs_path2);
+                snprintf(buf2, EVENT_BUF2_SIZE, " path1=\"%s\" path2=\"%s\"", abs_path1, abs_path2);
                 break;
             }
 
@@ -138,17 +152,23 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
                 // For every null terminated argument in the array of args
                 // print them all out together
                 int args_count = 0; 
-                for (int i = 0; i < event->execve.cmdline_size; i++) {
+                unsigned int i = 0;
+                snprintf(buf2, EVENT_BUF2_SIZE, " cmdline=\"");
+                unsigned int offset = strlen(buf2);
+                for (i = 0; i < event->execve.cmdline_size && i+offset < EVENT_BUF2_SIZE-2; i++) {
                     char c = event->execve.cmdline[i];
                     if (c == '\0') {
                         args_count++;
-                        putchar(' ');
+                        buf2[i + offset] = ' ';
                     } 
                     else {
-                        putchar(c);
+                        buf2[i + offset] = c;
                     }    
                 }
-                printf("\n");
+                if (buf2[i + offset - 1] == ' ')
+                    i--;
+                buf2[i + offset] = '"';
+                buf2[i + offset + 1] = 0x00;
                 break;
             }
 
@@ -160,23 +180,27 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
                 
                 if (event->socket.addr.sin_family == AF_INET){
                     inet_ntop(AF_INET, &event->socket.addr.sin_addr, addr, INET_ADDRSTRLEN);
-                    printf(" %s:%hu\n", addr, ntohs(event->socket.addr.sin_port) );
-                }
-                else{
-                    printf("\n");
+                    snprintf(buf2, EVENT_BUF2_SIZE, " addr=%s:%hu", addr, ntohs(event->socket.addr.sin_port) );
                 }
                 break;                
             }
         }
+        snprintf(e_buf, EVENT_BUFFER_SIZE, "%s%s", buf1, buf2);
+        if (!quiet)
+            printf("%s\n", e_buf);
+        if (o_syslog)
+            syslog(LOG_USER | LOG_INFO, "%s", e_buf);
     } else {
         bad_events++;
-        printf("bad data arrived - start: 0x%016lx end: 0x%016lx\n", event->code_bytes_start, event->code_bytes_end);
+        if (!quiet)
+            printf("bad data arrived - start: 0x%016lx end: 0x%016lx\n", event->code_bytes_start, event->code_bytes_end);
     }
 }
 
 void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 {
-	fprintf(stdout, "Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
+    if (!quiet)
+        fprintf(stdout, "Lost %llu events on CPU #%d!\n", lost_cnt, cpu);
     num_lost_notifications++;
     num_lost_events += lost_cnt;
     //assert(0);
@@ -184,21 +208,52 @@ void handle_lost_events(void *ctx, int cpu, __u64 lost_cnt)
 
 void intHandler(int code) {
     
-    printf("\nStopping....\n");
+    if (!quiet)
+        printf("\nStopping....\n");
     ebpf_telemetry_close_all();
 
-    printf("total events: %ld, bad events: %ld, ratio = %f\n", total_events, bad_events, (double)bad_events / total_events);
-    printf("lost events: %ld, in %d notifications\n", num_lost_events, num_lost_notifications);
-    printf("parse errors: %ld, value parse errors: %ld\n", num_fail, num_parsev);
-   
+    if (!superquiet) {
+        printf("total events: %ld, bad events: %ld, ratio = %f\n", total_events, bad_events, (double)bad_events / total_events);
+        printf("lost events: %ld, in %d notifications\n", num_lost_events, num_lost_notifications);
+        printf("parse errors: %ld, value parse errors: %ld\n", num_fail, num_parsev);
+    }   
+
+    if (o_syslog)
+        closelog();
+
     exit(0);
 }
 
 int main(int argc, char *argv[])
 {
-    printf("EBPF_Telemetry v%d.%d\n\n", EBPF_Telemetry_VERSION_MAJOR, EBPF_Telemetry_VERSION_MINOR);
+    int c;
 
-    if (sizeof(event_s) > MAX_EVENT_SIZE) {
+    o_syslog = false;
+    quiet = false;
+    superquiet = false;
+
+    while ((c = getopt (argc, argv, "sqQ")) != -1) {
+        switch(c) {
+            case 's':
+                o_syslog = true;
+                break;
+            case 'q':
+                quiet = true;
+                break;
+            case 'Q':
+                quiet = true;
+                superquiet = true;
+                break;
+            default:
+                printf("Usage: %s [-s] [-q] [-Q]\n\n    -s = syslog output\n    -q = quiet\n    -Q = super quiet\n\n", argv[0]);
+                exit(1);
+        }
+    }
+
+    if (!superquiet)
+        printf("EBPF_Telemetry v%d.%d\n\n", EBPF_Telemetry_VERSION_MAJOR, EBPF_Telemetry_VERSION_MINOR);
+
+    if (!quiet && sizeof(event_s) > MAX_EVENT_SIZE) {
         printf("sizeof(event_s) == %ld > %d!\n", sizeof(event_s), MAX_EVENT_SIZE);
         exit(1);
     }
@@ -208,9 +263,12 @@ int main(int argc, char *argv[])
         exit(1);
     }
     
+    if (o_syslog)
+        openlog("ebpf-telemetry", LOG_NOWAIT, LOG_USER);
     signal(SIGINT, intHandler);
 
-    printf("Running...\n");
+    if (!quiet)
+        printf("Running...\n");
 
     ebpf_telemetry_start("../syscalls.rules", print_bpf_output, handle_lost_events);
 
