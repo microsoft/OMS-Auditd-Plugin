@@ -1,0 +1,16 @@
+environment:
+  host:
+    os: 'linux'
+    flavor: 'ubuntu'
+    version: '18.04'
+  runtime:
+    provider: 'appcontainer'
+    image: 'cdpxlinux.azurecr.io/global/ubuntu-1804-all:3.0'
+    source_mode: 'link'
+build:
+  commands:
+    - !!dockerbuildcommand
+      name: 'Build auoms-build Docker image'
+      context_folder: 'build/docker/auoms-build'
+      repository_name: 'auoms-build'
+      cache_locally: true

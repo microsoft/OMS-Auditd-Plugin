@@ -1,0 +1,24 @@
+environment:
+  host:
+    os: 'linux'
+    flavor: 'ubuntu'
+    version: '18.04'
+  runtime:
+    provider: 'appcontainer'
+    image: 'cdpxlinux.azurecr.io/artifact/119af308-cf25-4d7b-9cd5-9807533563c0/auoms-build:latest'
+    source_mode: 'link'
+restore:
+  commands:
+    - !!defaultcommand
+      name: 'Fetch Dependencies'
+      command: 'build/cdpx_restore.sh'
+      fail_on_stderr: false
+build:
+  commands:
+    - !!buildcommand
+      name: 'Build auoms'
+      command: 'build/cdpx_build.sh'
+      artifacts:
+        - from: 'target/Linux_ULINUX_1.0_x64_64_Release'
+          include:
+            - '*'

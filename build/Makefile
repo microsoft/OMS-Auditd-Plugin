@@ -78,7 +78,7 @@ endif
 
 #--------------------------------------------------------------------------------
 # Build targets
-.PHONY: all clean distclean clean-status kit
+.PHONY: all clean distclean clean-status packages kit
 .PHONY: tests test
 
 all : $(AUOMS_BIN) sepolicy kit
@@ -182,9 +182,15 @@ endif
 # While the "formal build" only builds ULINUX, we may build something else for DEV purposes.
 # Assume we ALWAYS build RPM, but only build DPKG if --enable-ulinux is specified in configure.
 
+$(TARGET_DIR):
+	mkdir -p $(TARGET_DIR)
+
 ifeq ($(ULINUX),1)
 
 ifeq ($(CMAKE_BUILD_TYPE),RelWithDebInfo)
+
+packages: $(TARGET_DIR) $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).rpm $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).deb $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).rpm $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).deb
+
 kit : $(TARGET_DIR)/auoms-bundle-test.sh $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).sh $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).rpm $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).deb
 
 $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).rpm : $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).rpm
@@ -194,8 +200,15 @@ $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).deb : $(INTERMEDIATE_DIR)/$(OUTPUT_
 	$(COPY) $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).deb $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).deb
 
 else
+packages: $(TARGET_DIR) $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).rpm $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).deb
 kit : $(TARGET_DIR)/auoms-bundle-test.sh $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).sh
 endif
+
+$(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).rpm : $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).rpm
+	$(COPY) $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).rpm $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).rpm
+
+$(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).deb : $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).deb
+	$(COPY) $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).deb $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).deb
 
 $(TARGET_DIR)/auoms-bundle-test.sh : $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).sh
 	$(COPY) ../installer/bundle/auoms-bundle-test.sh $(TARGET_DIR)/auoms-bundle-test.sh
@@ -205,8 +218,7 @@ $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).sh : $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE
 	$(MKPATH) $(TARGET_DIR)
 	../installer/bundle/create_bundle.sh $(TARGET_DIR) $(INTERMEDIATE_DIR) $(OUTPUT_PACKAGE_PREFIX).tar
 
-$(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).tar : \
-	$(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).rpm $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).deb
+$(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX).tar : packages
 
 	@echo "========================= Performing Building .tar file"
 
@@ -318,9 +330,11 @@ endif
 else
 
 ifeq ($(CMAKE_BUILD_TYPE),RelWithDebInfo)
-kit : $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).$(PACKAGE_SUFFIX) $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).rpm $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).deb
+packages : $(TARGET_DIR) $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).$(PACKAGE_SUFFIX) $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).rpm $(INTERMEDIATE_DIR)/$(OUTPUT_PACKAGE_PREFIX_DEBUG).deb
+kit: packages
 else
-kit : $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).$(PACKAGE_SUFFIX)
+packages : $(TARGET_DIR) $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).$(PACKAGE_SUFFIX)
+kit: packages
 endif
 
 $(TARGET_DIR)/$(OUTPUT_PACKAGE_PREFIX).$(PACKAGE_SUFFIX) : $(AUOMS_BIN) sepolicy

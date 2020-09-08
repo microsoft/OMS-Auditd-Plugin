@@ -1,0 +1,29 @@
+environment:
+  host:
+    os: 'windows'
+    flavor: 'datacenter'
+    version: 2016
+  runtime:
+    provider: 'appcontainer'
+    image: 'cdpxwin.azurecr.io/legacy/global/vse2017u5-ext-win14393.1884:1.0'
+    source_mode: 'link'
+
+workspace:
+  download_current_artifacts: true
+  force_workspace_wipe: false
+  enable_legacy_networking: true
+
+static_analysis_options:
+
+build:
+  commands:
+    - !!buildcommand
+      name: 'Sign auoms'
+      command: 'build/cdpx_sign.cmd'
+      artifacts:
+        - from: 'signed'
+          include:
+            - '*.rpm'
+        - from: 'signed'
+          include:
+            - '*.deb'
