@@ -37,6 +37,7 @@ public:
     uint64_t GetCFSPeriodUS();
     void SetCFSPeriodUS(uint64_t val);
 
+    bool HasCFSQuotaUS();
     uint64_t GetCFSQuotaUS();
     void SetCFSQuotaUS(uint64_t val);
 

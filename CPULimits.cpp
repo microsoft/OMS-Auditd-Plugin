@@ -50,7 +50,7 @@ std::shared_ptr<CGroupCPU> CPULimits::CGFromConfig(const Config& config, const s
 
     auto cg = CGroups::OpenCPU(cg_name);
 
-    if (hard_limit < MAX_PCT) {
+    if (hard_limit < MAX_PCT && cg->HasCFSQuotaUS()) {
         uint64_t period = cg->GetCFSPeriodUS();
         uint64_t quota = static_cast<uint64_t>(static_cast<double>(period)*(hard_limit/100));
         cg->SetCFSQuotaUS(quota);

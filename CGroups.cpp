@@ -88,6 +88,10 @@ void CGroupCPU::SetShares(uint64_t val) {
     AppendUint64(_dir + CGROUP_CPU_SHARES_FILE, val);
 }
 
+bool CGroupCPU::HasCFSQuotaUS() {
+    return PathExists(_dir + CGROUP_CPU_PERIOD_US_FILE);
+}
+
 uint64_t CGroupCPU::GetCFSPeriodUS() {
     return ReadUint64(_dir + CGROUP_CPU_PERIOD_US_FILE);
 }
