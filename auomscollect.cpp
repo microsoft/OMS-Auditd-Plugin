@@ -386,11 +386,11 @@ int main(int argc, char**argv) {
     long save_delay = 250;
 
     if (config.HasKey("raw_queue_segment_size")) {
-        num_priorities = config.GetUint64("raw_queue_segment_size");
+        raw_queue_segment_size = config.GetUint64("raw_queue_segment_size");
     }
 
     if (config.HasKey("num_raw_queue_segments")) {
-        num_priorities = config.GetUint64("num_raw_queue_segments");
+        num_raw_queue_segments = config.GetUint64("num_raw_queue_segments");
     }
 
     if (config.HasKey("queue_num_priorities")) {
