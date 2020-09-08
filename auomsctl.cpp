@@ -1567,7 +1567,7 @@ int upgrade() {
 
     try {
         // Use auditd plugin file to determine if auoms should be enabled
-        if (is_auditd_plugin_enabled()) {
+        if (is_service_enabled() || is_auditd_plugin_enabled()) {
             // Stop services
             if (PathExists(AUDITD_BIN)) {
                 stop_auditd_service();
