@@ -30,7 +30,7 @@
 #define SOL_NETLINK	270
 #endif
 
-int Netlink::Open(reply_fn_t&& default_msg_handler_fn) {
+int Netlink::Open(reply_fn_t&& default_msg_handler_fn, bool multicast) {
     std::unique_lock<std::mutex> _lock(_run_mutex);
 
     if (_start) {
@@ -50,6 +50,33 @@ int Netlink::Open(reply_fn_t&& default_msg_handler_fn) {
         }
         return -saved_errno;
     }
+
+    sockaddr_nl addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.nl_family = AF_NETLINK;
+    addr.nl_pid = 0;
+    if (multicast) {
+        addr.nl_groups = 1; // AUDIT_NLGRP_READLOG
+    } else {
+        addr.nl_groups = 0;
+    }
+
+    if (bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+        auto saved_errno = errno;
+        Logger::Error("Failed to bind NETLINK socket: %s", std::strerror(errno));
+        close(fd);
+        return -saved_errno;
+    }
+
+    socklen_t addr_len = sizeof(addr);
+    if (getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &addr_len) != 0) {
+        auto saved_errno = errno;
+        Logger::Error("Failed to get assigned NETLINK 'port': %s", std::strerror(errno));
+        close(fd);
+        return -saved_errno;
+    }
+
+    _pid = addr.nl_pid;
 
     int on = 1;
     if (setsockopt(fd, SOL_NETLINK, NETLINK_NO_ENOBUFS, &on, sizeof(on)) != 0) {
@@ -94,6 +121,7 @@ int Netlink::Send(uint16_t type, const void* data, size_t len, reply_fn_t&& repl
     } while (_replies.count(seq) > 0 || _known_seq.count(seq) > 0);
 
     nl->nlmsg_seq = seq;
+    nl->nlmsg_pid = _pid;
 
     if (data != nullptr && len > 0) {
         nl->nlmsg_len = static_cast<uint32_t>(NLMSG_SPACE(len));
@@ -225,17 +253,12 @@ int wait_readable(int fd, long timeout) {
 void Netlink::flush_replies(bool is_exit) {
     std::lock_guard<std::mutex> _lock(_run_mutex);
 
-    if (is_exit) {
-        Logger::Info("Flush: Exit");
-    }
-
     auto now = std::chrono::steady_clock::now();
     for (auto itr = _replies.begin(); itr != _replies.end();) {
         if (is_exit || itr->second->_req_age < now - std::chrono::milliseconds(1000)) {
             // Set promise value if it has not already been set
             if (!itr->second->_done) {
                 auto age = std::chrono::duration_cast<std::chrono::milliseconds>(now - itr->second->_req_age).count();
-                Logger::Info("Flush[NOT DONE]: Seq = %d, age = %ld ms", itr->first, age);
                 itr->second->_done = true;
                 try {
                     if (is_exit) {
@@ -247,8 +270,6 @@ void Netlink::flush_replies(bool is_exit) {
                     Logger::Error("Unexpected exception while trying to set promise value for NETLINK reply: %s",
                                   ex.what());
                 }
-            } else {
-                Logger::Info("Flush[DONE]: Seq = %d", itr->first);
             }
             itr = _replies.erase(itr);
         } else {
@@ -260,7 +281,6 @@ void Netlink::flush_replies(bool is_exit) {
     // This should avoid "Unexpected seq" log messages in the rare case where the req timed out before all reply messages could be received
     for (auto itr = _known_seq.begin(); itr != _known_seq.end();) {
         if (is_exit || itr->second < now - std::chrono::seconds(10)) {
-            Logger::Info("Flush: Known = %d", itr->first);
             itr = _known_seq.erase(itr);
         } else {
             ++itr;

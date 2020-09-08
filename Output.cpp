@@ -38,41 +38,59 @@ extern "C" {
 
 AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _have_auto_cursor(false), _next_seq(0), _auto_cursor_seq(0) {}
 
+void AckQueue::Init(const std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<QueueCursorHandle>& cursor_handle) {
+    _queue = queue;
+    _cursor_handle = cursor_handle;
+    _closed = false;
+    _event_ids.clear();
+    _cursors.clear();
+    _auto_cursors.clear();
+    _next_seq = 0;
+    _have_auto_cursor = false;
+    _auto_cursor_seq = 0;
+}
+
 void AckQueue::Close() {
     std::unique_lock<std::mutex> _lock(_mutex);
     _closed = true;
     _cond.notify_all();
 }
 
-bool AckQueue::Add(const EventId& event_id, const QueueCursor& cursor, long timeout) {
+bool AckQueue::IsClosed() {
+    std::unique_lock<std::mutex> _lock(_mutex);
+    return _closed;
+}
+
+bool AckQueue::Add(const EventId& event_id, uint32_t priority, uint64_t seq, long timeout) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
     if (_cond.wait_for(_lock, std::chrono::milliseconds(timeout), [this]() { return _closed || _event_ids.size() < _max_size; })) {
-        auto seq = _next_seq++;
-        _event_ids.emplace(event_id, seq);
-        _cursors.emplace(seq, std::make_pair(event_id, cursor));
+        auto qseq = _next_seq++;
+        _event_ids.emplace(event_id, qseq);
+        _cursors.emplace(qseq, _CursorEntry(event_id, priority, seq));
         return true;
     }
     return false;
 }
 
-void AckQueue::SetAutoCursor(const QueueCursor& cursor) {
+void AckQueue::SetAutoCursor(uint32_t priority, uint64_t seq) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
     _auto_cursor_seq = _next_seq++;
-    _auto_cursor = cursor;
+    _auto_cursors[priority] = seq;
     _have_auto_cursor = true;
 }
 
-bool AckQueue::GetAutoCursor(QueueCursor& cursor) {
+void AckQueue::ProcessAutoCursor() {
     std::unique_lock<std::mutex> _lock(_mutex);
 
     if (_have_auto_cursor) {
-        cursor = _auto_cursor;
+        for (auto& c : _auto_cursors) {
+            _queue->Commit(_cursor_handle, c.first, c.second);
+        }
+        _auto_cursors.clear();
         _have_auto_cursor = false;
-        return true;
     }
-    return false;
 }
 
 void AckQueue::Remove(const EventId& event_id) {
@@ -88,17 +106,6 @@ void AckQueue::Remove(const EventId& event_id) {
     _cursors.erase(seq);
 }
 
-void AckQueue::Reset() {
-    std::unique_lock<std::mutex> _lock(_mutex);
-
-    _closed = false;
-    _event_ids.clear();
-    _cursors.clear();
-    _next_seq = 0;
-    _have_auto_cursor = false;
-    _auto_cursor_seq = 0;
-}
-
 bool AckQueue::Wait(int millis) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
@@ -106,148 +113,46 @@ bool AckQueue::Wait(int millis) {
     return _cond.wait_until(_lock, now + std::chrono::milliseconds(millis), [this] { return _event_ids.empty(); });
 }
 
-bool AckQueue::Ack(const EventId& event_id, QueueCursor& cursor) {
+void AckQueue::Ack(const EventId& event_id) {
     std::unique_lock<std::mutex> _lock(_mutex);
 
-    bool found = false;
-    uint64_t seq = 0;
+    std::unordered_map<uint32_t, uint64_t> found_seq;
 
     auto eitr = _event_ids.find(event_id);
     if (eitr != _event_ids.end()) {
-        seq = eitr->second;
+        auto seq = eitr->second;
         _event_ids.erase(eitr);
         _cond.notify_all(); // _event_ids was modified, so notify any waiting Add calls
 
         // Find and remove all from cursors that are <= seq
         while (!_cursors.empty() && _cursors.begin()->first <= seq) {
-            cursor = _cursors.begin()->second.second;
-            found = true;
+            auto& entry = _cursors.begin()->second;
             // Make sure to remove any associated event ids from _event_ids.
-            _event_ids.erase(_cursors.begin()->second.first);
+            _event_ids.erase(entry._event_id);
+            auto itr = found_seq.find(entry._priority);
+            if (itr == found_seq.end() || itr->second < entry._seq) {
+                found_seq[entry._priority] = entry._seq;
+            }
             _cursors.erase(_cursors.begin());
         }
     }
 
-    /*
-     * If the auto cursor is present return it instead if:
-     *      1) The acked event id isn't present or _auto_cursor_seq is newer than the acked seq
-     *      2) and, _cursors is empty or the oldest seq in _cursors is > than _auto_cursor_seq
-     */
     if (_have_auto_cursor) {
-        if (!found || _auto_cursor_seq > seq) {
-            if (_cursors.empty() || _cursors.begin()->first > _auto_cursor_seq) {
-                found = true;
-                cursor = _auto_cursor;
-                _have_auto_cursor = false;
+        if (_cursors.empty() || _cursors.begin()->first > _auto_cursor_seq) {
+            for (auto& c : _auto_cursors) {
+                auto itr = found_seq.find(c.first);
+                if (itr == found_seq.end() || itr->second < c.second) {
+                    found_seq[c.first] = c.second;
+                }
             }
+            _auto_cursors.clear();
+            _have_auto_cursor = false;
         }
     }
 
-    return found;
-}
-
-/****************************************************************************
- *
- ****************************************************************************/
-
-bool CursorWriter::Read() {
-    std::lock_guard<std::mutex> lock(_mutex);
-
-    std::array<uint8_t, QueueCursor::DATA_SIZE> data;
-
-    int fd = open(_path.c_str(), O_RDONLY);
-    if (fd < 0) {
-        if (errno != ENOENT) {
-            Logger::Error("Output(%s): Failed to open cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
-            return false;
-        } else {
-            _cursor = QueueCursor::HEAD;
-            return true;
-        }
+    for (auto& c : found_seq) {
+        _queue->Commit(_cursor_handle, c.first, c.second);
     }
-
-    auto ret = read(fd, data.data(), data.size());
-    if (ret != data.size()) {
-        if (ret >= 0) {
-            Logger::Error("Output(%s): Failed to read cursor file (%s): only %ld bytes out of %ld where read", _name.c_str(), _path.c_str(), ret, data.size());
-        } else {
-            Logger::Error("Output(%s): Failed to read cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
-        }
-        close(fd);
-        return false;
-    }
-    close(fd);
-
-    _cursor.from_data(data);
-
-    return true;
-}
-
-bool CursorWriter::Write() {
-    std::lock_guard<std::mutex> lock(_mutex);
-
-    std::array<uint8_t, QueueCursor::DATA_SIZE> data;
-    _cursor.to_data(data);
-
-    int fd = open(_path.c_str(), O_WRONLY|O_CREAT, 0600);
-    if (fd < 0) {
-        Logger::Error("Output(%s): Failed to open/create cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
-        return false;
-    }
-
-    auto ret = write(fd, data.data(), data.size());
-    if (ret != data.size()) {
-        if (ret >= 0) {
-            Logger::Error("Output(%s): Failed to write cursor file (%s): only %ld bytes out of %ld where written", _name.c_str(), _path.c_str(), ret, data.size());
-        } else {
-            Logger::Error("Output(%s): Failed to write cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
-        }
-        close(fd);
-        return false;
-    }
-
-    close(fd);
-    return true;
-}
-
-bool CursorWriter::Delete() {
-    auto ret = unlink(_path.c_str());
-    if (ret != 0 && errno != ENOENT) {
-        Logger::Error("Output(%s): Failed to delete cursor file (%s): %s", _name.c_str(), _path.c_str(), std::strerror(errno));
-        return false;
-    }
-    return true;
-}
-
-QueueCursor CursorWriter::GetCursor() {
-    std::lock_guard<std::mutex> lock(_mutex);
-    return _cursor;
-}
-
-void CursorWriter::UpdateCursor(const QueueCursor& cursor) {
-    std::lock_guard<std::mutex> lock(_mutex);
-    _cursor = cursor;
-    _cursor_updated = true;
-    _cond.notify_all();
-}
-
-void CursorWriter::on_stopping() {
-    std::lock_guard<std::mutex> lock(_mutex);
-    _cursor_updated = true;
-    _cond.notify_all();
-}
-
-void CursorWriter::run() {
-    while (!IsStopping()) {
-        {
-            std::unique_lock<std::mutex> lock(_mutex);
-            _cond.wait(lock, [this]{ return _cursor_updated;});
-            _cursor_updated = false;
-        }
-        Write();
-        _sleep(100);
-    }
-    Write();
 }
 
 /****************************************************************************
@@ -255,29 +160,21 @@ void CursorWriter::run() {
  ****************************************************************************/
 void AckReader::Init(std::shared_ptr<IEventWriter> event_writer,
                      std::shared_ptr<IOBase> writer,
-                     std::shared_ptr<AckQueue> ack_queue,
-                     std::shared_ptr<CursorWriter> cursor_writer) {
+                     std::shared_ptr<AckQueue> ack_queue) {
     _event_writer = event_writer;
     _writer = writer;
     _queue = ack_queue;
-    _cursor_writer = cursor_writer;
 }
 
 void AckReader::run() {
     EventId id;
-    QueueCursor cursor;
     while(_event_writer->ReadAck(id, _writer.get()) == IO::OK) {
-        if (_queue->Ack(id, cursor)) {
-            _cursor_writer->UpdateCursor(cursor);
-        }
+        _queue->Ack(id);
     }
     // The connection is lost, Close writer here so that Output::handle_events will exit
     _writer->Close();
 
-    if (_queue->GetAutoCursor(cursor)) {
-        // There was still a pending auto cursor, so update the _cursor_writer
-        _cursor_writer->UpdateCursor(cursor);
-    }
+    _queue->ProcessAutoCursor();
 
     // Make sure any waiting AckQueue::Add() returns immediately instead of waiting for the timeout.
     _queue->Close();
@@ -399,7 +296,7 @@ bool Output::Load(std::unique_ptr<Config>& config) {
 
 // Delete any resources associated with the output
 void Output::Delete() {
-    _cursor_writer->Delete();
+    _queue->RemoveCursor(_name);
     Logger::Info("Output(%s): Removed", _name.c_str());
 }
 
@@ -438,52 +335,30 @@ bool Output::check_open()
 }
 
 bool Output::handle_events(bool checkOpen) {
-    std::array<uint8_t, Queue::MAX_ITEM_SIZE> data;
-
-    _cursor = _cursor_writer->GetCursor();
-    _cursor_writer->Start();
+    _queue->Rollback(_cursor_handle);
 
     if (_ack_mode) {
-        _ack_reader->Init(_event_writer, _writer, _ack_queue, _cursor_writer);
+        _ack_queue->Init(_queue, _cursor_handle);
+        _ack_reader->Init(_event_writer, _writer, _ack_queue);
         _ack_reader->Start();
-        _ack_queue->Reset();
     }
 
     while(!IsStopping() && (!checkOpen || _writer->IsOpen())) {
-        QueueCursor cursor;
-        size_t size = data.size();
-
-        int ret;
+        std::pair<std::shared_ptr<QueueItem>,bool> get_ret;
         do {
-            ret = _queue->Get(_cursor, data.data(), &size, &cursor, 100);
-        } while(ret == Queue::TIMEOUT && (!checkOpen || _writer->IsOpen()));
+            get_ret = _queue->Get(_cursor_handle, 100, !_ack_mode);
+        } while((!get_ret.first && !get_ret.second) && (!checkOpen || _writer->IsOpen()));
 
-        if (ret == Queue::INTERRUPTED) {
-            continue;
-        }
-
-        if (ret == Queue::BUFFER_TOO_SMALL) {
-            Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
-            _queue->Reset();
-            break;
-        }
-
-        if (ret == Queue::OK && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
-            auto vs = Event::GetVersionAndSize(data.data());
-            if (vs.second != size) {
-                Logger::Error("Output(%s): Encountered possible corruption in queue, resetting queue", _name.c_str());
-                _queue->Reset();
-                break;
-            }
-
-            Event event(data.data(), size);
+        if (get_ret.first && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
+            Event event(get_ret.first->Data(), get_ret.first->Size());
             bool filtered = _event_filter && _event_filter->IsEventFiltered(event);
             if (!filtered) {
                 if (_ack_mode) {
                     // Avoid racing with receiver, add ack before sending event
-                    if (!_ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()), cursor,
+                    if (!_ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()),
+                                         get_ret.first->Priority(), get_ret.first->Sequence(),
                                          _ack_timeout)) {
-                        if (_writer->IsOpen()) {
+                        if (!_ack_queue->IsClosed()) {
                             Logger::Error("Output(%s): Timeout waiting for Acks", _name.c_str());
                         }
                         break;
@@ -496,22 +371,20 @@ bool Output::handle_events(bool checkOpen) {
                         // The event was not sent, so remove it's ack
                         _ack_queue->Remove(EventId(event.Seconds(), event.Milliseconds(), event.Serial()));
                         // And update the auto cursor
-                        _ack_queue->SetAutoCursor(cursor);
+                        _ack_queue->SetAutoCursor(get_ret.first->Priority(), get_ret.first->Sequence());
                     }
                 } else if (ret != IWriter::OK) {
                     break;
                 }
-                _cursor = cursor;
 
                 if (!_ack_mode) {
-                    _cursor_writer->UpdateCursor(cursor);
+                    _queue->Commit(_cursor_handle, get_ret.first->Priority(), get_ret.first->Sequence());
                 }
             } else {
-                _cursor = cursor;
                 if (_ack_mode) {
-                    _ack_queue->SetAutoCursor(cursor);
+                    _ack_queue->SetAutoCursor(get_ret.first->Priority(), get_ret.first->Sequence());
                 } else {
-                    _cursor_writer->UpdateCursor(cursor);
+                    _queue->Commit(_cursor_handle, get_ret.first->Priority(), get_ret.first->Sequence());
                 }
             }
         }
@@ -533,14 +406,12 @@ bool Output::handle_events(bool checkOpen) {
         Logger::Info("Output(%s): Connection lost", _name.c_str());
     }
 
-    _cursor_writer->Stop();
-
     return !IsStopping();
 }
 
 void Output::on_stopping() {
     Logger::Info("Output(%s): Stopping", _name.c_str());
-    _queue->Interrupt();
+    _queue->Close(_cursor_handle);
     if (_writer) {
         _writer->CloseWrite();
     }
@@ -556,28 +427,23 @@ void Output::on_stop() {
     if (_writer) {
         _writer->Close();
     }
-    if (_cursor_writer) {
-        _cursor_writer->Stop();
-    }
-    _cursor_writer->Write();
     Logger::Info("Output(%s): Stopped", _name.c_str());
 }
 
 void Output::run() {
     Logger::Info("Output(%s): Started", _name.c_str());
 
-    if (!_cursor_writer->Read()) {
-        Logger::Error("Output(%s): Aborting because cursor file is unreadable", _name.c_str());
+    _cursor_handle = _queue->OpenCursor(_name);
+    if (!_cursor_handle) {
+        Logger::Error("Output(%s): Aborting because cursor is invalid", _name.c_str());
         return;
     }
 
     bool checkOpen = true;
 
-    _cursor = _cursor_writer->GetCursor();
-     if (!_config->HasKey("output_socket")) {
-           checkOpen = false;
+    if (!_config->HasKey("output_socket")) {
+        checkOpen = false;
     }
-
 
     while(!IsStopping()) {
         while (!checkOpen || check_open()) {

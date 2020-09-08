@@ -22,10 +22,10 @@
 void SystemMetrics::run() {
     Logger::Info("SystemMetrics: starting");
 
-    _cpu_pct_metric = _metrics->AddMetric("SYSTEM", "%cpu", MetricPeriod::SECOND, MetricPeriod::HOUR);
-    _num_cpu_metric = _metrics->AddMetric("SYSTEM", "num_cpu", MetricPeriod::SECOND, MetricPeriod::HOUR);
-    _total_mem_metric = _metrics->AddMetric("SYSTEM", "total_mem", MetricPeriod::SECOND, MetricPeriod::HOUR);
-    _free_mem_metric = _metrics->AddMetric("SYSTEM", "free_mem", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    _cpu_pct_metric = _metrics->AddMetric(MetricType::METRIC_BY_FILL, "SYSTEM", "%cpu", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    _num_cpu_metric = _metrics->AddMetric(MetricType::METRIC_BY_FILL, "SYSTEM", "num_cpu", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    _total_mem_metric = _metrics->AddMetric(MetricType::METRIC_BY_FILL, "SYSTEM", "total_mem", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    _free_mem_metric = _metrics->AddMetric(MetricType::METRIC_BY_FILL, "SYSTEM", "free_mem", MetricPeriod::SECOND, MetricPeriod::HOUR);
 
 
     // Collect process metrics once per minute without drift
@@ -126,8 +126,8 @@ bool SystemMetrics::collect_metrics() {
             auto old_total = old_used+_cpu_idle;
             auto new_total = new_used+cpu_idle;
             auto pct_cpu = (static_cast<double>(new_used-old_used)/static_cast<double>(new_total-old_total))*100;
-            _cpu_pct_metric->Set(pct_cpu);
-            _num_cpu_metric->Set(static_cast<double>(num_cpu));
+            _cpu_pct_metric->Update(pct_cpu);
+            _num_cpu_metric->Update(static_cast<double>(num_cpu));
         }
         _cpu_user = cpu_user;
         _cpu_user_nice = cpu_user_nice;
@@ -139,8 +139,8 @@ bool SystemMetrics::collect_metrics() {
     uint64_t free_mem;
 
     if (read_proc_meminfo(&total_mem, &free_mem)) {
-        _total_mem_metric->Set(static_cast<double>(total_mem));
-        _free_mem_metric->Set(static_cast<double>(free_mem));
+        _total_mem_metric->Update(static_cast<double>(total_mem));
+        _free_mem_metric->Update(static_cast<double>(free_mem));
     }
 
     return true;

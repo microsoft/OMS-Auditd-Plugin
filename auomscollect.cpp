@@ -17,7 +17,8 @@
 #include "StdinReader.h"
 #include "UnixDomainWriter.h"
 #include "Signals.h"
-#include "Queue.h"
+#include "SPSCDataQueue.h"
+#include "PriorityQueue.h"
 #include "Config.h"
 #include "Logger.h"
 #include "EventQueue.h"
@@ -31,6 +32,8 @@
 #include "FileUtils.h"
 #include "Metrics.h"
 #include "ProcMetrics.h"
+#include "CPULimits.h"
+#include "SchedPriority.h"
 
 #include <iostream>
 #include <fstream>
@@ -47,6 +50,8 @@
 
 #include "env_config.h"
 #include "LockFile.h"
+#include "EventPrioritizer.h"
+#include "CPULimits.h"
 
 void usage()
 {
@@ -84,29 +89,34 @@ bool parsePath(std::vector<std::string>& dirs, const std::string& path_str) {
 }
 
 
-void DoStdinCollection(RawEventAccumulator& accumulator) {
+void DoStdinCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& bytes_metric, std::shared_ptr<Metric>& records_metric, std::shared_ptr<Metric>& lost_bytes_metric, std::shared_ptr<Metric>& lost_segments_metric) {
     StdinReader reader;
 
     try {
-        std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();
-
         for (;;) {
-            ssize_t nr = reader.ReadLine(record->Data(), RawEventRecord::MAX_RECORD_SIZE, 100, [] {
+            size_t loss_bytes = 0;
+            auto ptr = raw_queue.Allocate(RawEventRecord::MAX_RECORD_SIZE, &loss_bytes);
+            if (ptr == nullptr) {
+                return;
+            }
+            if (loss_bytes > 0) {
+                lost_bytes_metric->Update(loss_bytes);
+                lost_segments_metric->Update(1);
+                loss_bytes = 0;
+            }
+            *reinterpret_cast<RecordType*>(ptr) = RecordType::UNKNOWN;
+            ssize_t nr = reader.ReadLine(reinterpret_cast<char*>(ptr+sizeof(RecordType)), RawEventRecord::MAX_RECORD_SIZE-sizeof(RecordType), 100, [] {
                 return Signals::IsExit();
             });
             if (nr > 0) {
-                if (record->Parse(RecordType::UNKNOWN, nr)) {
-                    accumulator.AddRecord(std::move(record));
-                    record = std::make_unique<RawEventRecord>();
-                } else {
-                    Logger::Warn("Received unparsable event data: '%s'", std::string(record->Data(), nr).c_str());
-                }
+                raw_queue.Commit(nr+sizeof(RecordType));
+                bytes_metric->Update(nr);
+                records_metric->Update(1.0);
             } else if (nr == StdinReader::TIMEOUT) {
                 if (Signals::IsExit()) {
                     Logger::Info("Exiting input loop");
                     break;
                 }
-                accumulator.Flush(200);
             } else { // nr == StdinReader::CLOSED, StdinReader::FAILED or StdinReader::INTERRUPTED
                 if (nr == StdinReader::CLOSED) {
                     Logger::Info("STDIN closed, exiting input loop");
@@ -125,7 +135,7 @@ void DoStdinCollection(RawEventAccumulator& accumulator) {
     }
 }
 
-bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
+bool DoNetlinkCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& bytes_metric, std::shared_ptr<Metric>& records_metric, std::shared_ptr<Metric>& lost_bytes_metric, std::shared_ptr<Metric>& lost_segments_metric) {
     // Request that that this process receive a SIGTERM if the parent process (thread in parent) dies/exits.
     auto ret = prctl(PR_SET_PDEATHSIG, SIGTERM);
     if (ret != 0) {
@@ -147,19 +157,25 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
             {"/sbin", IN_CREATE|IN_MOVED_TO},
     });
 
-    std::function handler = [&accumulator](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
+    std::function handler = [&](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
         // Ignore AUDIT_REPLACE for now since replying to it doesn't actually do anything.
         if (type >= AUDIT_FIRST_USER_MSG && type != static_cast<uint16_t>(RecordType::REPLACE)) {
-            std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();
-            std::memcpy(record->Data(), data, len);
-            if (record->Parse(static_cast<RecordType>(type), len)) {
-                accumulator.AddRecord(std::move(record));
-            } else {
-                char cdata[len+1];
-                ::memcpy(cdata, data, len);
-                cdata[len] = 0;
-                Logger::Warn("Received unparsable event data (type = %d, flags = 0x%X, size=%ld:\n%s)", type, flags, len, cdata);
+            size_t loss_bytes = 0;
+            auto ptr = raw_queue.Allocate(len+sizeof(RecordType), &loss_bytes);
+            if (ptr == nullptr) {
+                _stop_gate.Open();
+                return false;
             }
+            if (loss_bytes > 0) {
+                lost_bytes_metric->Update(loss_bytes);
+                lost_segments_metric->Update(1);
+                loss_bytes = 0;
+            }
+            *reinterpret_cast<RecordType*>(ptr) = static_cast<RecordType>(type);
+            std::memcpy(ptr+sizeof(RecordType), data, len);
+            raw_queue.Commit(len+sizeof(RecordType));
+            bytes_metric->Update(len);
+            records_metric->Update(1.0);
         }
         return false;
     };
@@ -243,18 +259,8 @@ bool DoNetlinkCollection(RawEventAccumulator& accumulator) {
 
     auto _last_pid_check = std::chrono::steady_clock::now();
     while(!Signals::IsExit()) {
-        if (_stop_gate.Wait(Gate::OPEN, 100)) {
+        if (_stop_gate.Wait(Gate::OPEN, 1000)) {
             return false;
-        }
-
-        try {
-            accumulator.Flush(200);
-        } catch (const std::exception &ex) {
-            Logger::Error("Unexpected exception while flushing input: %s", ex.what());
-            exit(1);
-        } catch (...) {
-            Logger::Error("Unexpected exception while flushing input");
-            exit(1);
         }
 
         auto now = std::chrono::steady_clock::now();
@@ -332,6 +338,7 @@ int main(int argc, char**argv) {
 
     if (!config_file.empty()) {
         try {
+            Logger::Info("Opening config file %s", config_file.c_str());
             config.Load(config_file);
         } catch (std::runtime_error& ex) {
             Logger::Error("%s", ex.what());
@@ -352,35 +359,66 @@ int main(int argc, char**argv) {
 
     std::string socket_path = run_dir + "/input.socket";
 
-    std::string cursor_path = data_dir + "/collect.cursor";
-    std::string queue_file = data_dir + "/collect_queue.dat";
+    std::string queue_dir = data_dir + "/collect_queue";
 
     if (config.HasKey("socket_path")) {
         socket_path = config.GetString("socket_path");
     }
 
-    if (config.HasKey("cursor_path")) {
-        cursor_path = config.GetString("cursor_path");
+    if (config.HasKey("queue_dir")) {
+        queue_dir = config.GetString("queue_dir");
     }
 
-    size_t queue_size = 10*1024*1024;
-
-    if (config.HasKey("queue_file")) {
-        queue_file = config.GetString("queue_file");
-    }
-
-    if (queue_file.empty()) {
+    if (queue_dir.empty()) {
         Logger::Error("Invalid 'queue_file' value");
         exit(1);
     }
 
-    if (config.HasKey("queue_size")) {
-        try {
-            queue_size = config.GetUint64("queue_size");
-        } catch(std::exception& ex) {
-            Logger::Error("Invalid 'queue_size' value: %s", config.GetString("queue_size").c_str());
-            exit(1);
-        }
+    size_t raw_queue_segment_size = 1024*1024;
+    size_t num_raw_queue_segments = 10;
+
+    int num_priorities = 8;
+    size_t max_file_data_size = 1024*1024;
+    size_t max_unsaved_files = 64;
+    size_t max_fs_bytes = 128*1024*1024;
+    double max_fs_pct = 10;
+    double min_fs_free_pct = 5;
+    long save_delay = 250;
+
+    if (config.HasKey("raw_queue_segment_size")) {
+        num_priorities = config.GetUint64("raw_queue_segment_size");
+    }
+
+    if (config.HasKey("num_raw_queue_segments")) {
+        num_priorities = config.GetUint64("num_raw_queue_segments");
+    }
+
+    if (config.HasKey("queue_num_priorities")) {
+        num_priorities = config.GetUint64("queue_num_priorities");
+    }
+
+    if (config.HasKey("queue_max_file_data_size")) {
+        max_file_data_size = config.GetUint64("queue_max_file_data_size");
+    }
+
+    if (config.HasKey("queue_max_unsaved_files")) {
+        max_unsaved_files = config.GetUint64("queue_max_unsaved_files");
+    }
+
+    if (config.HasKey("queue_max_fs_bytes")) {
+        max_fs_bytes = config.GetUint64("queue_max_fs_bytes");
+    }
+
+    if (config.HasKey("queue_max_fs_pct")) {
+        max_fs_pct = config.GetDouble("queue_max_fs_pct");
+    }
+
+    if (config.HasKey("queue_min_fs_free_pct")) {
+        min_fs_free_pct = config.GetDouble("queue_min_fs_free_pct");
+    }
+
+    if (config.HasKey("queue_save_delay")) {
+        save_delay = config.GetUint64("queue_save_delay");
     }
 
     std::string lock_file = data_dir + "/auomscollect.lock";
@@ -389,9 +427,25 @@ int main(int argc, char**argv) {
         lock_file = config.GetString("lock_file");
     }
 
-    if (queue_size < Queue::MIN_QUEUE_SIZE) {
-        Logger::Warn("Value for 'queue_size' (%ld) is smaller than minimum allowed. Using minimum (%ld).", queue_size, Queue::MIN_QUEUE_SIZE);
-        exit(1);
+    uint64_t rss_limit = 256L*1024L*1024L;
+    uint64_t virt_limit = 1024L*1024L*1024L;
+    double rss_pct_limit = 2;
+
+    if (config.HasKey("rss_limit")) {
+        rss_limit = config.GetUint64("rss_limit");
+    }
+
+    if (config.HasKey("rss_pct_limit")) {
+        rss_pct_limit = config.GetDouble("rss_pct_limit");
+    }
+
+    if (config.HasKey("virt_limit")) {
+        virt_limit = config.GetUint64("virt_limit");
+    }
+
+    int cpu_nice = -20;
+    if (config.HasKey("cpu_nice")) {
+        cpu_nice = config.GetInt64("cpu_nice");
     }
 
     bool use_syslog = true;
@@ -403,8 +457,42 @@ int main(int argc, char**argv) {
         Logger::OpenSyslog("auomscollect", LOG_DAEMON);
     }
 
-    bool reset_queue = false;
-    bool reset_flagged = false;
+    bool disable_cgroups = false;
+    if (config.HasKey("disable_cgroups")) {
+        disable_cgroups = config.GetBool("disable_cgroups");
+    }
+
+    // Set cgroup defaults
+    if (!config.HasKey(CPU_SOFT_LIMIT_NAME)) {
+        config.SetString(CPU_SOFT_LIMIT_NAME, "3");
+    }
+
+    if (!config.HasKey(CPU_HARD_LIMIT_NAME)) {
+        config.SetString(CPU_HARD_LIMIT_NAME, "20");
+    }
+
+    // Set EventPrioritizer defaults
+    if (!config.HasKey("event_priority_by_syscall")) {
+        config.SetString("event_priority_by_syscall", R"json({"execve":2,"execveat":2,"*":3})json");
+    }
+
+    if (!config.HasKey("event_priority_by_record_type_category")) {
+        config.SetString("event_priority_by_record_type_category", R"json({"AUOMS_MSG":0, "USER_MSG":1,"SELINUX":1,"APPARMOR":1})json");
+    }
+
+    int default_priority = 4;
+    if (config.HasKey("default_event_priority")) {
+        default_priority = static_cast<uint16_t>(config.GetUint64("default_event_priority"));
+    }
+    if (default_priority > num_priorities-1) {
+        default_priority = num_priorities-1;
+    }
+
+    auto event_prioritizer = std::make_shared<EventPrioritizer>(default_priority);
+    if (!event_prioritizer->LoadFromConfig(config)) {
+        Logger::Error("Failed to load EventPrioritizer config, exiting");
+        exit(1);
+    }
 
     Logger::Info("Trying to acquire singleton lock");
     LockFile singleton_lock(lock_file);
@@ -413,10 +501,8 @@ int main(int argc, char**argv) {
             Logger::Error("Failed to acquire singleton lock (%s): %s", lock_file.c_str(), std::strerror(errno));
             exit(1);
             break;
-        case LockFile::FLAGGED:
-            reset_flagged = true;
         case LockFile::PREVIOUSLY_ABANDONED:
-            reset_queue = true;
+            Logger::Warn("Previous instance did not exit cleanly");
             break;
         case LockFile::INTERRUPTED:
             Logger::Error("Failed to acquire singleton lock (%s): Interrupted", lock_file.c_str());
@@ -425,49 +511,57 @@ int main(int argc, char**argv) {
     }
     Logger::Info("Acquire singleton lock");
 
+    std::shared_ptr<CGroupCPU> cgcpu_root;
+    std::shared_ptr<CGroupCPU> cgcpu;
+    if (!disable_cgroups) {
+        try {
+            cgcpu_root = CGroups::OpenCPU("");
+            cgcpu = CPULimits::CGFromConfig(config, "auomscollect");
+            // systemd may not have put auomscollect into the default cgroup at this point
+            // Wait a few seconds before moving into the right cgroup so we avoid getting moved back out by systemd
+            std::thread cg_thread([&cgcpu]() {
+                sleep(5);
+                try {
+                    cgcpu->AddSelf();
+                } catch (const std::exception &ex) {
+                    Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
+                    Logger::Warn("CPU Limits cannot be enforced");
+                }
+            });
+            cg_thread.detach();
+        } catch (std::runtime_error &ex) {
+            Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
+            Logger::Warn("CPU Limits cannot be enforced");
+        }
+    }
+
+    if (!SetProcNice(cpu_nice)) {
+        Logger::Warn("Failed to set CPU nice value to %d: %s", cpu_nice, std::strerror(errno));
+    }
+
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
     Signals::Init();
 
-    if (reset_queue) {
-        if (reset_flagged) {
-            Logger::Info("Resetting queue due to upgrade.");
-        } else {
-            Logger::Warn("Previous instance may have crashed, resetting queue as a precaution.");
-        }
-        if (PathExists(queue_file)) {
-            try {
-                RemoveFile(queue_file, true);
-            } catch (std::system_error& ex) {
-                Logger::Error("Failed to remove queue file: %s", ex.what());
-            }
-        }
-        if (PathExists(cursor_path)) {
-            try {
-                RemoveFile(cursor_path, true);
-            } catch (std::system_error& ex) {
-                Logger::Error("Failed to remove queue cursor: %s", ex.what());
-            }
-        }
-    }
+    SPSCDataQueue raw_queue(raw_queue_segment_size, num_raw_queue_segments);
 
-
-    auto queue = std::make_shared<Queue>(queue_file, queue_size);
-    try {
-        Logger::Info("Opening queue: %s", queue_file.c_str());
-        queue->Open();
-    } catch (std::runtime_error& ex) {
-        Logger::Error("Failed to open queue file '%s': %s", queue_file.c_str(), ex.what());
+    Logger::Info("Opening queue: %s", queue_dir.c_str());
+    auto queue = PriorityQueue::Open(queue_dir, num_priorities, max_file_data_size, max_unsaved_files, max_fs_bytes, max_fs_pct, min_fs_free_pct);
+    if (!queue) {
+        Logger::Error("Failed to open queue '%s'", queue_dir.c_str());
         exit(1);
     }
 
     auto event_queue = std::make_shared<EventQueue>(queue);
-    auto builder = std::make_shared<EventBuilder>(event_queue);
+    auto builder = std::make_shared<EventBuilder>(event_queue, event_prioritizer);
 
     auto metrics = std::make_shared<Metrics>(queue);
     metrics->Start();
 
-    auto proc_metrics = std::make_shared<ProcMetrics>("auomscollect", metrics);
+    auto proc_metrics = std::make_shared<ProcMetrics>("auomscollect", queue, metrics, rss_limit, virt_limit, rss_pct_limit, []() {
+        Logger::Error("A memory limit was exceeded, exiting immediately");
+        exit(1);
+    });
     proc_metrics->Start();
 
     RawEventAccumulator accumulator (builder, metrics);
@@ -476,19 +570,47 @@ int main(int argc, char**argv) {
         {"output_format","raw"},
         {"output_socket", socket_path},
         {"enable_ack_mode", "true"},
-        {"ack_queue_size", "10"}
+        {"ack_queue_size", "100"}
     }));
     auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
-    Output output("output", cursor_path, queue, writer_factory, nullptr);
+    Output output("output", queue, writer_factory, nullptr);
     output.Load(output_config);
 
     std::thread autosave_thread([&]() {
         Signals::InitThread();
         try {
-            queue->Autosave(1024*1024, 4000);
+            queue->Saver(save_delay);
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
             exit(1);
+        }
+    });
+
+    auto ingest_bytes_metric = metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "ingest", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    auto ingest_records_metric = metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "ingest", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    auto lost_bytes_metric = metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "ingest", "lost_bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
+    auto lost_segments_metric = metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "ingest", "lost_segments", MetricPeriod::SECOND, MetricPeriod::HOUR);
+
+    std::thread proc_thread([&]() {
+        std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();
+        uint8_t* ptr;
+        ssize_t size;
+
+        while((size = raw_queue.Get(&ptr)) > 0) {
+            auto data_ptr = reinterpret_cast<char*>(ptr)+sizeof(RecordType);
+            auto data_size = size-sizeof(RecordType);
+            if (data_size <= RawEventRecord::MAX_RECORD_SIZE) {
+                memcpy(record->Data(), data_ptr, data_size);
+                if (record->Parse(*reinterpret_cast<RecordType*>(ptr), data_size)) {
+                    accumulator.AddRecord(std::move(record));
+                    record = std::make_unique<RawEventRecord>();
+                } else {
+                    Logger::Warn("Received unparsable event data: '%s'", std::string(record->Data(), size).c_str());
+                }
+            } else {
+                Logger::Warn("Received event data size (%ld) exceeded size limit (%ld)", data_size, RawEventRecord::MAX_RECORD_SIZE);
+            }
+            raw_queue.Release();
         }
     });
 
@@ -496,18 +618,40 @@ int main(int argc, char**argv) {
     Signals::Start();
     output.Start();
 
-    if (netlink_mode) {
-        bool restart;
-        do {
-            restart = DoNetlinkCollection(accumulator);
-        } while (restart);
-    } else {
-        DoStdinCollection(accumulator);
-    }
+    // The ingest tasks needs to run outside cgroup limits
+    std::thread ingest_thread([&]() {
+        auto thread_id = CGroups::GetSelfThreadId();
+        Logger::Info("Starting ingest thead (%ld)", thread_id);
+        // Move this thread back to the root cgroup (thus outside the auomscollect specific cgroup
+        if (!disable_cgroups && cgcpu_root) {
+            std::thread cg_thread([&cgcpu_root, thread_id]() {
+                sleep(10);
+                try {
+                    cgcpu_root->AddThread(thread_id);
+                } catch (std::runtime_error &ex) {
+                    Logger::Error("Failed to move ingest thread to root cgroup: %s", ex.what());
+                }
+            });
+            cg_thread.detach();
+        }
+        if (netlink_mode) {
+            bool restart;
+            do {
+                restart = DoNetlinkCollection(raw_queue, ingest_bytes_metric, ingest_records_metric, lost_bytes_metric,
+                                              lost_segments_metric);
+            } while (restart);
+        } else {
+            DoStdinCollection(raw_queue, ingest_bytes_metric, ingest_records_metric, lost_bytes_metric,
+                              lost_segments_metric);
+        }
+    });
+    ingest_thread.join();
 
     Logger::Info("Exiting");
 
     try {
+        raw_queue.Close();
+        proc_thread.join();
         proc_metrics->Stop();
         metrics->Stop();
         accumulator.Flush(0);

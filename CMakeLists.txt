@@ -55,8 +55,10 @@ add_executable(auomscollect
         auomscollect.cpp
         IO.cpp
         Event.cpp
+        EventPrioritizer.cpp
         Signals.cpp
-        Queue.cpp
+        SPSCDataQueue.cpp
+        PriorityQueue.cpp
         UnixDomainWriter.cpp
         Logger.cpp
         Config.cpp
@@ -71,13 +73,18 @@ add_executable(auomscollect
         FileWatcher.cpp
         Gate.h
         Defer.h
+        TranslateArch.cpp
         TranslateRecordType.cpp
+        TranslateSyscall.cpp
         FileUtils.cpp
         Retry.h
         Metrics.cpp
         ProcMetrics.cpp
         Cache.h
         LockFile.cpp
+        CGroups.cpp
+        CPULimits.cpp
+        SchedPriority.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -112,6 +119,7 @@ add_executable(auoms
         auoms_version.h
         IO.cpp
         Event.cpp
+        EventPrioritizer.cpp
         TextEventWriterConfig.cpp
         OMSEventWriter.cpp
         JSONEventWriter.cpp
@@ -121,7 +129,6 @@ add_executable(auoms
         TextEventWriter.cpp
         RawEventProcessor.cpp
         Signals.cpp
-        Queue.cpp
         UnixDomainWriter.cpp
         Logger.cpp
         Config.cpp
@@ -150,6 +157,7 @@ add_executable(auoms
         TranslateErrno.cpp
         AuditRules.cpp
         AuditRulesMonitor.cpp
+        AuditStatus.cpp AuditStatus.h
         KernelInfo.cpp
         Version.cpp
         UnixDomainListener.cpp
@@ -162,7 +170,10 @@ add_executable(auoms
         SyscallMetrics.cpp
         ProcMetrics.cpp
         SystemMetrics.cpp
+        PriorityQueue.cpp PriorityQueue.h
         LockFile.cpp
+        CGroups.cpp
+        CPULimits.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -197,6 +208,7 @@ add_executable(auomsctl
         auoms_version.h
         Netlink.cpp
         NetlinkAudit.cpp
+        AuditStatus.cpp AuditStatus.h
         RunBase.cpp
         Signals.cpp
         Logger.cpp
@@ -217,6 +229,7 @@ add_executable(auomsctl
         UnixDomainListener.cpp
         Event.cpp
         UserDB.cpp
+        KernelInfo.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -302,14 +315,17 @@ target_link_libraries(ConfigTests ${Boost_LIBRARIES})
 add_test(Config ${CMAKE_BINARY_DIR}/ConfigTests --log_sink=ConfigTests.log --report_sink=ConfigTests.report)
 
 add_executable(EventTests
-        TempFile.cpp
+        TempDir.cpp
         Logger.cpp
-        Queue.cpp
+        PriorityQueue.cpp
+        FileUtils.cpp
         Event.cpp
         EventTests.cpp
 )
 
-target_link_libraries(EventTests ${Boost_LIBRARIES})
+target_link_libraries(EventTests ${Boost_LIBRARIES}
+        pthread
+)
 
 add_test(Event ${CMAKE_BINARY_DIR}/EventTests --log_sink=EventTests.log --report_sink=EventTests.report)
 
@@ -323,6 +339,28 @@ add_executable(QueueTests
 target_link_libraries(QueueTests ${Boost_LIBRARIES})
 
 add_test(Queue ${CMAKE_BINARY_DIR}/QueueTests --log_sink=QueueTests.log --report_sink=QueueTests.report)
+
+add_executable(PriorityQueueTests
+        TempDir.cpp
+        Logger.cpp
+        FileUtils.cpp
+        PriorityQueue.cpp
+        PriorityQueueTests.cpp
+)
+
+target_link_libraries(PriorityQueueTests ${Boost_LIBRARIES} pthread)
+
+add_test(PriorityQueue ${CMAKE_BINARY_DIR}/PriorityQueueTests --log_sink=PriorityQueueTests.log --report_sink=PriorityQueueTests.report)
+
+add_executable(SPSCDataQueueTests
+        Logger.cpp
+        SPSCDataQueue.cpp
+        SPSCDataQueueTests.cpp
+)
+
+target_link_libraries(SPSCDataQueueTests ${Boost_LIBRARIES} pthread)
+
+add_test(SPSCDataQueueTests ${CMAKE_BINARY_DIR}/SPSCDataQueueTests --log_sink=SPSCDataQueueTests.log --report_sink=SPSCDataQueueTests.report)
 
 add_executable(UserDBTests
         TempDir.cpp
@@ -377,8 +415,6 @@ add_executable(EventProcessorTests
 )
 
 target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
-        audit
-        auparse
         dl
         pthread
         rt
@@ -400,8 +436,6 @@ add_executable(ExecveConverterTests
 )
 
 target_link_libraries(ExecveConverterTests ${Boost_LIBRARIES}
-        audit
-        auparse
         dl
         pthread
         rt
@@ -462,11 +496,12 @@ add_executable(OutputInputTests
         Input.cpp
         OperationalStatus.cpp
         IO.cpp
-        Queue.cpp
+        PriorityQueue.cpp
         UnixDomainListener.cpp
         UnixDomainWriter.cpp
         TranslateRecordType.cpp
         Signals.cpp
+        FileUtils.cpp
 )
 
 target_link_libraries(OutputInputTests ${Boost_LIBRARIES}

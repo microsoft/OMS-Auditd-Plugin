@@ -131,8 +131,8 @@ int RawEvent::AddEvent(EventBuilder& builder) {
 int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
     std::lock_guard<std::mutex> lock(_mutex);
 
-    _bytes_metric->Add(static_cast<double>(record->GetSize()));
-    _record_metric->Add(1.0);
+    _bytes_metric->Update(static_cast<double>(record->GetSize()));
+    _record_metric->Update(1.0);
 
     // Drop empty records unless it is the EOE record.
     if (record->IsEmpty() && record->GetRecordType() != RecordType::EOE) {
@@ -152,7 +152,7 @@ int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
     if (!found) {
         auto event = std::make_shared<RawEvent>(record->GetEventId());
         if (event->AddRecord(std::move(record))) {
-            _event_metric->Add(1.0);
+            _event_metric->Update(1.0);
             return event->AddEvent(*_builder);
         } else {
             _events.add(event_id, event);
@@ -162,7 +162,7 @@ int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
     _events.for_all_oldest_first([this](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
         if (entry_count > MAX_CACHE_ENTRY) {
             event->AddEvent(*_builder);
-            _event_metric->Add(1.0);
+            _event_metric->Update(1.0);
             return CacheEntryOP::REMOVE;
         }
         return CacheEntryOP::STOP;
@@ -178,7 +178,7 @@ void RawEventAccumulator::Flush(long milliseconds) {
         _events.for_all_oldest_first([this,now,milliseconds](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
             if (entry_count > MAX_CACHE_ENTRY || std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()-last_touched.time_since_epoch()) > std::chrono::milliseconds(milliseconds)) {
                 event->AddEvent(*_builder);
-                _event_metric->Add(1.0);
+                _event_metric->Update(1.0);
                 return CacheEntryOP::REMOVE;
             }
             return CacheEntryOP::STOP;
@@ -186,7 +186,7 @@ void RawEventAccumulator::Flush(long milliseconds) {
     } else {
         _events.for_all_oldest_first([this](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
             event->AddEvent(*_builder);
-            _event_metric->Add(1.0);
+            _event_metric->Update(1.0);
             return CacheEntryOP::REMOVE;
         });
     }

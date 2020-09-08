@@ -226,6 +226,26 @@ static StringTable<RecordType> s_record_type_table(RecordType ::UNKNOWN, {
         {"AUOMS_EXECVE", RecordType::AUOMS_EXECVE},
 });
 
+static StringTable<RecordTypeCategory> s_record_type_category_table(RecordTypeCategory::UNKNOWN, {
+        {"UNKNOWN", RecordTypeCategory::UNKNOWN},
+        {"KERNEL", RecordTypeCategory::KERNEL},
+        {"USER_MSG", RecordTypeCategory::USER_MSG},
+        {"DAEMON", RecordTypeCategory::DAEMON},
+        {"EVENT", RecordTypeCategory::EVENT},
+        {"SELINUX", RecordTypeCategory::SELINUX},
+        {"APPARMOR", RecordTypeCategory::APPARMOR},
+        {"KERN_CRYPTO_MSG", RecordTypeCategory::KERN_CRYPTO_MSG},
+        {"KERN_ANOM_MSG", RecordTypeCategory::KERN_ANOM_MSG},
+        {"INTEGRITY_MSG", RecordTypeCategory::INTEGRITY_MSG},
+        {"ANOM_MSG", RecordTypeCategory::ANOM_MSG},
+        {"ANOM_RESP", RecordTypeCategory::ANOM_RESP},
+        {"USER_LSPP_MSG", RecordTypeCategory::USER_LSPP_MSG},
+        {"CRYPTO_MSG", RecordTypeCategory::CRYPTO_MSG},
+        {"VIRT_MSG", RecordTypeCategory::VIRT_MSG},
+        {"USER_MSG2", RecordTypeCategory::USER_MSG2},
+        {"AUOMS_MSG", RecordTypeCategory::AUOMS_MSG},
+});
+
 std::string_view RecordTypeToName(RecordType code, std::string& unknown_str) {
     auto str = s_record_type_table.ToString(code);
     if (str.empty()) {
@@ -262,4 +282,16 @@ RecordType RecordNameToType(const std::string_view& name) {
     } else {
         return s_record_type_table.ToInt(name);
     }
+}
+
+std::string RecordTypeCategoryToName(RecordTypeCategory code) {
+    std::string str(s_record_type_category_table.ToString(code));
+    if (str.empty()) {
+        str = "UNKNOWN";
+    }
+    return str;
+}
+
+RecordTypeCategory RecordTypeCategoryNameToCategory(const std::string_view& name) {
+    return s_record_type_category_table.ToInt(name);
 }

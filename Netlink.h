@@ -44,7 +44,7 @@ public:
      * If request fails for another reason will return -errno
      */
 
-    int Open(reply_fn_t&& default_msg_handler_fn);
+    int Open(reply_fn_t&& default_msg_handler_fn, bool multicast = false);
     void Close();
 
     int Send(uint16_t type, const void* data, size_t len, reply_fn_t&& reply_fn);
@@ -102,6 +102,7 @@ private:
     void handle_msg(uint16_t msg_type, uint16_t msg_flags, uint32_t msg_seq, const void* payload_data, size_t payload_len);
 
     int _fd;
+    uint32_t _pid;
     volatile uint32_t _sequence;
     reply_fn_t _default_msg_handler_fn;
     bool _quite;

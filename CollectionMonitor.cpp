@@ -200,27 +200,22 @@ void CollectionMonitor::send_audit_pid_report(int pid) {
     uint64_t sec = static_cast<uint64_t>(tv.tv_sec);
     uint32_t msec = static_cast<uint32_t>(tv.tv_usec)/1000;
 
-    if (_builder.BeginEvent(sec, msec, 0, 1) != 1) {
+    if (!_builder.BeginEvent(sec, msec, 0, 1)) {
         return;
     }
-    if (_builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_COLLECTOR_REPORT), RecordTypeToName(RecordType::AUOMS_COLLECTOR_REPORT), "", 3) != 1) {
-        _builder.CancelEvent();
+    if (!_builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_COLLECTOR_REPORT), RecordTypeToName(RecordType::AUOMS_COLLECTOR_REPORT), "", 3)) {
         return;
     }
-    if (_builder.AddField("pid", std::to_string(pid), nullptr, field_type_t::UNCLASSIFIED) != 1) {
-        _builder.CancelEvent();
+    if (!_builder.AddField("pid", std::to_string(pid), nullptr, field_type_t::UNCLASSIFIED)) {
         return;
     }
-    if(_builder.AddField("ppid", std::to_string(ppid), nullptr, field_type_t::UNCLASSIFIED) != 1) {
-        _builder.CancelEvent();
+    if(!_builder.AddField("ppid", std::to_string(ppid), nullptr, field_type_t::UNCLASSIFIED)) {
         return;
     }
-    if(_builder.AddField("exe", exe, nullptr, field_type_t::UNCLASSIFIED) != 1) {
-        _builder.CancelEvent();
+    if(!_builder.AddField("exe", exe, nullptr, field_type_t::UNCLASSIFIED)) {
         return;
     }
-    if(_builder.EndRecord() != 1) {
-        _builder.CancelEvent();
+    if(!_builder.EndRecord()) {
         return;
     }
     _builder.EndEvent();

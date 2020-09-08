@@ -35,7 +35,8 @@
  *      uint32_t msec
  *      uint64_t serial
  *      uint16_t num_records
- *      uint32_t flags
+ *      uint16_t priority
+ *      uint16_t flags
  *      int32_t pid
  *      RecordIndex:
  *          uint32_t[] offsets (from start of event)
@@ -111,10 +112,15 @@ constexpr uint32_t EVENT_NUM_RECORDS_SIZE = sizeof(uint16_t);
 inline uint16_t& EVENT_NUM_RECORDS(uint8_t* data) { return *reinterpret_cast<uint16_t*>(data+EVENT_NUM_RECORDS_OFFSET); }
 inline uint16_t EVENT_NUM_RECORDS(const uint8_t* data) { return *reinterpret_cast<const uint16_t*>(data+EVENT_NUM_RECORDS_OFFSET); }
 
-constexpr uint32_t EVENT_FLAGS_OFFSET = EVENT_NUM_RECORDS_OFFSET + EVENT_NUM_RECORDS_SIZE;
-constexpr uint32_t EVENT_FLAGS_SIZE = sizeof(int32_t);
-inline uint32_t& EVENT_FLAGS(uint8_t* data) { return *reinterpret_cast<uint32_t*>(data+EVENT_FLAGS_OFFSET); }
-inline uint32_t EVENT_FLAGS(const uint8_t* data) { return *reinterpret_cast<const uint32_t*>(data+EVENT_FLAGS_OFFSET); }
+constexpr uint32_t EVENT_PRIORITY_OFFSET = EVENT_NUM_RECORDS_OFFSET + EVENT_NUM_RECORDS_SIZE;
+constexpr uint32_t EVENT_PRIORITY_SIZE = sizeof(uint16_t);
+inline uint16_t& EVENT_PRIORITY(uint8_t* data) { return *reinterpret_cast<uint16_t*>(data+EVENT_PRIORITY_OFFSET); }
+inline uint16_t EVENT_PRIORITY(const uint8_t* data) { return *reinterpret_cast<const uint16_t*>(data+EVENT_PRIORITY_OFFSET); }
+
+constexpr uint32_t EVENT_FLAGS_OFFSET = EVENT_PRIORITY_OFFSET + EVENT_PRIORITY_SIZE;
+constexpr uint32_t EVENT_FLAGS_SIZE = sizeof(uint16_t);
+inline uint16_t& EVENT_FLAGS(uint8_t* data) { return *reinterpret_cast<uint16_t*>(data+EVENT_FLAGS_OFFSET); }
+inline uint16_t EVENT_FLAGS(const uint8_t* data) { return *reinterpret_cast<const uint16_t*>(data+EVENT_FLAGS_OFFSET); }
 
 constexpr uint32_t EVENT_PID_OFFSET = EVENT_FLAGS_OFFSET + EVENT_FLAGS_SIZE;
 constexpr uint32_t EVENT_PID_SIZE = sizeof(int32_t);
@@ -243,7 +249,7 @@ constexpr uint32_t FIELD_INTERP_VALUE_OFFSET(uint16_t name_size, uint32_t raw_si
  ** EventBuilder
  *****************************************************************************/
 
-int EventBuilder::BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint16_t num_records) {
+bool EventBuilder::BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint16_t num_records) {
     if (_data != nullptr) {
         throw std::runtime_error("Event already started!");
     }
@@ -256,9 +262,8 @@ int EventBuilder::BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint1
     _record_idx = 0;
 
     size_t size = _roffset;
-    int ret = _allocator->Allocate(reinterpret_cast<void**>(&_data), size);
-    if (ret != 1) {
-        return ret;
+    if (!_allocator->Allocate(reinterpret_cast<void**>(&_data), size)) {
+        return false;
     }
     _size = size;
 
@@ -268,12 +273,30 @@ int EventBuilder::BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint1
     EVENT_MSEC(_data) = msec;
     EVENT_SERIAL(_data) = serial;
     EVENT_NUM_RECORDS(_data) = num_records;
+    EVENT_PRIORITY(_data) = 0;
+    EVENT_FLAGS(_data) = 0;
     EVENT_PID(_data) = -1;
 
-    return 1;
+    return true;
 }
 
-void EventBuilder::SetEventFlags(uint32_t flags) {
+void EventBuilder::SetEventPriority(uint16_t priority) {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    EVENT_PRIORITY(_data) = priority;
+}
+
+uint16_t EventBuilder::GetEventPriority() {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    return EVENT_PRIORITY(_data);
+}
+
+void EventBuilder::SetEventFlags(uint16_t flags) {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
@@ -281,7 +304,7 @@ void EventBuilder::SetEventFlags(uint32_t flags) {
     EVENT_FLAGS(_data) = flags;
 }
 
-uint32_t EventBuilder::GetEventFlags() {
+uint16_t EventBuilder::GetEventFlags() {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
@@ -305,7 +328,7 @@ int32_t EventBuilder::GetEventPid() {
     return EVENT_PID(_data);
 }
 
-int EventBuilder::EndEvent() {
+bool EventBuilder::EndEvent() {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
@@ -316,12 +339,17 @@ int EventBuilder::EndEvent() {
 
     SET_EVENT_SIZE(_data, static_cast<uint32_t>(_size));
 
+    if (_prioritizer) {
+        Event event(_data, _size);
+        SetEventPriority(_prioritizer->Prioritize(event));
+    }
+
     _data = nullptr;
     _size = 0;
     return _allocator->Commit();
 };
 
-int EventBuilder::CancelEvent() {
+bool EventBuilder::CancelEvent() {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
@@ -333,7 +361,7 @@ int EventBuilder::CancelEvent() {
     return _allocator->Rollback();
 }
 
-int EventBuilder::BeginRecord(uint32_t record_type, const char* record_name, const char* record_text, uint16_t num_fields) {
+bool EventBuilder::BeginRecord(uint32_t record_type, const char* record_name, const char* record_text, uint16_t num_fields) {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
@@ -344,7 +372,7 @@ int EventBuilder::BeginRecord(uint32_t record_type, const char* record_name, con
     return BeginRecord(record_type, std::string_view(record_name, name_size), std::string_view(record_text, text_size), num_fields);
 }
 
-int EventBuilder::BeginRecord(uint32_t record_type, const std::string_view& record_name, const std::string_view& record_text, uint16_t num_fields) {
+bool EventBuilder::BeginRecord(uint32_t record_type, const std::string_view& record_name, const std::string_view& record_text, uint16_t num_fields) {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
@@ -368,9 +396,8 @@ int EventBuilder::BeginRecord(uint32_t record_type, const std::string_view& reco
 
     size_t record_hdr_size = RECORD_HEADER_SIZE(num_fields, static_cast<uint16_t>(name_size), static_cast<uint16_t>(text_size));
     size_t size = _size+record_hdr_size;
-    int ret = _allocator->Allocate(reinterpret_cast<void**>(&_data), size);
-    if (ret != 1) {
-        return ret;
+    if (!_allocator->Allocate(reinterpret_cast<void**>(&_data), size)) {
+        return false;
     }
     _size = size;
 
@@ -390,10 +417,10 @@ int EventBuilder::BeginRecord(uint32_t record_type, const std::string_view& reco
     _fidxoffset = _roffset+RECORD_FIELD_INDEX_OFFSET;
     _fsortedidxoffset = _roffset+RECORD_FIELD_SORTED_INDEX_OFFSET(num_fields);
 
-    return 1;
+    return true;
 }
 
-int EventBuilder::EndRecord() {
+bool EventBuilder::EndRecord() {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
@@ -414,10 +441,10 @@ int EventBuilder::EndRecord() {
     _record_idx += 1;
     _roffset = static_cast<uint32_t>(_size);
 
-    return 1;
+    return true;
 }
 
-int EventBuilder::AddField(const char *field_name, const char* raw_value, const char* interp_value, field_type_t field_type) {
+bool EventBuilder::AddField(const char *field_name, const char* raw_value, const char* interp_value, field_type_t field_type) {
     size_t name_size = strlen(field_name);
     size_t raw_size = strlen(raw_value);
     std::string_view interp;
@@ -428,7 +455,7 @@ int EventBuilder::AddField(const char *field_name, const char* raw_value, const 
     return AddField(std::string_view(field_name, name_size), std::string_view(raw_value, raw_size), interp, field_type);
 }
 
-int EventBuilder::AddField(const std::string_view& field_name, const std::string_view& raw_value, const std::string_view& interp_value, field_type_t field_type) {
+bool EventBuilder::AddField(const std::string_view& field_name, const std::string_view& raw_value, const std::string_view& interp_value, field_type_t field_type) {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
@@ -459,9 +486,8 @@ int EventBuilder::AddField(const std::string_view& field_name, const std::string
     }
 
     size_t size = _size+fsize;
-    int ret = _allocator->Allocate(reinterpret_cast<void**>(&_data), size);
-    if (ret != 1) {
-        return ret;
+    if (!_allocator->Allocate(reinterpret_cast<void**>(&_data), size)) {
+        return false;
     }
     _size = size;
 
@@ -486,7 +512,7 @@ int EventBuilder::AddField(const std::string_view& field_name, const std::string
     _foffset += fsize;
     _field_idx += 1;
 
-    return 1;
+    return true;
 }
 
 int EventBuilder::GetFieldCount() {
@@ -767,7 +793,11 @@ uint16_t Event::NumRecords() const {
     return EVENT_NUM_RECORDS(_data);
 }
 
-uint32_t Event::Flags() const {
+uint16_t Event::Priority() const {
+    return EVENT_PRIORITY(_data);
+}
+
+uint16_t Event::Flags() const {
     return EVENT_FLAGS(_data);
 }
 
@@ -802,49 +832,80 @@ int Event::Validate() const {
     if (_size <= EVENT_RECORD_INDEX_OFFSET) {
         return 1;
     }
-    if (_size <= EVENT_RECORD_INDEX_OFFSET+EVENT_NUM_RECORDS(_data)*sizeof(uint32_t)) {
+
+    size_t offset = EVENT_RECORD_INDEX_OFFSET+EVENT_NUM_RECORDS(_data)*sizeof(uint32_t);
+
+    if (_size <= offset) {
         return 2;
     }
+
     for (int ridx = 0; ridx < EVENT_NUM_RECORDS(_data); ++ridx) {
         auto roffset = INDEX_VALUE(_data, EVENT_RECORD_INDEX_OFFSET, ridx);
-        if (_size <= roffset) {
+
+        if (offset != roffset) {
             return 3;
         }
+
+        offset += RECORD_FIELD_INDEX_OFFSET;
         if (_size <= roffset + RECORD_FIELD_INDEX_OFFSET) {
             return 4;
         }
-        if (_size <= roffset + RECORD_FIELD_INDEX_OFFSET+(RECORD_NUM_FIELDS(_data, roffset)*sizeof(uint32_t)*2)) {
+
+        offset += RECORD_NUM_FIELDS(_data, roffset)*sizeof(uint32_t)*2;
+        if (_size <= offset) {
             return 5;
         }
-        if (_size <= roffset + RECORD_TYPE_NAME_OFFSET(RECORD_NUM_FIELDS(_data, roffset)) + RECORD_NAME_SIZE(_data, roffset)) {
+
+        if (offset != roffset + RECORD_TYPE_NAME_OFFSET(RECORD_NUM_FIELDS(_data, roffset))) {
             return 6;
         }
-        if (_size <= roffset + RECORD_TEXT_OFFSET(RECORD_NUM_FIELDS(_data, roffset), RECORD_NAME_SIZE(_data, roffset)) + RECORD_TEXT_SIZE(_data, roffset)) {
+
+        offset += RECORD_NAME_SIZE(_data, roffset);
+
+        if (_size <= offset) {
+            return 6;
+        }
+
+        if (offset != roffset + RECORD_TEXT_OFFSET(RECORD_NUM_FIELDS(_data, roffset), RECORD_NAME_SIZE(_data, roffset))) {
+            return 7;
+        }
+
+        offset += RECORD_TEXT_SIZE(_data, roffset);
+
+        if (_size <= offset) {
             return 7;
         }
 
         for (int fidx = 0; fidx < RECORD_NUM_FIELDS(_data, roffset); ++fidx) {
             auto foffset = INDEX_VALUE(_data, roffset + RECORD_FIELD_INDEX_OFFSET, fidx);
-            if (_size <= foffset) {
+
+            if (offset != roffset + foffset) {
                 return 8;
             }
-            if (_size <= foffset + FIELD_INTERP_SIZE_OFFSET + FIELD_INTERP_SIZE_SIZE) {
+
+            offset += FIELD_INTERP_SIZE_OFFSET + FIELD_INTERP_SIZE_SIZE;
+            if (_size <= offset) {
                 return 9;
             }
-            if (_size <= foffset + FIELD_NAME_OFFSET + FIELD_NAME_SIZE(_data, roffset, foffset)) {
+
+            offset += FIELD_NAME_SIZE(_data, roffset, foffset);
+            if (_size < offset) {
                 return 10;
             }
-            if (_size <= foffset + FIELD_RAW_VALUE_OFFSET(FIELD_NAME_SIZE(_data, roffset, foffset)) + FIELD_RAW_SIZE(_data, roffset, foffset)) {
+
+            offset += FIELD_RAW_SIZE(_data, roffset, foffset);
+            if (_size < offset) {
                 return 11;
             }
-            if (_size <= foffset + FIELD_INTERP_VALUE_OFFSET(FIELD_NAME_SIZE(_data, roffset, foffset), FIELD_RAW_SIZE(_data, roffset, foffset)) + FIELD_INTERP_SIZE(_data, roffset, foffset)) {
+
+            offset += FIELD_INTERP_SIZE(_data, roffset, foffset);
+            if (_size < offset) {
                 return 12;
             }
         }
     }
     return 0;
 }
-
 
 std::string EventToRawText(const Event& event, bool include_interp) {
     std::string id;

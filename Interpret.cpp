@@ -233,6 +233,8 @@ bool InterpretSockaddrField(std::string& out, const EventRecord& record, const E
 }
 
 bool InterpretField(std::string& out, const EventRecord& record, const EventRecordField& field, field_type_t field_type) {
+    static std::string_view SV_ARCH = "arch";
+
     switch (field_type) {
         case field_type_t::ARCH: {
             uint32_t arch;
@@ -249,9 +251,9 @@ bool InterpretField(std::string& out, const EventRecord& record, const EventReco
             return true;
         }
         case field_type_t::SYSCALL: {
-            auto arch_field = record.FieldByName("arch");
+            auto arch_field = record.FieldByName(SV_ARCH);
             if (!arch_field) {
-                out = "unknown-syscall(" + std::string() + ")";
+                out = "unknown-syscall(" + std::string(field.RawValue()) + ")";
                 return true;
             }
             uint32_t arch;

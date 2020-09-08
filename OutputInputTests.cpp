@@ -60,8 +60,6 @@ int GetEventSeq(const Event& event) {
 BOOST_AUTO_TEST_CASE( basic_test ) {
     TempDir dir("/tmp/OutputInputTests");
 
-    std::string cursor_path = dir.Path() + "/input.cursor";
-    std::string queue_path = dir.Path() + "/input.queue";
     std::string socket_path = dir.Path() + "/input.socket";
     std::string status_socket_path = dir.Path() + "/status.socket";
 
@@ -75,11 +73,9 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     Signals::Init();
     Signals::Start();
 
-    auto queue = std::make_shared<Queue>(queue_path, 1024*1024);
-    queue->Open();
-
+    auto queue = PriorityQueue::Open(dir.Path(), 8, 4*1024,8, 0, 100, 0);
     auto event_queue = std::make_shared<EventQueue>(queue);
-    auto builder = std::make_shared<EventBuilder>(event_queue);
+    auto builder = std::make_shared<EventBuilder>(event_queue, DefaultPrioritizer::Create(0));
 
     auto output_config = std::make_unique<Config>(std::unordered_map<std::string, std::string>({
         {"output_format","raw"},
@@ -89,7 +85,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
         {"ack_timeout", "1000"}
     }));
     auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
-    Output output("output", cursor_path, queue, writer_factory, nullptr);
+    Output output("output", queue, writer_factory, nullptr);
     output.Load(output_config);
 
     auto operational_status = std::make_shared<OperationalStatus>("", nullptr);
@@ -163,8 +159,6 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
 BOOST_AUTO_TEST_CASE( same_event_id_test ) {
     TempDir dir("/tmp/OutputInputTests");
 
-    std::string cursor_path = dir.Path() + "/input.cursor";
-    std::string queue_path = dir.Path() + "/input.queue";
     std::string socket_path = dir.Path() + "/input.socket";
     std::string status_socket_path = dir.Path() + "/status.socket";
 
@@ -178,11 +172,9 @@ BOOST_AUTO_TEST_CASE( same_event_id_test ) {
     Signals::Init();
     Signals::Start();
 
-    auto queue = std::make_shared<Queue>(queue_path, 1024*1024);
-    queue->Open();
-
+    auto queue = PriorityQueue::Open(dir.Path(), 8, 4*1024,8, 0, 100, 0);
     auto event_queue = std::make_shared<EventQueue>(queue);
-    auto builder = std::make_shared<EventBuilder>(event_queue);
+    auto builder = std::make_shared<EventBuilder>(event_queue, DefaultPrioritizer::Create(0));
 
     auto output_config = std::make_unique<Config>(std::unordered_map<std::string, std::string>({
         {"output_format","raw"},
@@ -192,7 +184,7 @@ BOOST_AUTO_TEST_CASE( same_event_id_test ) {
         {"ack_timeout", "1000"}
     }));
     auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
-    Output output("output", cursor_path, queue, writer_factory, nullptr);
+    Output output("output", queue, writer_factory, nullptr);
     output.Load(output_config);
 
     auto operational_status = std::make_shared<OperationalStatus>("", nullptr);
@@ -267,8 +259,6 @@ BOOST_AUTO_TEST_CASE( same_event_id_test ) {
 BOOST_AUTO_TEST_CASE( dropped_acks_test ) {
     TempDir dir("/tmp/OutputInputTests");
 
-    std::string cursor_path = dir.Path() + "/input.cursor";
-    std::string queue_path = dir.Path() + "/input.queue";
     std::string socket_path = dir.Path() + "/input.socket";
     std::string status_socket_path = dir.Path() + "/status.socket";
 
@@ -282,11 +272,9 @@ BOOST_AUTO_TEST_CASE( dropped_acks_test ) {
     Signals::Init();
     Signals::Start();
 
-    auto queue = std::make_shared<Queue>(queue_path, 1024*1024);
-    queue->Open();
-
+    auto queue = PriorityQueue::Open(dir.Path(), 8, 4*1024,8, 0, 100, 0);
     auto event_queue = std::make_shared<EventQueue>(queue);
-    auto builder = std::make_shared<EventBuilder>(event_queue);
+    auto builder = std::make_shared<EventBuilder>(event_queue, DefaultPrioritizer::Create(0));
 
     auto output_config = std::make_unique<Config>(std::unordered_map<std::string, std::string>({
         {"output_format","raw"},
@@ -296,7 +284,7 @@ BOOST_AUTO_TEST_CASE( dropped_acks_test ) {
         {"ack_timeout", "100"}
     }));
     auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
-    Output output("output", cursor_path, queue, writer_factory, nullptr);
+    Output output("output", queue, writer_factory, nullptr);
     output.Load(output_config);
 
     Gate done_gate;
@@ -396,8 +384,6 @@ BOOST_AUTO_TEST_CASE( dropped_acks_test ) {
 BOOST_AUTO_TEST_CASE( dropped_conn_test ) {
     TempDir dir("/tmp/OutputInputTests");
 
-    std::string cursor_path = dir.Path() + "/input.cursor";
-    std::string queue_path = dir.Path() + "/input.queue";
     std::string socket_path = dir.Path() + "/input.socket";
     std::string status_socket_path = dir.Path() + "/status.socket";
 
@@ -411,11 +397,9 @@ BOOST_AUTO_TEST_CASE( dropped_conn_test ) {
     Signals::Init();
     Signals::Start();
 
-    auto queue = std::make_shared<Queue>(queue_path, 1024*1024);
-    queue->Open();
-
+    auto queue = PriorityQueue::Open(dir.Path(), 8, 4*1024,8, 0, 100, 0);
     auto event_queue = std::make_shared<EventQueue>(queue);
-    auto builder = std::make_shared<EventBuilder>(event_queue);
+    auto builder = std::make_shared<EventBuilder>(event_queue, DefaultPrioritizer::Create(0));
 
     auto output_config = std::make_unique<Config>(std::unordered_map<std::string, std::string>({
         {"output_format","raw"},
@@ -425,7 +409,7 @@ BOOST_AUTO_TEST_CASE( dropped_conn_test ) {
         {"ack_timeout", "1000"}
     }));
     auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
-    Output output("output", cursor_path, queue, writer_factory, nullptr);
+    Output output("output", queue, writer_factory, nullptr);
     output.Load(output_config);
 
     Gate done_gate;
@@ -470,11 +454,14 @@ BOOST_AUTO_TEST_CASE( dropped_conn_test ) {
                     stop = true;
                     break;
                 }
+                auto seq = GetEventSeq(event);
                 if (!drop) {
+                    Logger::Info("INGEST: %d", seq);
                     drop = !drop;
                     reader.WriteAck(event, &io);
                     _outputs.emplace_back(reinterpret_cast<char *>(data.data()), ret);
                 } else {
+                    Logger::Info("DROP: %d", seq);
                     drop = !drop;
                     io.Close();
                     break;

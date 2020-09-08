@@ -17,13 +17,13 @@
 #define AUOMS_EVENTQUEUE_H
 
 #include "Event.h"
-#include "Queue.h"
+#include "PriorityQueue.h"
 
 class EventQueue: public IEventBuilderAllocator {
 public:
-    explicit EventQueue(std::shared_ptr<Queue> queue): _buffer(), _size(0), _queue(std::move(queue)) {}
+    explicit EventQueue(std::shared_ptr<PriorityQueue> queue): _buffer(), _size(0), _queue(std::move(queue)) {}
 
-    int Allocate(void** data, size_t size) override {
+    bool Allocate(void** data, size_t size) override {
         if (_size != size) {
             _size = size;
         }
@@ -31,24 +31,25 @@ public:
             _buffer.resize(_size);
         }
         *data = _buffer.data();
-        return 1;
+        return true;
     }
 
-    int Commit() override {
-        auto ret =  _queue->Put(_buffer.data(), _size);
+    bool Commit() override {
+        Event event(_buffer.data(), _size);
+        auto ret =  _queue->Put(event.Priority(), _buffer.data(), _size);
         _size = 0;
         return ret;
     }
 
-    int Rollback() override {
+    bool Rollback() override {
         _size = 0;
-        return 1;
+        return true;
     }
 
 private:
     std::vector<uint8_t> _buffer;
     size_t _size;
-    std::shared_ptr<Queue> _queue;
+    std::shared_ptr<PriorityQueue> _queue;
 };
 
 

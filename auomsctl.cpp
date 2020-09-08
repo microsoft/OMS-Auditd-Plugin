@@ -29,6 +29,7 @@
 #include "Translate.h"
 #include "UnixDomainListener.h"
 #include "Event.h"
+#include "AuditStatus.h"
 
 #include <iostream>
 
@@ -38,6 +39,7 @@
 #include <sstream>
 
 #include "env_config.h"
+#include "KernelInfo.h"
 
 #define AUOMS_SERVICE_NAME "auoms"
 #define AUDITD_SERVICE_NAME "auditd"
@@ -68,9 +70,19 @@ void usage()
             ;
 }
 
-int show_audit_status() {
+bool check_permissions() {
     if (geteuid() != 0) {
-        std::cerr << "Must be root to request audit status" << std::endl;
+        std::cerr << "Must be root to perform this operation" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
+int show_audit_status() {
+    if (!check_permissions()) {
         return 1;
     }
 
@@ -83,8 +95,8 @@ int show_audit_status() {
         return 1;
     }
 
-    audit_status status;
-    ret = NetlinkRetry([&netlink,&status]() { return netlink.AuditGet(status); });
+    AuditStatus status;
+    ret = NetlinkRetry([&netlink,&status]() { return status.GetStatus(netlink); });
 
     netlink.Close();
 
@@ -93,20 +105,119 @@ int show_audit_status() {
         return 1;
     }
 
-    std::cout << "enabled " << status.enabled << std::endl;
-    std::cout << "failure " << status.failure << std::endl;
-    std::cout << "pid " << status.pid << std::endl;
-    std::cout << "rate_limit " << status.rate_limit << std::endl;
-    std::cout << "backlog_limit " << status.backlog_limit << std::endl;
-    std::cout << "lost " << status.lost << std::endl;
-    std::cout << "backlog " << status.backlog << std::endl;
+    std::cout << "enabled " << status.GetEnabled() << std::endl;
+    std::cout << "failure " << status.GetFailure() << std::endl;
+    std::cout << "pid " << status.GetPid() << std::endl;
+    std::cout << "rate_limit " << status.GetRateLimit() << std::endl;
+    std::cout << "backlog_limit " << status.GetBacklogLimit() << std::endl;
+    std::cout << "lost " << status.GetLost() << std::endl;
+    std::cout << "backlog " << status.GetBacklog() << std::endl;
+    if (status.HasFeature(AuditStatus::Feature::BacklogWaitTime)) {
+        std::cout << "backlog_wait_time " << status.GetBacklogWaitTime() << std::endl;
+    }
 
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
+int set_backlog_limit(const std::string& str) {
+    if (!check_permissions()) {
+        return 1;
+    }
+
+    uint32_t backlog_limit = 0;
+    try {
+        backlog_limit = std::stoul(str);
+    } catch(std::exception&) {
+        std::cerr << "Invalid backlog limit (" << str << ")" << std::endl;
+    }
+
+    Netlink netlink;
+    netlink.SetQuite();
+    Defer([&netlink]() {netlink.Close();});
+
+    auto ret = netlink.Open(nullptr);
+    if (ret != 0) {
+        Logger::Error("Failed to open Netlink socket");
+        return 1;
+    }
+
+    AuditStatus status;
+    ret = NetlinkRetry([&netlink,&status]() { return status.GetStatus(netlink); });
+    if (ret != 0) {
+        Logger::Error("Failed to retrieve audit status: %s\n", strerror(-ret));
+        return 1;
+    }
+
+    if (status.GetBacklogLimit() != backlog_limit) {
+        AuditStatus new_status;
+        new_status.SetBacklogLimit(backlog_limit);
+        ret = NetlinkRetry([&netlink,&new_status]() { return new_status.UpdateStatus(netlink); });
+        if (ret != 0) {
+            Logger::Error("Failed to set backlog limit: %s\n", strerror(-ret));
+            return 1;
+        }
+    } else {
+        std::cerr << "The backlog limit is already set to (" << str << ")" << std::endl;
+    }
+
+    return 0;
+}
+
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
+int set_backlog_wait_time(const std::string& str) {
+    if (!check_permissions()) {
+        return 1;
+    }
+
+    uint32_t backlog_wait_time = 0;
+    try {
+        backlog_wait_time = std::stoul(str);
+    } catch(std::exception&) {
+        std::cerr << "Invalid backlog limit (" << str << ")" << std::endl;
+    }
+
+    Netlink netlink;
+    netlink.SetQuite();
+    Defer([&netlink]() {netlink.Close();});
+
+    auto ret = netlink.Open(nullptr);
+    if (ret != 0) {
+        Logger::Error("Failed to open Netlink socket");
+        return 1;
+    }
+
+    AuditStatus status;
+    ret = NetlinkRetry([&netlink,&status]() { return status.GetStatus(netlink); });
+    if (ret != 0) {
+        Logger::Error("Failed to retrieve audit status: %s\n", strerror(-ret));
+        return 1;
+    }
+
+    if (status.GetBacklogWaitTime() != backlog_wait_time) {
+        AuditStatus new_status;
+        new_status.SetBacklogWaitTime(backlog_wait_time);
+        ret = NetlinkRetry([&netlink,&new_status]() { return new_status.UpdateStatus(netlink); });
+        if (ret != 0) {
+            Logger::Error("Failed to set backlog wait time: %s\n", strerror(-ret));
+            return 1;
+        }
+    } else {
+        std::cerr << "The backlog wait time is already set to (" << str << ")" << std::endl;
+    }
+
+    return 0;
+}
+
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int list_rules(bool raw_fmt, const std::string& key) {
-    if (geteuid() != 0) {
-        std::cerr << "Must be root to request audit rules" << std::endl;
+    if (!check_permissions()) {
         return 1;
     }
 
@@ -148,9 +259,11 @@ int list_rules(bool raw_fmt, const std::string& key) {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int delete_rules(const std::string& key) {
-    if (geteuid() != 0) {
-        std::cerr << "Must be root to delete audit rules" << std::endl;
+    if (!check_permissions()) {
         return 1;
     }
 
@@ -201,9 +314,11 @@ int delete_rules(const std::string& key) {
     return exit_code;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int load_rules(const std::string& path) {
-    if (geteuid() != 0) {
-        std::cerr << "Must be root to load audit rules" << std::endl;
+    if (!check_permissions()) {
         return 1;
     }
 
@@ -250,6 +365,9 @@ int load_rules(const std::string& path) {
     return exit_code;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int print_rules(const std::string& path) {
     try {
         auto lines = ReadFile(path);
@@ -272,6 +390,9 @@ int print_rules(const std::string& path) {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int merge_rules(const std::string& file1, const std::string& file2) {
     try {
         auto rules1 = ParseRules(ReadFile(file1), nullptr);
@@ -288,6 +409,9 @@ int merge_rules(const std::string& file1, const std::string& file2) {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int diff_rules(const std::string& file1, const std::string& file2) {
     try {
         auto rules1 = MergeRules(ParseRules(ReadFile(file1), nullptr));
@@ -304,9 +428,11 @@ int diff_rules(const std::string& file1, const std::string& file2) {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int show_auoms_status() {
-    if (geteuid() != 0) {
-        std::cerr << "Must be root to request auoms status" << std::endl;
+    if (!check_permissions()) {
         return 1;
     }
 
@@ -327,6 +453,9 @@ int show_auoms_status() {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 std::string get_service_util_path() {
     std::string path = "/sbin/service";
     if (!PathExists(path)) {
@@ -338,6 +467,9 @@ std::string get_service_util_path() {
     return path;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 bool is_auditd_plugin_enabled_in_file(const std::string& path) {
     if (!PathExists(path)) {
         return false;
@@ -392,6 +524,9 @@ void set_auditd_plugin_status(bool enabled) {
     }
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 bool is_service_sysv_enabled() {
     std::string service_name(AUOMS_SERVICE_NAME);
     int count = 0;
@@ -407,6 +542,9 @@ bool is_service_sysv_enabled() {
     return count > 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 bool is_service_enabled() {
     std::string service_name(AUOMS_SERVICE_NAME);
     std::string path = SYSTEMCTL_PATH;
@@ -429,6 +567,9 @@ bool is_service_enabled() {
     return true;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 void enable_service() {
     std::string path;
     std::vector<std::string> args;
@@ -465,6 +606,9 @@ void enable_service() {
     }
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 void disable_service() {
     std::string path;
     std::vector<std::string> args;
@@ -502,6 +646,9 @@ void disable_service() {
     }
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 bool is_service_proc_running(const std::string& comm) {
     std::string path = "/usr/bin/pgrep";
     std::vector<std::string> args;
@@ -527,6 +674,9 @@ bool is_service_proc_running(const std::string& comm) {
     return true;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 void kill_service_proc(const std::string& comm) {
     std::string path = "/usr/bin/pkill";
     std::vector<std::string> args;
@@ -550,6 +700,9 @@ void kill_service_proc(const std::string& comm) {
     }
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 void service_cmd(const std::string& svc_cmd, const std::string& name) {
     std::string path = get_service_util_path();
     std::vector<std::string> args;
@@ -572,6 +725,9 @@ void service_cmd(const std::string& svc_cmd, const std::string& name) {
     }
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 bool start_service() {
     if (is_service_proc_running(AUOMS_COMM)) {
         return true;
@@ -588,6 +744,9 @@ bool start_service() {
     return false;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 void stop_service() {
     if (is_service_proc_running(AUOMS_COMM)) {
         try {
@@ -624,12 +783,18 @@ void stop_service() {
     }
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 bool restart_service() {
     stop_service();
 
     return start_service();
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 bool start_auditd_service() {
     if (is_service_proc_running(AUDITD_COMM)) {
         return true;
@@ -645,6 +810,9 @@ bool start_auditd_service() {
     return false;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 void stop_auditd_service() {
     service_cmd("stop", AUDITD_SERVICE_NAME);
 
@@ -668,6 +836,9 @@ void stop_auditd_service() {
     kill_service_proc(AUOMSCOLLECT_COMM);
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 bool restart_auditd_service() {
     stop_auditd_service();
 
@@ -679,9 +850,11 @@ bool restart_auditd_service() {
     return is_service_proc_running(AUDITD_COMM);
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int enable_auoms() {
-    if (geteuid() != 0) {
-        std::cerr << "Must be root to enable auoms" << std::endl;
+    if (!check_permissions()) {
         return 1;
     }
 
@@ -724,6 +897,9 @@ int enable_auoms() {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int remove_rules_from_audit_files() {
     if (RemoveAuomsRulesAuditdFiles()) {
         Cmd cmd(AUGENRULES_BIN, {}, Cmd::NULL_STDIN|Cmd::COMBINE_OUTPUT);
@@ -738,9 +914,11 @@ int remove_rules_from_audit_files() {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int disable_auoms() {
-    if (geteuid() != 0) {
-        std::cerr << "Must be root to disable auoms" << std::endl;
+    if (!check_permissions()) {
         return 1;
     }
 
@@ -774,6 +952,9 @@ int disable_auoms() {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int start_auoms(bool all) {
     int ret = 0;
     try {
@@ -796,6 +977,9 @@ int start_auoms(bool all) {
     return ret;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int stop_auoms(bool all) {
     try {
         if (all && PathExists(AUDITD_BIN)) {
@@ -811,6 +995,9 @@ int stop_auoms(bool all) {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int restart_auoms(bool all) {
     int ret = 0;
     try {
@@ -831,6 +1018,9 @@ int restart_auoms(bool all) {
     return ret;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 /*
  * Return:
  *  0 = running
@@ -869,9 +1059,11 @@ int show_auoms_state() {
     }
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int tap_audit() {
-    if (geteuid() != 0) {
-        std::cerr << "Must be root to collect audit events" << std::endl;
+    if (!check_permissions()) {
         return 1;
     }
 
@@ -973,6 +1165,53 @@ int tap_audit() {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
+
+int tap_audit_multicast() {
+    if (!check_permissions()) {
+        return 1;
+    }
+
+    try {
+        auto ki = KernelInfo::GetKernelInfo();
+        if (!ki.HasAuditMulticast()) {
+            Logger::Error("Audit multicast not supported in kerenel version %s", ki.KernelVersion().c_str());
+            return 1;
+        }
+    } catch (std::exception &ex) {
+        Logger::Error("Failed to determine if audit multicast is supported: %s", ex.what());
+    }
+
+    Netlink netlink;
+    Gate _stop_gate;
+
+    std::function handler = [](uint16_t type, uint16_t flags, const void* data, size_t len) -> bool {
+        if (type >= AUDIT_FIRST_USER_MSG) {
+            std::cout << "type=" << RecordTypeToName(static_cast<RecordType>(type)) << " " << std::string_view(reinterpret_cast<const char*>(data), len) << std::endl;
+        }
+        return false;
+    };
+
+    Logger::Info("Connecting to AUDIT NETLINK socket");
+    auto ret = netlink.Open(std::move(handler), true);
+    if (ret != 0) {
+        Logger::Error("Failed to open AUDIT NETLINK connection: %s", std::strerror(-ret));
+        return 1;
+    }
+    Defer _close_netlink([&netlink]() { netlink.Close(); });
+
+    Signals::SetExitHandler([&_stop_gate]() { _stop_gate.Open(); });
+
+    _stop_gate.Wait(Gate::OPEN, -1);
+
+    return 0;
+}
+
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 void handle_raw_connection(int fd) {
     std::array<uint8_t, 1024*256> data;
 
@@ -1031,6 +1270,9 @@ void handle_raw_connection(int fd) {
     }
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 bool reload_auoms() {
     std::string path = "/usr/bin/pkill";
     std::vector<std::string> args;
@@ -1057,9 +1299,11 @@ bool reload_auoms() {
     return true;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int monitor_auoms_events() {
-    if (geteuid() != 0) {
-        std::cerr << "Must be root to collect audit events" << std::endl;
+    if (!check_permissions()) {
         return 1;
     }
 
@@ -1100,6 +1344,9 @@ int monitor_auoms_events() {
     return retcode;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int set_rules() {
     auto rules = ReadAuditRulesFromDir(AUOMS_RULES_DIR, nullptr);
     std::vector<AuditRule> desired_rules;
@@ -1161,6 +1408,9 @@ int set_rules() {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 template<typename T>
 bool is_set_intersect(T a, T b) {
     for (auto& e: b) {
@@ -1171,6 +1421,9 @@ bool is_set_intersect(T a, T b) {
     return true;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int load_rules() {
     auto rules = ReadAuditRulesFromDir(AUOMS_RULES_DIR, nullptr);
     std::vector<AuditRule> desired_rules;
@@ -1292,6 +1545,10 @@ int load_rules() {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
+
 int flag_reset(const std::string& path) {
     try {
         unlink(path.c_str());
@@ -1304,14 +1561,13 @@ int flag_reset(const std::string& path) {
 }
 
 int upgrade() {
-    if (geteuid() != 0) {
-        std::cerr << "Must be root to perform requested operation" << std::endl;
+    if (!check_permissions()) {
         return 1;
     }
 
     try {
         // Use auditd plugin file to determine if auoms should be enabled
-        if (is_auditd_plugin_enabled()) {
+        if (is_service_enabled() || is_auditd_plugin_enabled()) {
             // Stop services
             if (PathExists(AUDITD_BIN)) {
                 stop_auditd_service();
@@ -1376,6 +1632,9 @@ int upgrade() {
     return 0;
 }
 
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int spam_netlink(const std::string& dur_str, const std::string& num_str) {
     if (geteuid() != 0) {
         std::cerr << "Must be root to request audit rules" << std::endl;
@@ -1425,6 +1684,10 @@ int spam_netlink(const std::string& dur_str, const std::string& num_str) {
     return 0;
 }
 
+
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int main(int argc, char**argv) {
     if (argc < 2 || strlen(argv[1]) < 2) {
         usage();
@@ -1440,6 +1703,18 @@ int main(int argc, char**argv) {
         return 0;
     } else if (strcmp(argv[1], "-s") == 0) {
         return show_audit_status();
+    } else if (strcmp(argv[1], "-bl") == 0) {
+        if (argc < 3) {
+            usage();
+            exit(1);
+        }
+        return set_backlog_limit(argv[2]);
+    } else if (strcmp(argv[1], "-bwt") == 0) {
+        if (argc < 3) {
+            usage();
+            exit(1);
+        }
+        return set_backlog_wait_time(argv[2]);
     } else if (strcmp(argv[1], "-l") == 0) {
         std::string key;
         if (argc > 2) {
@@ -1505,23 +1780,26 @@ int main(int argc, char**argv) {
         return disable_auoms();
     } else if (strcmp(argv[1], "start") == 0) {
         bool all = false;
-        if (argc > 2 && strcmp(argv[1], "all") == 0) {
+        if (argc > 2 && strcmp(argv[2], "all") == 0) {
             all = true;
         }
         return start_auoms(all);
     } else if (strcmp(argv[1], "restart") == 0) {
         bool all = false;
-        if (argc > 2 && strcmp(argv[1], "all") == 0) {
+        if (argc > 2 && strcmp(argv[2], "all") == 0) {
             all = true;
         }
         return restart_auoms(all);
     } else if (strcmp(argv[1], "stop") == 0) {
         bool all = false;
-        if (argc > 2 && strcmp(argv[1], "all") == 0) {
+        if (argc > 2 && strcmp(argv[2], "all") == 0) {
             all = true;
         }
         return stop_auoms(all);
     } else if (strcmp(argv[1], "tap") == 0) {
+        if (argc > 2 && strcmp(argv[2], "multicast") == 0) {
+            return tap_audit_multicast();
+        }
         return tap_audit();
     } else if (strcmp(argv[1], "monitor") == 0) {
         return monitor_auoms_events();

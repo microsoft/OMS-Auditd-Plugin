@@ -24,7 +24,7 @@
 #include <sstream>
 #include <iomanip>
 
-std::shared_ptr<Metric> Metrics::AddMetric(const std::string namespace_name, const std::string name, MetricPeriod sample_period, MetricPeriod agg_period) {
+std::shared_ptr<Metric> Metrics::AddMetric(MetricType metric_type, const std::string& namespace_name, const std::string& name, MetricPeriod sample_period, MetricPeriod agg_period) {
     std::lock_guard<std::mutex> lock(_mutex);
 
     auto key = namespace_name + name;
@@ -32,7 +32,22 @@ std::shared_ptr<Metric> Metrics::AddMetric(const std::string namespace_name, con
     if (it != _metrics.end()) {
         return it->second;
     } else {
-        auto r = _metrics.emplace(std::make_pair(key, std::make_shared<Metric>(namespace_name, name, sample_period, agg_period)));
+        std::shared_ptr<Metric> metric;
+        switch(metric_type) {
+            case MetricType::METRIC_BY_ACCUMULATION:
+                metric = std::shared_ptr<Metric>(new AccumulatorMetric(namespace_name, name, sample_period, agg_period));
+                break;
+            case MetricType::METRIC_BY_FILL:
+                metric = std::shared_ptr<Metric>(new FillMetric(namespace_name, name, sample_period, agg_period));
+                break;
+            case MetricType::METRIC_FROM_TOTAL:
+                metric = std::shared_ptr<Metric>(new MetricFromTotal(namespace_name, name, sample_period, agg_period));
+                break;
+            default:
+                metric = std::shared_ptr<Metric>(new AccumulatorMetric(namespace_name, name, sample_period, agg_period));
+                break;
+        }
+        auto r = _metrics.emplace(std::make_pair(key, metric));
         return r.first->second;
     }
 }
@@ -40,8 +55,8 @@ std::shared_ptr<Metric> Metrics::AddMetric(const std::string namespace_name, con
 void Metrics::run() {
     Logger::Info("Metrics starting");
 
-    // Check for metrics to send once per second without drift
-    while(!_sleep(1000)) {
+    // Check for metrics to send once per minute
+    while(!_sleep(60000)) {
         if (!send_metrics()) {
             return;
         }
@@ -73,62 +88,50 @@ bool Metrics::send_metrics() {
 
             int num_fields = 10;
 
-            if (_builder->BeginEvent(sec, msec, 0, 1) != 1) {
+            if (!_builder->BeginEvent(sec, msec, 0, 1)) {
                 return false;
             }
-            if (_builder->BeginRecord(static_cast<uint32_t>(rec_type), rec_type_name, "", num_fields) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->BeginRecord(static_cast<uint32_t>(rec_type), rec_type_name, "", num_fields)) {
                 return false;
             }
-            if (_builder->AddField("version", AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("version", AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("StartTime", system_time_to_iso3339(snap.start_time), nullptr,
-                                  field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("StartTime", system_time_to_iso3339(snap.start_time), nullptr,
+                                  field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("EndTime", system_time_to_iso3339(snap.end_time), nullptr,
-                                  field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("EndTime", system_time_to_iso3339(snap.end_time), nullptr,
+                                  field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("Namespace", snap.namespace_name, nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("Namespace", snap.namespace_name, nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("Name", snap.name, nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("Name", snap.name, nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("SamplePeriod", std::to_string(snap.sample_period), nullptr,
-                                  field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("SamplePeriod", std::to_string(snap.sample_period), nullptr,
+                                  field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("NumSamples", std::to_string(snap.num_samples), nullptr,
-                                  field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("NumSamples", std::to_string(snap.num_samples), nullptr,
+                                  field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("Min", std::to_string(snap.min), nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("Min", std::to_string(snap.min), nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("Max", std::to_string(snap.max), nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("Max", std::to_string(snap.max), nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->AddField("Avg", std::to_string(snap.avg), nullptr, field_type_t::UNCLASSIFIED) != 1) {
-                _builder->CancelEvent();
+            if (!_builder->AddField("Avg", std::to_string(snap.avg), nullptr, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (_builder->EndRecord() != 1) {
-                _builder->CancelEvent();
+            if (!_builder->EndRecord()) {
                 return false;
             }
-            if (_builder->EndEvent() != 1) {
+            if (!_builder->EndEvent()) {
                 return false;
             }
         }

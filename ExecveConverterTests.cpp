@@ -37,7 +37,7 @@ class RawEventQueue: public IEventBuilderAllocator {
 public:
     explicit RawEventQueue(std::vector<std::string>& cmdlines): _buffer(), _size(0), _cmdlines(cmdlines) {}
 
-    int Allocate(void** data, size_t size) override {
+    bool Allocate(void** data, size_t size) override {
         if (_size != size) {
             _size = size;
         }
@@ -45,10 +45,10 @@ public:
             _buffer.resize(_size);
         }
         *data = _buffer.data();
-        return 1;
+        return true;
     }
 
-    int Commit() override {
+    bool Commit() override {
         Event event(_buffer.data(), _size);
         std::vector<EventRecord> recs;
         for(auto& rec :event) {
@@ -59,12 +59,12 @@ public:
         _converter.Convert(recs, _cmdline);
         _cmdlines.emplace_back(_cmdline);
         _size = 0;
-        return 1;
+        return true;
     }
 
-    int Rollback() override {
+    bool Rollback() override {
         _size = 0;
-        return 1;
+        return true;
     }
 
 private:
@@ -173,13 +173,14 @@ std::vector<TestData> test_data = {
 BOOST_AUTO_TEST_CASE( basic_test ) {
     std::vector<std::string> actual_cmdlines;
 
+    auto prioritizer = DefaultPrioritizer::Create(0);
     auto raw_queue = new RawEventQueue(actual_cmdlines);
     auto raw_allocator = std::shared_ptr<IEventBuilderAllocator>(raw_queue);
-    auto raw_builder = std::make_shared<EventBuilder>(raw_allocator);
+    auto raw_builder = std::make_shared<EventBuilder>(raw_allocator, prioritizer);
 
     auto metrics_queue = new TestEventQueue();
     auto metrics_allocator = std::shared_ptr<IEventBuilderAllocator>(metrics_queue);
-    auto metrics_builder = std::make_shared<EventBuilder>(metrics_allocator);
+    auto metrics_builder = std::make_shared<EventBuilder>(metrics_allocator, prioritizer);
     auto metrics = std::make_shared<Metrics>(metrics_builder);
 
     RawEventAccumulator accumulator(raw_builder, metrics);

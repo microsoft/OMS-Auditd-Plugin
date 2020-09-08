@@ -18,22 +18,22 @@
 #define BOOST_TEST_MODULE "EventTests"
 #include <boost/test/unit_test.hpp>
 
-#include "Queue.h"
+#include "PriorityQueue.h"
 #include "EventQueue.h"
-#include "TempFile.h"
+#include "TempDir.h"
 
 
 
 BOOST_AUTO_TEST_CASE( test )
 {
-    TempFile file("/tmp/EventTests.");
+    TempDir dir("/tmp/EventTests.");
 
-    auto queue = std::make_shared<Queue>(file.Path(), 64*1024);
+    auto queue = PriorityQueue::Open(dir.Path(), 8, 16*1024,8, 0, 100, 0);
     auto event_queue = std::make_shared<EventQueue>(queue);
 
-    queue->Open();
+    auto cursor_handle = queue->OpenCursor("event_test");
 
-    EventBuilder builder(event_queue);
+    EventBuilder builder(event_queue, DefaultPrioritizer::Create(0));
 
     int ret = builder.BeginEvent(1, 3, 4, 2);
     if (ret != 1) {
@@ -82,15 +82,12 @@ BOOST_AUTO_TEST_CASE( test )
         BOOST_FAIL("EndEvent failed: " + std::to_string(ret));
     }
 
-    char buffer[64*1024];
-    void* data = reinterpret_cast<void*>(buffer);
-    size_t size = sizeof(buffer);
-    QueueCursor cursor = QueueCursor::TAIL;
-    if (queue->Get(cursor, data, &size, &cursor, 10) <= 0) {
+    auto rval = queue->Get(cursor_handle, 0);
+    if (!rval.first) {
         BOOST_FAIL("Queue didn't have any data in it!");
     }
 
-    Event event(data, size);
+    Event event(rval.first->Data(), rval.first->Size());
 
     BOOST_CHECK_EQUAL(event.Seconds(), 1);
     BOOST_CHECK_EQUAL(event.Milliseconds(), 3);
@@ -223,11 +220,12 @@ BOOST_AUTO_TEST_CASE( test )
         BOOST_FAIL("EndEvent failed: " + std::to_string(ret));
     }
 
-    size = sizeof(buffer);
-    if (queue->Get(cursor, data, &size, &cursor, 10) <= 0) {
+    rval = queue->Get(cursor_handle, 0);
+    if (!rval.first) {
         BOOST_FAIL("Queue didn't have any data in it!");
     }
-    event = Event(data, size);
+
+    event = Event(rval.first->Data(), rval.first->Size());
 
     BOOST_CHECK_EQUAL(event.Pid(), -1);
 

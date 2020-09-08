@@ -1,6 +1,18 @@
-//
-// Created by tad on 3/25/19.
-//
+/*
+    microsoft-oms-auditd-plugin
+
+    Copyright (c) Microsoft Corporation
+
+    All rights reserved.
+
+    MIT License
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the ""Software""), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
 
 #include "FileUtils.h"
 
@@ -83,6 +95,17 @@ std::vector<std::string> ReadFile(const std::string& path) {
 
 void WriteFile(const std::string& path, const std::vector<std::string>& lines) {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) {
+        throw std::runtime_error("Failed to open '" + path + "'");
+    }
+    for (auto& line: lines) {
+        out << line << std::endl;
+    }
+    out.close();
+}
+
+void AppendFile(const std::string& path, const std::vector<std::string>& lines) {
+    std::ofstream out(path, std::ios::binary);
     if (!out.is_open()) {
         throw std::runtime_error("Failed to open '" + path + "'");
     }

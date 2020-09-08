@@ -17,13 +17,14 @@
 #define BOOST_TEST_MODULE "EventProcessorTests"
 #include <boost/test/unit_test.hpp>
 
-#include "Queue.h"
+#include "PriorityQueue.h"
 #include "Logger.h"
 #include "TempDir.h"
 #include "TestEventData.h"
 #include "RawEventProcessor.h"
 #include "RawEventAccumulator.h"
 #include "StringUtils.h"
+#include "EventPrioritizer.h"
 
 #include <fstream>
 #include <stdexcept>
@@ -47,7 +48,7 @@ class RawEventQueue: public IEventBuilderAllocator {
 public:
     explicit RawEventQueue(std::shared_ptr<RawEventProcessor> proc): _buffer(), _size(0), _proc(std::move(proc)) {}
 
-    int Allocate(void** data, size_t size) override {
+    bool Allocate(void** data, size_t size) override {
         if (_size != size) {
             _size = size;
         }
@@ -55,18 +56,18 @@ public:
             _buffer.resize(_size);
         }
         *data = _buffer.data();
-        return 1;
+        return true;
     }
 
-    int Commit() override {
+    bool Commit() override {
         _proc->ProcessData(_buffer.data(), _size);
         _size = 0;
-        return 1;
+        return true;
     }
 
-    int Rollback() override {
+    bool Rollback() override {
         _size = 0;
-        return 1;
+        return true;
     }
 
 private:
@@ -242,12 +243,13 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     auto expected_queue = new TestEventQueue();
     auto actual_queue = new TestEventQueue();
     auto metrics_queue = new TestEventQueue();
+    auto prioritizer = DefaultPrioritizer::Create(0);
     auto expected_allocator = std::shared_ptr<IEventBuilderAllocator>(expected_queue);
     auto actual_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_queue);
     auto metrics_allocator = std::shared_ptr<IEventBuilderAllocator>(metrics_queue);
-    auto expected_builder = std::make_shared<EventBuilder>(expected_allocator);
-    auto actual_builder = std::make_shared<EventBuilder>(actual_allocator);
-    auto metrics_builder = std::make_shared<EventBuilder>(metrics_allocator);
+    auto expected_builder = std::make_shared<EventBuilder>(expected_allocator, prioritizer);
+    auto actual_builder = std::make_shared<EventBuilder>(actual_allocator, prioritizer);
+    auto metrics_builder = std::make_shared<EventBuilder>(metrics_allocator, prioritizer);
 
     auto proc_filter = std::make_shared<ProcFilter>(user_db);
     auto filtersEngine = std::make_shared<FiltersEngine>();
@@ -259,7 +261,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
 
     auto actual_raw_queue = new RawEventQueue(raw_proc);
     auto actual_raw_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_raw_queue);
-    auto actual_raw_builder = std::make_shared<EventBuilder>(actual_raw_allocator);
+    auto actual_raw_builder = std::make_shared<EventBuilder>(actual_raw_allocator, prioritizer);
 
     for (auto e : test_events) {
         e.Write(expected_builder);

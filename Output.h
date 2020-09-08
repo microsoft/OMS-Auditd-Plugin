@@ -18,7 +18,7 @@
 #define AUOMS_OUTPUT_H
 
 #include "RunBase.h"
-#include "Queue.h"
+#include "PriorityQueue.h"
 #include "Config.h"
 #include "EventId.h"
 #include "OMSEventWriter.h"
@@ -42,67 +42,48 @@ public:
         return _max_size;
     }
 
+    void Init(const std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<QueueCursorHandle>& cursor_handle);
+
     void Close();
 
+    bool IsClosed();
+
     // Return false if timeout, true if added
-    bool Add(const EventId& event_id, const QueueCursor& cursor, long timeout);
+    bool Add(const EventId& event_id, uint32_t priority, uint64_t seq, long timeout);
 
     // Set (or update) auto cursor
-    void SetAutoCursor(const QueueCursor& cursor);
+    void SetAutoCursor(uint32_t priority, uint64_t seq);
 
     // Get and clear auto cursor
-    bool GetAutoCursor(QueueCursor& cursor);
+    void ProcessAutoCursor();
 
     void Remove(const EventId& event_id);
-
-    void Reset();
 
     // Returns false on timeout, true is queue is empty
     bool Wait(int millis);
 
-    bool Ack(const EventId& event_id, QueueCursor& cursor);
+    void Ack(const EventId& event_id);
 
 private:
+    class _CursorEntry {
+    public:
+        _CursorEntry(EventId event_id, uint32_t priority, uint64_t seq): _event_id(event_id), _priority(priority), _seq(seq) {}
+        EventId _event_id;
+        uint32_t _priority;
+        uint64_t _seq;
+    };
     std::mutex _mutex;
     std::condition_variable _cond;
     std::unordered_map<EventId, uint64_t> _event_ids;
-    std::map<uint64_t, std::pair<EventId,QueueCursor>> _cursors;
+    std::map<uint64_t, _CursorEntry> _cursors;
     size_t _max_size;
+    std::shared_ptr<PriorityQueue> _queue;
+    std::shared_ptr<QueueCursorHandle> _cursor_handle;
     bool _closed;
     bool _have_auto_cursor;
     uint64_t _next_seq;
     uint64_t _auto_cursor_seq;
-    QueueCursor _auto_cursor;
-};
-
-/****************************************************************************
- *
- ****************************************************************************/
-
-class CursorWriter: public RunBase {
-public:
-
-    CursorWriter(const std::string& name, const std::string& path): _name(name), _path(path), _cursor_updated(false)
-    {}
-
-    bool Read();
-    bool Write();
-    bool Delete();
-
-    QueueCursor GetCursor();
-    void UpdateCursor(const QueueCursor& cursor);
-
-protected:
-    virtual void on_stopping();
-    virtual void run();
-
-private:
-    std::string _name;
-    std::string _path;
-    std::mutex _mutex;
-    std::condition_variable _cond;
-    bool _cursor_updated;
-    QueueCursor _cursor;
+    std::unordered_map<uint32_t, uint64_t> _auto_cursors;
 };
 
 /****************************************************************************
@@ -119,8 +100,7 @@ public:
 
     void Init(std::shared_ptr<IEventWriter> event_writer,
               std::shared_ptr<IOBase> writer,
-              std::shared_ptr<AckQueue> ack_queue,
-              std::shared_ptr<CursorWriter> cursor_writer);
+              std::shared_ptr<AckQueue> ack_queue);
 
 protected:
     virtual void run();
@@ -129,7 +109,6 @@ protected:
     std::shared_ptr<IEventWriter> _event_writer;
     std::shared_ptr<IOBase> _writer;
     std::shared_ptr<AckQueue> _queue;
-    std::shared_ptr<CursorWriter> _cursor_writer;
 };
 
 /****************************************************************************
@@ -176,10 +155,9 @@ public:
     static constexpr int DEFAULT_ACK_QUEUE_SIZE = 1000;
     static constexpr long MIN_ACK_TIMEOUT = 100;
 
-    Output(const std::string& name, const std::string& cursor_path, const std::shared_ptr<Queue>& queue, const std::shared_ptr<IEventWriterFactory>& writer_factory, const std::shared_ptr<IEventFilterFactory>& filter_factory):
-            _name(name), _cursor_path(cursor_path), _queue(queue), _writer_factory(writer_factory), _filter_factory(filter_factory), _ack_mode(false), _ack_timeout(10000)
+    Output(const std::string& name, const std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<IEventWriterFactory>& writer_factory, const std::shared_ptr<IEventFilterFactory>& filter_factory):
+            _name(name), _queue(queue), _writer_factory(writer_factory), _filter_factory(filter_factory), _ack_mode(false), _ack_timeout(10000)
     {
-        _cursor_writer = std::make_shared<CursorWriter>(name, cursor_path);
         _ack_reader = std::unique_ptr<AckReader>(new AckReader(name));
     }
 
@@ -206,21 +184,19 @@ protected:
 
     std::mutex _mutex;
     std::string _name;
-    std::string _cursor_path;
     std::string _socket_path;
-    std::shared_ptr<Queue> _queue;
+    std::shared_ptr<PriorityQueue> _queue;
     std::shared_ptr<IEventWriterFactory> _writer_factory;
     std::shared_ptr<IEventFilterFactory> _filter_factory;
     bool _ack_mode;
     long _ack_timeout;
     std::unique_ptr<Config> _config;
-    QueueCursor _cursor;
+    std::shared_ptr<QueueCursorHandle> _cursor_handle;
     std::shared_ptr<IEventWriter> _event_writer;
     std::shared_ptr<IEventFilter> _event_filter;
     std::shared_ptr<IOBase> _writer;
     std::shared_ptr<AckQueue> _ack_queue;
     std::unique_ptr<AckReader> _ack_reader;
-    std::shared_ptr<CursorWriter> _cursor_writer;
 };
 
 

@@ -22,7 +22,7 @@
 #endif
 
 #ifndef AUOMS_DATA_DIR
-#define AUOMS_DATA_DIR "/var/opt/microsoft/auoms/data"
+#define AUOMS_DATA_DIR "/var/opt/microsoft/auoms"
 #endif
 
 #ifndef AUOMS_RULES_DIR

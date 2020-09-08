@@ -152,11 +152,11 @@ bool SyscallMetrics::collect_metrics() {
         if (ret == 1) {
             auto it = _syscall_metrics.find(id);
             if (it == _syscall_metrics.end()) {
-                auto metric = _metrics->AddMetric(SYSCALL_METRICS_NAMESPACE_NAME, name, MetricPeriod::SECOND, MetricPeriod::HOUR);
+                auto metric = _metrics->AddMetric(MetricType::METRIC_BY_FILL, SYSCALL_METRICS_NAMESPACE_NAME, name, MetricPeriod::SECOND, MetricPeriod::HOUR);
                 auto itr = _syscall_metrics.emplace(std::make_pair(id, metric));
                 it = itr.first;
             }
-            it->second->Set(static_cast<double>(count));
+            it->second->Update(static_cast<double>(count));
         }
     }
 

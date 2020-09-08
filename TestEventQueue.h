@@ -24,20 +24,20 @@
 
 class TestEventQueue: public IEventBuilderAllocator {
 public:
-    virtual int Allocate(void** data, size_t size) {
+    virtual bool Allocate(void** data, size_t size) {
         _buffer.resize(size);
         *data = _buffer.data();
-        return 1;
+        return true;
     }
 
-    virtual int Commit() {
+    virtual bool Commit() {
         _events.emplace_back(std::make_shared<std::vector<uint8_t>>(_buffer.begin(), _buffer.end()));
-        return 1;
+        return true;
     }
 
-    virtual int Rollback() {
+    virtual bool Rollback() {
         _buffer.resize(0);
-        return 1;
+        return true;
     }
 
     size_t GetEventCount() {

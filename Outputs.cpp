@@ -112,7 +112,7 @@ void Outputs::run() {
  */
 
 std::unique_ptr<Config> Outputs::read_and_validate_config(const std::string& name, const std::string& path) {
-    Logger::Error("Output(%s): Reading config from %s", name.c_str(), path.c_str());
+    Logger::Info("Output(%s): Reading config from %s", name.c_str(), path.c_str());
 
     std::unique_ptr<Config> config(new Config());
     try {
@@ -237,13 +237,12 @@ void Outputs::do_conf_sync() {
         bool load = false;
         if (it != _outputs.end()) {
             if (it->second->IsConfigDifferent(*config)) {
-                Logger::Error("Output(%s): Config has changed", ent.first.c_str());
+                Logger::Info("Output(%s): Config has changed", ent.first.c_str());
                 it->second->Stop();
                 load = true;
             }
         } else {
-            auto cursor_file = _cursor_dir + "/" + ent.first + ".cursor";
-            auto o = std::make_shared<Output>(ent.first, cursor_file, _queue, _writer_factory, _filter_factory);
+            auto o = std::make_shared<Output>(ent.first, _queue, _writer_factory, _filter_factory);
             it = _outputs.insert(std::make_pair(ent.first, o)).first;
             load = true;
         }

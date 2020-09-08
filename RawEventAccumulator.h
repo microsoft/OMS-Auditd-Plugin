@@ -55,9 +55,9 @@ private:
 class RawEventAccumulator {
 public:
     explicit RawEventAccumulator(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<Metrics>& metrics): _builder(builder), _metrics(metrics) {
-        _bytes_metric = _metrics->AddMetric("raw_data", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
-        _record_metric = _metrics->AddMetric("raw_data", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
-        _event_metric = _metrics->AddMetric("raw_data", "events", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _bytes_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "raw_data", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _record_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "raw_data", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _event_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "raw_data", "events", MetricPeriod::SECOND, MetricPeriod::HOUR);
     }
 
     int AddRecord(std::unique_ptr<RawEventRecord> record);

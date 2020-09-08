@@ -16,7 +16,7 @@
 
 #include "RawEventProcessor.h"
 
-#include "Queue.h"
+#include "PriorityQueue.h"
 #include "Logger.h"
 #include "Translate.h"
 #include "Interpret.h"
@@ -36,9 +36,9 @@ void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
 
     Event event(data, data_len);
 
-    _bytes_metric->Add(static_cast<double>(data_len));
-    _record_metric->Add(static_cast<double>(event.NumRecords()));
-    _event_metric->Add(1.0);
+    _bytes_metric->Update(static_cast<double>(data_len));
+    _record_metric->Update(static_cast<double>(event.NumRecords()));
+    _event_metric->Update(1.0);
 
     auto ret = event.Validate();
     if (ret != 0) {
@@ -66,12 +66,8 @@ void RawEventProcessor::process_event(const Event& event) {
     static auto S_PID = "pid"s;
     static auto S_PPID = "ppid"s;
 
-    auto ret = _builder->BeginEvent(event.Seconds(), event.Milliseconds(), event.Serial(), event.NumRecords());
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        return;
+    if (!_builder->BeginEvent(event.Seconds(), event.Milliseconds(), event.Serial(), event.NumRecords())) {
+        throw std::runtime_error("Queue closed");
     }
 
     for (auto& rec: event) {
@@ -79,13 +75,8 @@ void RawEventProcessor::process_event(const Event& event) {
             Logger::Warn("Encountered event record with NumFields == 0: type=%s msg=audit(%ld.%03d:%ld)", rec.RecordTypeNamePtr(), event.Seconds(), event.Milliseconds(), event.Serial());
             return;
         }
-        ret = _builder->BeginRecord(rec.RecordType(), rec.RecordTypeName(), rec.RecordText(), rec.NumFields());
-        if (ret != 1) {
-            if (ret == Queue::CLOSED) {
-                throw std::runtime_error("Queue closed");
-            }
-            cancel_event();
-            return;
+        if (!_builder->BeginRecord(rec.RecordType(), rec.RecordTypeName(), rec.RecordText(), rec.NumFields())) {
+            throw std::runtime_error("Queue closed");
         }
 
         auto pid_field = rec.FieldByName(S_PID);
@@ -105,13 +96,8 @@ void RawEventProcessor::process_event(const Event& event) {
             }
         }
 
-        ret = _builder->EndRecord();
-        if (ret != 1) {
-            if (ret == Queue::CLOSED) {
-                throw std::runtime_error("Queue closed");
-            }
-            cancel_event();
-            return;
+        if (!_builder->EndRecord()) {
+            throw std::runtime_error("Queue closed");
         }
     }
 
@@ -272,13 +258,13 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                         for (auto& f: rec) {
                             if (f.FieldName() == SV_ITEM && f.RawValue() == SV_ZERO) {
                                 isItemZero = true;
-                                path_rec = rec;
                             } else if (f.FieldName() == SV_NODE) {
                                 numNodeFields++;
                             }
                         }
                         if (isItemZero) {
                             num_fields += rec.NumFields() - 1 - numNodeFields; // exclude item and node fields
+                            path_rec = rec;
                         }
                     }
                 }
@@ -381,22 +367,13 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     // For containerid
     num_fields += 1;
 
-    auto ret = _builder->BeginEvent(event.Seconds(), event.Milliseconds(), event.Serial(), 1);
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        return false;
+    if (!_builder->BeginEvent(event.Seconds(), event.Milliseconds(), event.Serial(), 1)) {
+        throw std::runtime_error("Queue closed");
     }
     _event_flags = EVENT_FLAG_IS_AUOMS_EVENT;
 
-    ret = _builder->BeginRecord(static_cast<uint32_t>(rec_type), rec_type_name, SV_EMPTY, num_fields);
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        cancel_event();
-        return false;
+    if (!_builder->BeginRecord(static_cast<uint32_t>(rec_type), rec_type_name, SV_EMPTY, num_fields)) {
+        throw std::runtime_error("Queue closed");
     }
 
     if (syscall_rec) {
@@ -567,49 +544,24 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         _path_ouid.append(SV_JSON_ARRAY_END);
         _path_ogid.append(SV_JSON_ARRAY_END);
 
-        auto ret = _builder->AddField(SV_PATH_NAME, _path_name, nullptr, field_type_t::UNCLASSIFIED);
-        if (ret != 1) {
-            if (ret == Queue::CLOSED) {
-                throw std::runtime_error("Queue closed");
-            }
-            cancel_event();
-            return false;
+        if (!_builder->AddField(SV_PATH_NAME, _path_name, nullptr, field_type_t::UNCLASSIFIED)) {
+            throw std::runtime_error("Queue closed");
         }
 
-        ret = _builder->AddField(SV_PATH_NAMETYPE, _path_nametype, nullptr, field_type_t::UNCLASSIFIED);
-        if (ret != 1) {
-            if (ret == Queue::CLOSED) {
-                throw std::runtime_error("Queue closed");
-            }
-            cancel_event();
-            return false;
+        if (!_builder->AddField(SV_PATH_NAMETYPE, _path_nametype, nullptr, field_type_t::UNCLASSIFIED)) {
+            throw std::runtime_error("Queue closed");
         }
 
-        ret = _builder->AddField(SV_PATH_MODE, _path_mode, nullptr, field_type_t::UNCLASSIFIED);
-        if (ret != 1) {
-            if (ret == Queue::CLOSED) {
-                throw std::runtime_error("Queue closed");
-            }
-            cancel_event();
-            return false;
+        if (!_builder->AddField(SV_PATH_MODE, _path_mode, nullptr, field_type_t::UNCLASSIFIED)) {
+            throw std::runtime_error("Queue closed");
         }
 
-        ret = _builder->AddField(SV_PATH_OUID, _path_ouid, nullptr, field_type_t::UNCLASSIFIED);
-        if (ret != 1) {
-            if (ret == Queue::CLOSED) {
-                throw std::runtime_error("Queue closed");
-            }
-            cancel_event();
-            return false;
+        if (!_builder->AddField(SV_PATH_OUID, _path_ouid, nullptr, field_type_t::UNCLASSIFIED)) {
+            throw std::runtime_error("Queue closed");
         }
 
-        ret = _builder->AddField(SV_PATH_OGID, _path_ogid, nullptr, field_type_t::UNCLASSIFIED);
-        if (ret != 1) {
-            if (ret == Queue::CLOSED) {
-                throw std::runtime_error("Queue closed");
-            }
-            cancel_event();
-            return false;
+        if (!_builder->AddField(SV_PATH_OGID, _path_ogid, nullptr, field_type_t::UNCLASSIFIED)) {
+            throw std::runtime_error("Queue closed");
         }
     }
 
@@ -626,14 +578,8 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         proctitle_field = EventRecordField();
 
         _execve_converter.Convert(execve_recs, _cmdline);
-        ret = _builder->AddField(SV_CMDLINE, _cmdline, nullptr, field_type_t::UNESCAPED);
-
-        if (ret != 1) {
-            if (ret == Queue::CLOSED) {
-                throw std::runtime_error("Queue closed");
-            }
-            cancel_event();
-            return false;
+        if (!_builder->AddField(SV_CMDLINE, _cmdline, nullptr, field_type_t::UNESCAPED)) {
+            throw std::runtime_error("Queue closed");
         }
     } else {
         _cmdline.resize(0);
@@ -657,13 +603,8 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         unescape_raw_field(_unescaped_val, proctitle_field.RawValuePtr(), proctitle_field.RawValueSize());
         ExecveConverter::ConvertRawCmdline(_unescaped_val, _cmdline);
 
-        ret = _builder->AddField(SV_PROCTITLE, _cmdline, nullptr, field_type_t::PROCTITLE);
-        if (ret != 1) {
-            if (ret == Queue::CLOSED) {
-                throw std::runtime_error("Queue closed");
-            }
-            cancel_event();
-            return false;
+        if (!_builder->AddField(SV_PROCTITLE, _cmdline, nullptr, field_type_t::PROCTITLE)) {
+            throw std::runtime_error("Queue closed");
         }
     }
 
@@ -682,13 +623,8 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         for (auto& field: dropped_rec) {
             _field_name.assign(SV_DROPPED);
             _field_name.append(field.FieldName());
-            ret = _builder->AddField(_field_name, field.RawValue(), nullptr, field_type_t::UNCLASSIFIED);
-            if (ret != 1) {
-                if (ret == Queue::CLOSED) {
-                    throw std::runtime_error("Queue closed");
-                }
-                cancel_event();
-                return false;
+            if (!_builder->AddField(_field_name, field.RawValue(), nullptr, field_type_t::UNCLASSIFIED)) {
+                throw std::runtime_error("Queue closed");
             }
         }
     }
@@ -697,6 +633,9 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     std::string cmdline;
 
     if (!_syscall.empty() && starts_with(_syscall, "execve")) {
+        if (!exe.empty() && exe.front() == '"' && exe.back() == '"') {
+            exe = exe.substr(1, exe.length() - 2);
+        }
         p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, _cmdline);
     } else if (!_syscall.empty()) {
         p = _processTree->GetInfoForPid(_pid);
@@ -707,22 +646,12 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         containerid = p->_containerid;
     }
 
-    ret = _builder->AddField(SV_CONTAINERID, containerid, nullptr, field_type_t::UNCLASSIFIED);
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        cancel_event();
-        return false;
+    if (!_builder->AddField(SV_CONTAINERID, containerid, nullptr, field_type_t::UNCLASSIFIED)) {
+        throw std::runtime_error("Queue closed");
     }
 
-    ret = _builder->EndRecord();
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        cancel_event();
-        return false;
+    if (!_builder->EndRecord()) {
+        throw std::runtime_error("Queue closed");
     }
 
     bool filtered = false;
@@ -743,18 +672,15 @@ void RawEventProcessor::end_event()
 {
     _builder->SetEventFlags(_event_flags);
     _event_flags = 0;
-    auto ret = _builder->EndEvent();
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
+    if (!_builder->EndEvent()) {
+        throw std::runtime_error("Queue closed");
     }
 }
 
 void RawEventProcessor::cancel_event()
 {
     _event_flags = 0;
-    if (_builder->CancelEvent() != 1) {
+    if (!_builder->CancelEvent()) {
         throw std::runtime_error("Queue Closed");
     }
 }
@@ -826,12 +752,8 @@ bool RawEventProcessor::process_field(const EventRecord& record, const EventReco
             break;
     }
 
-    auto ret = _builder->AddField(_field_name, val, _tmp_val, field_type);
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        return false;
+    if (!_builder->AddField(_field_name, val, _tmp_val, field_type)) {
+        throw std::runtime_error("Queue closed");
     }
     return true;
 }
@@ -842,13 +764,8 @@ bool RawEventProcessor::add_int_field(const std::string_view& name, int val, fie
 }
 
 bool RawEventProcessor::add_str_field(const std::string_view& name, const std::string_view& val, field_type_t ft) {
-    int ret = _builder->AddField(name, val, nullptr, ft);
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        cancel_event();
-        return false;
+    if (!_builder->AddField(name, val, nullptr, ft)) {
+        throw std::runtime_error("Queue closed");
     }
     return true;
 }
@@ -856,13 +773,8 @@ bool RawEventProcessor::add_str_field(const std::string_view& name, const std::s
 bool RawEventProcessor::add_uid_field(const std::string_view& name, int uid, field_type_t ft) {
     _tmp_val.assign(std::to_string(uid));
     std::string user = _user_db->GetUserName(uid);
-    int ret = _builder->AddField(name, _tmp_val, user.c_str(), ft);
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        cancel_event();
-        return false;
+    if (!_builder->AddField(name, _tmp_val, user.c_str(), ft)) {
+        throw std::runtime_error("Queue closed");
     }
     return true;
 }
@@ -870,13 +782,8 @@ bool RawEventProcessor::add_uid_field(const std::string_view& name, int uid, fie
 bool RawEventProcessor::add_gid_field(const std::string_view& name, int gid, field_type_t ft) {
     _tmp_val.assign(std::to_string(gid));
     std::string user = _user_db->GetGroupName(gid);
-    int ret = _builder->AddField(name, _tmp_val, user.c_str(), ft);
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        cancel_event();
-        return false;
+    if (!_builder->AddField(name, _tmp_val, user.c_str(), ft)) {
+        throw std::runtime_error("Queue closed");
     }
     return true;
 }
@@ -884,12 +791,8 @@ bool RawEventProcessor::add_gid_field(const std::string_view& name, int gid, fie
 bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t msec) {
     using namespace std::literals::string_view_literals;
 
-    auto ret = _builder->BeginEvent(sec, msec, 0, 1);
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        return false;
+    if (!_builder->BeginEvent(sec, msec, 0, 1)) {
+        throw std::runtime_error("Queue closed");
     }
 
     _builder->SetEventFlags(EVENT_FLAG_IS_AUOMS_EVENT);
@@ -897,13 +800,8 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
     uint16_t num_fields = 16;
 
     static auto auoms_proc_inv_str = RecordTypeToName(RecordType::AUOMS_PROCESS_INVENTORY);
-    ret = _builder->BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_PROCESS_INVENTORY), auoms_proc_inv_str, ""sv, num_fields);
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        cancel_event();
-        return false;
+    if (!_builder->BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_PROCESS_INVENTORY), auoms_proc_inv_str, ""sv, num_fields)) {
+        throw std::runtime_error("Queue closed");
     }
 
     if (!add_int_field("pid"sv, pinfo->pid(), field_type_t::UNCLASSIFIED)) {
@@ -978,21 +876,12 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
         return false;
     }
 
-    ret = _builder->EndRecord();
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        cancel_event();
-        return false;
+    if (!_builder->EndRecord()) {
+        throw std::runtime_error("Queue closed");
     }
 
-    ret = _builder->EndEvent();
-    if (ret != 1) {
-        if (ret == Queue::CLOSED) {
-            throw std::runtime_error("Queue closed");
-        }
-        return false;
+    if (!_builder->EndEvent()) {
+        throw std::runtime_error("Queue closed");
     }
     return true;
 }

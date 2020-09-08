@@ -265,14 +265,10 @@ void ProcessTree::AddPid(int pid)
 /* Process event from AuditD (execve)
    Make a new entry (deleting any existing entry).
 */
-std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource source, int pid, int ppid, int uid, int gid, std::string exe, const std::string &cmdline)
+std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource source, int pid, int ppid, int uid, int gid, const std::string& exe, const std::string &cmdline)
 {
     std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
     std::shared_ptr<ProcessTreeItem> process;
-
-    if (exe[0] == '"' && exe.back() == '"') {
-        exe = exe.substr(1, exe.length() - 2);
-    }
 
     std::string containerid = ExtractContainerId(exe, cmdline);
     auto it = _processes.find(pid);
@@ -419,18 +415,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
     }
 }
 
-bool ProcessTree::is_number(char *s)
-{
-    for (char *t=s; *t != 0; t++) {
-        if (!isdigit(*t)) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-void ProcessTree::ApplyFlags(std::shared_ptr<ProcessTreeItem> process)
+void ProcessTree::ApplyFlags(const std::shared_ptr<ProcessTreeItem>& process)
 {
     unsigned int height = 0;
     process->_flags = _filtersEngine->GetFlags(process, height);
@@ -476,7 +461,7 @@ void ProcessTree::PopulateTree()
         _processes[pid] = process;
     }
 
-    for (auto p : _processes) {
+    for (auto& p : _processes) {
         auto process = p.second;
         auto it = _processes.find(process->_ppid);
         if (it != _processes.end()) {
@@ -484,7 +469,7 @@ void ProcessTree::PopulateTree()
         }
     }
 
-    for (auto p : _processes) {
+    for (auto& p : _processes) {
         std::shared_ptr<ProcessTreeItem> process, parent;
         process = p.second;
         auto it = _processes.find(process->_ppid);
@@ -504,7 +489,7 @@ void ProcessTree::PopulateTree()
         }
     }
      // Populate containerid
-    for (auto p : _processes) {
+    for (auto& p : _processes) {
         auto process = p.second;
         if( !(process->_containeridfromhostprocess).empty()) {
             SetContainerId(process, process->_containeridfromhostprocess);
@@ -515,7 +500,7 @@ void ProcessTree::PopulateTree()
 void ProcessTree::UpdateFlags() {
     std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
 
-    for (auto p : _processes) {
+    for (auto& p : _processes) {
         ApplyFlags(p.second);
     }
 }
@@ -523,7 +508,7 @@ void ProcessTree::UpdateFlags() {
 // This utility method gets called only during the initial population of ProcessTree when a containerid shim process is identfied with non-empty value of _containeridfromhostprocess.
 // All of its childrens get assigned with the ContainerId value recursively.
 // ContainerId is not set for the containerid shim process.
-void ProcessTree::SetContainerId(std::shared_ptr<ProcessTreeItem> p, std::string containerid)
+void ProcessTree::SetContainerId(const std::shared_ptr<ProcessTreeItem>& p, const std::string& containerid)
 {
     for (auto c : p->_children) {
         auto it2 = _processes.find(c);
@@ -535,7 +520,7 @@ void ProcessTree::SetContainerId(std::shared_ptr<ProcessTreeItem> p, std::string
     }
 }
 
-std::string ProcessTree::ExtractContainerId(std::string exe, const std::string& cmdline)
+std::string ProcessTree::ExtractContainerId(const std::string& exe, const std::string& cmdline)
 {
     // cmdline example: 
     //containerd-shim -namespace moby 
@@ -587,7 +572,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
 
 void ProcessTree::ShowTree()
 {
-    for (auto p : _processes) {
+    for (auto& p : _processes) {
         ShowProcess(p.second);
         for (auto c : p.second->_children) {
             if (_processes.count(c) > 0) {
