@@ -192,15 +192,19 @@ static inline bool copy_commandline(event_execve_s *e, void *task, config_s *con
     // read the more reliable cmdline from task_struct->mm->arg_start
     void *arg_start = (void *)deref_ptr(task, config->mm_arg_start);
     void *arg_end = (void *)deref_ptr(task, config->mm_arg_end);
-    int arg_len = arg_end - arg_start;
+    if (arg_start >= arg_end)
+        return false;
+    unsigned int arg_len = arg_end - arg_start;
     if (arg_len > (CMDLINE_MAX_LEN - 1))
         arg_len = CMDLINE_MAX_LEN - 1;
 
-    if (bpf_probe_read(&e->cmdline, arg_len & (CMDLINE_MAX_LEN - 1), (void *)arg_start) != READ_OKAY)
+    arg_len = arg_len & (CMDLINE_MAX_LEN - 1);
+
+    if (bpf_probe_read(&e->cmdline, arg_len, (void *)arg_start) != READ_OKAY)
         return false;
     // add nul terminator just in case
     e->cmdline[CMDLINE_MAX_LEN - 1] = 0x00;
-    e->cmdline[arg_len & (CMDLINE_MAX_LEN - 1)] = 0x00;
+    e->cmdline[arg_len] = 0x00;
     e->cmdline_size = arg_len;
     return true;
 }

@@ -71,7 +71,8 @@ option(DEBUG_K "Enter debug mode" Off)
 #Fetch libbpf
 ExternalProject_Add(libbpf
     GIT_REPOSITORY https://github.com/libbpf/libbpf.git
-    GIT_TAG master
+#    GIT_TAG master
+    GIT_TAG v0.1.0
     PREFIX ./libbpf
     CONFIGURE_COMMAND ""
     BUILD_COMMAND cd ../libbpf/src && bash -c "CFLAGS=\"-g -O2 -Werror -Wall -fPIC\" make"

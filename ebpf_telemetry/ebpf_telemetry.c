@@ -67,11 +67,46 @@ void combine_paths(char *dest, event_path_s *path, char *pwd, bool resolvepath)
         snprintf(dest, PATH_MAX, "%s", temp);
 }
 
+// compare if a starts with b
+bool starts_with(char *a, char *b)
+{
+    if (!strncmp(a, b, strlen(b)))
+        return true;
+    else
+        return false;
+}
+
+bool filter_path(char *p)
+{
+    if (starts_with(p, "/bin/") ||
+        starts_with(p, "/boot/") ||
+        starts_with(p, "/etc/") ||
+        starts_with(p, "/lib/") ||
+        starts_with(p, "/lib64/") ||
+        starts_with(p, "/opt/") ||
+        starts_with(p, "/sbin/") ||
+        starts_with(p, "/snap/") ||
+        starts_with(p, "/usr/bin/") ||
+        starts_with(p, "/usr/lib/") ||
+        starts_with(p, "/usr/local/bin/") ||
+        starts_with(p, "/usr/local/etc/") ||
+        starts_with(p, "/usr/local/lib/") ||
+        starts_with(p, "/usr/local/sbin/") ||
+        starts_with(p, "/usr/local/share/") ||
+        starts_with(p, "/usr/sbin/") ||
+        starts_with(p, "/usr/share/"))
+        return false;
+    else
+        return true;
+}
+
+
 static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 {
     char e_buf[EVENT_BUFFER_SIZE];
     char buf1[EVENT_BUF1_SIZE];
     char buf2[EVENT_BUF2_SIZE];
+    bool filter = false;
 
     total_events++;
     event_s *event = (event_s *)data;
@@ -97,6 +132,9 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
             event->auid, event->uid, event->gid, event->euid, event->suid, event->fsuid, event->egid, event->sgid, event->fsgid,
             event->tty, event->ses, event->comm, event->exe, event->exe_mode, event->exe_ouid, event->exe_ogid, event->pwd);
 
+        buf2[0] = 0x00;
+        filter = false;
+
         switch(event->syscall_id)
         {    
             case __NR_open:
@@ -120,7 +158,10 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
                 char abs_path[PATH_MAX];
 
                 combine_paths(abs_path, &event->fileop.path1, event->pwd, true);
-                snprintf(buf2, EVENT_BUF2_SIZE, " path=\"%s\"", abs_path);
+                if (filter_path(abs_path))
+                    filter = true;
+                else
+                    snprintf(buf2, EVENT_BUF2_SIZE, " path=\"%s\"", abs_path);
                 break;
             }
 
@@ -142,7 +183,10 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
 
                 combine_paths(abs_path1, &event->fileop.path1, event->pwd, true);
                 combine_paths(abs_path2, &event->fileop.path2, event->pwd, resolvepath);
-                snprintf(buf2, EVENT_BUF2_SIZE, " path1=\"%s\" path2=\"%s\"", abs_path1, abs_path2);
+                if (filter_path(abs_path1) && filter_path(abs_path2))
+                    filter = true;
+                else
+                    snprintf(buf2, EVENT_BUF2_SIZE, " path1=\"%s\" path2=\"%s\"", abs_path1, abs_path2);
                 break;
             }
 
@@ -186,9 +230,9 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
             }
         }
         snprintf(e_buf, EVENT_BUFFER_SIZE, "%s%s", buf1, buf2);
-        if (!quiet)
+        if (!quiet && !filter)
             printf("%s\n", e_buf);
-        if (o_syslog)
+        if (o_syslog && !filter)
             syslog(LOG_USER | LOG_INFO, "%s", e_buf);
     } else {
         bad_events++;
