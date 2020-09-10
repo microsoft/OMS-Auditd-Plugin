@@ -1646,14 +1646,14 @@ int spam_netlink(const std::string& dur_str, const std::string& num_str) {
 
     std::vector<std::thread> threads;
 
-    auto fn = [&](){
+    auto fn = [&]() -> void {
         Logger::Info("Thread started");
         Netlink netlink;
 
         auto ret = netlink.Open(nullptr);
         if (ret != 0) {
             Logger::Error("Failed to open Netlink socket: %s", strerror(-ret));
-            return 1;
+            return;
         }
 
         auto end_time = std::chrono::steady_clock::now() + std::chrono::seconds(dur);
