@@ -456,14 +456,14 @@ int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int
     // 5.1  - 5.2  - raw tracepoints, <1M instructions, no loops
     // >= 5.3      - raw tracepoints, <1M instructions, loops
 
-    if (major <= 4 && minor < 9) {
+    if (major <= 4 && minor < 15) {
         support_version = NOBPF;
         fprintf(stderr, "Kernel Version %u.%u not supported\n", major, minor);
         return 1;    
     } else if (major == 4 && minor < 17) {
         support_version = BPF_TP;
         fprintf(stderr, "Using Tracepoints, sub 4096 instructions, no loops\n");
-    } else if ((major == 4 && minor >= 17) || (major == 5 && minor < 1)) {
+    } else if ((major == 4 && minor >= 17) || (major == 5 && minor < 2)) {
         support_version = BPF_RAW_TP_SUB4096;
         fprintf(stderr, "Using Raw Tracepoints, sub 4096 instructions, no loops\n");
     } else if (major == 5 && minor < 3) {
