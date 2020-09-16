@@ -8,7 +8,7 @@ environment:
     image: 'cdpxwin.azurecr.io/legacy/global/vse2017u5-ext-win14393.1884:1.0'
     source_mode: 'link'
 
-workspace:
+workspace_options:
   download_current_artifacts: true
   force_workspace_wipe: false
   enable_legacy_networking: true
