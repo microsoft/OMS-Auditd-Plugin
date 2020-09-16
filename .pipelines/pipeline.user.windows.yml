@@ -1,0 +1,13 @@
+version:
+  name: "AzSecPack"
+  system: 'custom'
+  exclude_commit: true
+
+versioning:
+  commands:
+    - !!defaultcommand
+      name: 'Versioning'
+      command: 'cdpx-version.cmd'
+
+signing_options:
+  profile: 'CP-450778-Pgp'

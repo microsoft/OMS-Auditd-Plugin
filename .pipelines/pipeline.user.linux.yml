@@ -1,0 +1,10 @@
+version:
+  name: "AzSecPack"
+  system: 'custom'
+  exclude_commit: true
+
+versioning:
+  commands:
+    - !!defaultcommand
+      name: 'Versioning'
+      command: 'cdpx-version.sh'
