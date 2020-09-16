@@ -1,4 +1,4 @@
-build:
+package:
   commands:
     - !!dockerbuildcommand
       name: 'Build auoms-build Docker image'
