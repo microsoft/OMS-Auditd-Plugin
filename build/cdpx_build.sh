@@ -26,7 +26,7 @@ if [ ! -e $SRC_ROOT/build/configure ]; then
     exit 1
 fi
 
-if [ ! -e TOP_DIR/pal/installer/InstallBuilder/installbuilder.py ]; then
+if [ ! -e $TOP_DIR/pal/installer/InstallBuilder/installbuilder.py ]; then
     echo "Could not find $TOP_DIR/pal/installer/InstallBuilder/installbuilder.py"
     exit 1
 fi
