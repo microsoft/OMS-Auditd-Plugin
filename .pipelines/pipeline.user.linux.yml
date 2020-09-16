@@ -17,4 +17,4 @@ versioning:
   commands:
     - !!defaultcommand
       name: 'Versioning'
-      command: 'build/cdpx-version.sh'
+      command: 'build/cdpx_version.sh'

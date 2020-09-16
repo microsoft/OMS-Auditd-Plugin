@@ -7,7 +7,7 @@ versioning:
   commands:
     - !!defaultcommand
       name: 'Versioning'
-      command: 'build/cdpx-version.cmd'
+      command: 'build/cdpx_version.cmd'
 
 signing_options:
   profile: 'CP-450778-Pgp'
