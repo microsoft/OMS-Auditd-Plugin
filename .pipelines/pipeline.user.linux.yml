@@ -1,3 +1,13 @@
+environment:
+  host:
+    os: 'linux'
+    flavor: 'ubuntu'
+    version: '18.04'
+  runtime:
+    provider: 'appcontainer'
+    image: 'cdpxlinux.azurecr.io/global/ubuntu-1804-all:3.0'
+    source_mode: 'link'
+
 version:
   name: "AzSecPack"
   system: 'custom'
@@ -7,4 +17,4 @@ versioning:
   commands:
     - !!defaultcommand
       name: 'Versioning'
-      command: 'cdpx-version.sh'
+      command: 'build/cdpx-version.sh'
