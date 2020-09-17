@@ -22,7 +22,7 @@ SRC_ROOT=$(pwd)
 find ${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH} -type d
 ls -FlaR ${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH}
 
-PACKAGE_DIR=${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH}/current/drop/Sign
+PACKAGE_DIR=${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH}/current/drop/Sign/outputs/build
 TARGET_DIR=target
 
 DEP_PKG=$(ls ${PACAKGE_DIR}/auoms-*.deb)
@@ -37,7 +37,7 @@ PACKAGE_PREFIX=$(basename -s .deb $DEB_PKG)
 mkdir -p ${TARGET_DIR}
 
 cd PACKAGE_DIR
-tar cvf /tmp/$(OUTPUT_PACKAGE_PREFIX).tar $(OUTPUT_PACKAGE_PREFIX).{deb,rpm}
+tar cvf /tmp/$(PACKAGE_PREFIX).tar $(PACKAGE_PREFIX).{deb,rpm}
 
 cd $SRC_ROOT
-installer/bundle/create_bundle.sh $(TARGET_DIR) /tmp /tmp/$(OUTPUT_PACKAGE_PREFIX).tar
+installer/bundle/create_bundle.sh $(TARGET_DIR) /tmp /tmp/$(PACKAGE_PREFIX).tar
