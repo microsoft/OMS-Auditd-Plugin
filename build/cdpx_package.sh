@@ -23,21 +23,41 @@ find ${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH} -type d
 ls -FlaR ${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH}
 
 PACKAGE_DIR=${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH}/current/drop/Sign/outputs/build
-TARGET_DIR=target
+TARGET_DIR=$SRC_ROOT/target
 
-DEP_PKG=$(ls ${PACKAGE_DIR}/auoms-*.deb)
+RPM_PKG=$(ls ${PACKAGE_DIR}/auoms-[0-9]*.rpm)
 
-if [ -z "$DEP_PKG" ] || [ ! -e $DEP_PKG ]; then
+if [ -z "$RPM_PKG" ] || [ ! -e $RPM_PKG ]; then
     echo "Failed to find package"
     exit 1
 fi
 
-PACKAGE_PREFIX=$(basename -s .deb $DEP_PKG)
+PACKAGE_PREFIX=$(basename -s .rpm $RPM_PKG)
 
-mkdir -p ${TARGET_DIR}
+if [ ! -e ${TARGET_DIR} ]; then
+    mkdir -p ${TARGET_DIR}
+fi
+
+if [ -e /tmp/installer_tmp ]; then
+    rm -rf /tmp/installer_tmp
+fi
+
+mkdir /tmp/installer_tmp
 
 cd ${PACKAGE_DIR}
-tar cvf /tmp/${PACKAGE_PREFIX}.tar ${PACKAGE_PREFIX}.{deb,rpm}
 
-cd $SRC_ROOT
-installer/bundle/create_bundle.sh ${TARGET_DIR} /tmp /tmp/${PACKAGE_PREFIX}.tar
+cp $RPM_PKG /tmp
+if [ $? -ne 0 ]; then
+    echo "Failed to copy rpm file"
+fi
+
+tar cvf /tmp/${PACKAGE_PREFIX}.tar ${PACKAGE_PREFIX}.{deb,rpm}
+if [ $? -ne 0 ]; then
+    echo "Failed to create tar file"
+fi
+
+cd $SRC_ROOT/build
+../installer/bundle/create_bundle.sh ${TARGET_DIR} /tmp ${PACKAGE_PREFIX}.tar
+if [ $? -ne 0 ]; then
+    echo "Failed to create bundle"
+fi

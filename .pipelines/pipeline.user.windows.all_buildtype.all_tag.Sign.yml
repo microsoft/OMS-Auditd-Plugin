@@ -15,6 +15,9 @@ workspace_options:
 
 static_analysis_options:
 
+signing_options:
+  profile: 'CP-450779-Pgp'
+
 build:
   commands:
     - !!buildcommand
