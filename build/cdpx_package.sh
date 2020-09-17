@@ -61,3 +61,8 @@ cd $SRC_ROOT/build
 if [ $? -ne 0 ]; then
     echo "Failed to create bundle"
 fi
+
+if [ ! -e ${TARGET_DIR}/${PACKAGE_PREFIX}.sh ]; then
+    echo "Failed to create bundle"
+    exit 1
+fi
