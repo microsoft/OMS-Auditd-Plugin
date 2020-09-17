@@ -25,19 +25,19 @@ ls -FlaR ${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH}
 PACKAGE_DIR=${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH}/current/drop/Sign/outputs/build
 TARGET_DIR=target
 
-DEP_PKG=$(ls ${PACAKGE_DIR}/auoms-*.deb)
+DEP_PKG=$(ls ${PACKAGE_DIR}/auoms-*.deb)
 
 if [ -z "$DEP_PKG" ] || [ ! -e $DEP_PKG ]; then
     echo "Failed to find package"
     exit 1
 fi
 
-PACKAGE_PREFIX=$(basename -s .deb $DEB_PKG)
+PACKAGE_PREFIX=$(basename -s .deb $DEP_PKG)
 
 mkdir -p ${TARGET_DIR}
 
-cd PACKAGE_DIR
-tar cvf /tmp/$(PACKAGE_PREFIX).tar $(PACKAGE_PREFIX).{deb,rpm}
+cd ${PACKAGE_DIR}
+tar cvf /tmp/${PACKAGE_PREFIX}.tar ${PACKAGE_PREFIX}.{deb,rpm}
 
 cd $SRC_ROOT
-installer/bundle/create_bundle.sh $(TARGET_DIR) /tmp /tmp/$(PACKAGE_PREFIX).tar
+installer/bundle/create_bundle.sh ${TARGET_DIR} /tmp /tmp/${PACKAGE_PREFIX}.tar

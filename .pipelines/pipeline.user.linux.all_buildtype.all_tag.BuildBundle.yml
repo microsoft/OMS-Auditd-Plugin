@@ -10,4 +10,4 @@ build:
       artifacts:
         - from: 'target'
           include:
-            - '*'
+            - '**/*'
