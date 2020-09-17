@@ -2,6 +2,12 @@
 workspace_options:
   download_current_artifacts: true
 
+restore:
+  commands:
+    - !!defaultcommand
+      name: 'Fetch Dependencies'
+      command: 'build/cdpx_package_restore.sh'
+
 build:
   commands:
     - !!buildcommand

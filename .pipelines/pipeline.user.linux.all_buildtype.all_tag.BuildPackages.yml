@@ -11,7 +11,7 @@ restore:
   commands:
     - !!defaultcommand
       name: 'Fetch Dependencies'
-      command: 'build/cdpx_restore.sh'
+      command: 'build/cdpx_build_restore.sh'
       fail_on_stderr: false
 build:
   commands:

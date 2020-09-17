@@ -19,10 +19,6 @@
 cd $(dirname $0)/../..
 ROOT=$(pwd)
 
-if [ ! -d pal ]; then
-    git clone https://github.com/microsoft/pal
-fi
-
 if [ ! -e ${ROOT}/rapidjson-1.0.2.tar.gz ]; then
     echo "rapidjson 1.0.2 tar file (${ROOT}/v1.0.2.tar.gz) is missing. Downloading..." >& 2
     wget -O ${ROOT}/rapidjson-1.0.2.tar.gz https://github.com/Tencent/rapidjson/archive/v1.0.2.tar.gz >& 2
