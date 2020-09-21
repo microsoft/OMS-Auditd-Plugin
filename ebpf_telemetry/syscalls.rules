@@ -11,93 +11,56 @@
 # the value (&= in auditctl); and operator | ANDs the argument with the value
 # and checks the result is not 0 (& in auditctl).
 
-# open
-2
+# open - flags includes O_WRONLY (1) or O_RDWR (2)
+open a1 | 0x3
 # mmap - prot has write and exec bits
-9 a2 & 0x6
+mmap a2 & 0x6
 # mprotect - prot has exec bit
-10 a2 | 0x4
-# connect
-42
-# accept
-43
-# execve
-59
+mprotect a2 | 0x4
+connect
+accept
+execve
 # kill - signal is 9 (KILL) or 19 (STOP)
-62 a1 = 9 a1 = 19
-# truncate
-76
-# ftruncate
-77
-# rename
-82
-# rmdir
-84
-# creat
-85
-# link
-86
-# unlink
-87
-# symlink
-88
-# chmod
-90
-# fchmod
-91
-# chown
-92
-# fchown
-93
-# lchown
-94
-# ptrace
-101
-# mknod
-133
-# adjtimex
-159
-# settimeofday
-164
-# init_module
-175
-# delete_module
-176
+kill a1 = 9 a1 = 19
+truncate
+ftruncate
+rename
+rmdir
+creat
+link
+unlink
+symlink
+chmod
+fchmod
+chown
+fchown
+lchown
+ptrace
+mknod
+adjtimex
+settimeofday
+init_module
+delete_module
 # tkill - signal is 9 (KILL) or 19 (STOP)
-200 a1 = 9 a1 = 19
+tkill a1 = 9 a1 = 19
 # remap_file_pages - prot has write and exec bits
-216 a2 & 0x6
-# clock_settime
-227
+remap_file_pages a2 & 0x6
+clock_settime
 # tgkill - signal is 9 (KILL) or 19 (STOP)
-234 a2 = 9 a2 = 19
-# kexec_load
-246
-# openat - mode includes O_WRONLY (1) or O_RDWR (2)
-257 a2 | 0x3
-# mknodat
-259
-# fchownat
-260
-# unlinkat
-263
-# renameat
-264
-# linkat
-265
-# symlinkat
-266
-# fchmodat
-268
-# accept4
-288
-# clock_adjtime
-305
-# finit_module
-313
-# renameat2
-316
-# kexec_file_load
-320
-# execveat
-322
+tgkill a2 = 9 a2 = 19
+kexec_load
+# openat - flags includes O_WRONLY (1) or O_RDWR (2)
+openat a2 | 0x3
+mknodat
+fchownat
+unlinkat
+renameat
+linkat
+symlinkat
+fchmodat
+accept4
+clock_adjtime
+finit_module
+renameat2
+kexec_file_load
+execveat

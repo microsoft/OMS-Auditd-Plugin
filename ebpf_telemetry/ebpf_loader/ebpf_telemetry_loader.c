@@ -256,7 +256,14 @@ bool get_next_arg(char **arg, char **strtok_ctx)
     return true;
 }
 
-bool populate_syscall_conf(char *filename, config_s *config, int sysconf_map_fd)
+int comp_syscalls(const void *v1, const void *v2)
+{
+    syscall_names_s *s1 = (syscall_names_s *)v1;
+    syscall_names_s *s2 = (syscall_names_s *)v2;
+    return strcmp(s1->name, s2->name);
+}
+
+bool populate_syscall_conf(char *filename, config_s *config, int sysconf_map_fd, syscall_names_s *syscall_names)
 {
     unsigned int index;
     FILE *sysconf;
@@ -273,6 +280,8 @@ bool populate_syscall_conf(char *filename, config_s *config, int sysconf_map_fd)
     bool eol = false;
     sysconf_s sc;
     char *orig = NULL;
+    syscall_names_s key;
+    syscall_names_s *name_index;
 
     memset(config->active, 0, sizeof(config->active));
 
@@ -284,17 +293,31 @@ bool populate_syscall_conf(char *filename, config_s *config, int sysconf_map_fd)
     while ((read_len = getline(&line, &len, sysconf)) >= 0) {
         if (read_len > 0 && line[0] == '#')
             continue;
-        orig = (char *)malloc(read_len + 1);
-        memcpy(orig, line, read_len + 1);
         whitespace = line;
         while (*whitespace == ' ')
             whitespace++;
         syscall = strtok_r(whitespace, " \n", &strtok_ctx);
         if (!syscall)
             continue;
-        syscall_num = atoi(syscall);
+        if (syscall[0] >= '0' && syscall[0] <= '9')
+            syscall_num = atoi(syscall);
+        else {
+//    qsort(name2num, SYSCALL_MAX+1, sizeof(syscall_names_s), comp_syscalls);
+
+            strncpy(key.name, syscall, sizeof(key.name));
+            name_index = bsearch(&key, syscall_names, SYSCALL_MAX+1, sizeof(syscall_names_s), comp_syscalls);
+            if (!name_index) {
+                fprintf(stderr, "Cannot find syscall: %s\n", syscall);
+                continue;
+            }
+            syscall_num = name_index->nr;
+        }
+
         if (syscall_num > SYSCALL_MAX)
             continue;
+
+        orig = (char *)malloc(read_len + 1);
+        memcpy(orig, line, read_len + 1);
         error = false;
         eol = false;
         while (!error && !eol) {
@@ -358,13 +381,6 @@ bool populate_syscall_conf(char *filename, config_s *config, int sysconf_map_fd)
     free(line);
     fclose(sysconf);
     return !error;
-}
-
-int comp_syscalls(const void *v1, const void *v2)
-{
-    syscall_names_s *s1 = (syscall_names_s *)v1;
-    syscall_names_s *s2 = (syscall_names_s *)v2;
-    return strcmp(s1->name, s2->name);
 }
 
 bool generate_syscall_table(syscall_names_s *num2name, syscall_names_s *name2num)
@@ -450,23 +466,23 @@ int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int
         return 1;
     }    
 
-    // <  4.9, no ebpf
-    // 4.9  - 4.16 - tracepoints
-    // 4.17 - 5.0  - raw tracepoints, <4096 instructions, no loops
-    // 5.1  - 5.2  - raw tracepoints, <1M instructions, no loops
+    // <  4.15, no ebpf support due to no direct r/w access to maps
+    // 4.15 - 4.16 - tracepoints
+    // 4.17 - 5.1  - raw tracepoints, <4096 instructions, no loops
+    // 5.2         - raw tracepoints, <1M instructions, no loops
     // >= 5.3      - raw tracepoints, <1M instructions, loops
 
-    if (major <= 4 && minor < 15) {
+    if ((major < 4) || (major == 4 && minor < 15)) {
         support_version = NOBPF;
         fprintf(stderr, "Kernel Version %u.%u not supported\n", major, minor);
         return 1;    
-    } else if (major == 4 && minor < 17) {
+    } else if (major == 4 && minor <= 16) {
         support_version = BPF_TP;
         fprintf(stderr, "Using Tracepoints, sub 4096 instructions, no loops\n");
-    } else if ((major == 4 && minor >= 17) || (major == 5 && minor < 2)) {
+    } else if ((major == 4) || (major == 5 && minor <= 1)) {
         support_version = BPF_RAW_TP_SUB4096;
         fprintf(stderr, "Using Raw Tracepoints, sub 4096 instructions, no loops\n");
-    } else if (major == 5 && minor < 3) {
+    } else if (major == 5 && minor == 2) {
         support_version = BPF_RAW_TP_NOLOOPS;
         fprintf(stderr, "Using Raw Tracepoints, sub 1M instructions, no loops\n");
     } else {
@@ -565,7 +581,7 @@ int ebpf_telemetry_start(char *sysconf_filename, void (*event_cb)(void *ctx, int
     config_s config;
     config.userland_pid = getpid();
     populate_config_offsets(&config);
-    if (!populate_syscall_conf(sysconf_filename, &config, sysconf_map_fd))
+    if (!populate_syscall_conf(sysconf_filename, &config, sysconf_map_fd, syscall_name_to_num))
         exit(1);
 
     if (bpf_map_update_elem(config_map_fd, &config_entry, &config, BPF_ANY)) {

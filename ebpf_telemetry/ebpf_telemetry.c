@@ -67,6 +67,15 @@ void combine_paths(char *dest, event_path_s *path, char *pwd, bool resolvepath)
         snprintf(dest, PATH_MAX, "%s", temp);
 }
 
+// check if a contains b
+bool contains(char *a, char *b)
+{
+    if (strstr(a, b))
+        return true;
+    else
+        return false;
+}
+
 // compare if a starts with b
 bool starts_with(char *a, char *b)
 {
@@ -96,8 +105,11 @@ bool filter_path(char *p)
         starts_with(p, "/usr/sbin/") ||
         starts_with(p, "/usr/share/"))
         return false;
-    else
-        return true;
+
+    if (contains(p, "authorized_keys"))
+        return false;
+
+    return true;
 }
 
 
