@@ -24,6 +24,8 @@ From the ebpf_telemetry/get_offsets *on the target machine* directory:
 From the ebpf_telemetry/get_offsets *on the target machine* directory:
 
 - make run | grep '^\[' | tail -n +3 | head -n -2 | cut -d' ' -f2- > ../ebpf_telemetry.conf
+or
+- make conf > ../ebpf_telemetry.conf
 
 # mount.h
 get_offsets includes mount.h taken verbatim from the source of v4.15 of the Linux kernel.
