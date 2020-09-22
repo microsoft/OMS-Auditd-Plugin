@@ -24,6 +24,7 @@ From the ebpf_telemetry/get_offsets *on the target machine* directory:
 From the ebpf_telemetry/get_offsets *on the target machine* directory:
 
 - make run | grep '^\[' | tail -n +3 | head -n -2 | cut -d' ' -f2- > ../ebpf_telemetry.conf
+
 or
 - make conf > ../ebpf_telemetry.conf
 
