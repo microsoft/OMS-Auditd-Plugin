@@ -521,9 +521,21 @@ static inline void set_event_arg_info(event_s *event, void *task, config_s *conf
         // int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
         case __NR_connect: 
         {
-            if (bpf_probe_read(&event->socket.addr, sizeof(event->socket.addr), (void *)event->a[1]) != READ_OKAY) {
-                BPF_PRINTK("ERROR, CONNECT(%lu): failed to get socket info from a1 0x%lx\n", event->syscall_id, event->a[1]);
+            if (bpf_probe_read(&event->socket.addr.sin_family, sizeof(event->socket.addr.sin_family), (void *)event->a[1]) != READ_OKAY) {
+                BPF_PRINTK("ERROR, CONNECT(%lu): failed to get socket sa_family from a1 0x%lx\n", event->syscall_id, event->a[1]);
                 event->status |= STATUS_VALUE;
+                break;
+            }
+            if (event->socket.addr.sin_family == AF_INET) {
+                if (bpf_probe_read(&event->socket.addr, sizeof(event->socket.addr), (void *)event->a[1]) != READ_OKAY) {
+                    BPF_PRINTK("ERROR, CONNECT(%lu): failed to get socket info from a1 0x%lx\n", event->syscall_id, event->a[1]);
+                    event->status |= STATUS_VALUE;
+                }
+            } else if (event->socket.addr6.sin6_family == AF_INET6) {
+                if (bpf_probe_read(&event->socket.addr6, sizeof(event->socket.addr6), (void *)event->a[1]) != READ_OKAY) {
+                    BPF_PRINTK("ERROR, CONNECT(%lu): failed to get socket6 info from a1 0x%lx\n", event->syscall_id, event->a[1]);
+                    event->status |= STATUS_VALUE;
+                }
             }
             break;
         }
@@ -535,9 +547,21 @@ static inline void set_event_arg_info(event_s *event, void *task, config_s *conf
         {
             event->socket.addr.sin_family = AF_UNSPEC;
             if (event->a[1] != 0) {
-                if (bpf_probe_read(&event->socket.addr, sizeof(event->socket.addr), (void *)event->a[1]) != READ_OKAY) {
-                    BPF_PRINTK("ERROR, ACCEPT(%lu) failed to retrieve addr info from a1 0x%lx\n", event->syscall_id, event->a[1]);
+                if (bpf_probe_read(&event->socket.addr.sin_family, sizeof(event->socket.addr.sin_family), (void *)event->a[1]) != READ_OKAY) {
+                    BPF_PRINTK("ERROR, CONNECT(%lu): failed to get socket sa_family from a1 0x%lx\n", event->syscall_id, event->a[1]);
                     event->status |= STATUS_VALUE;
+                    break;
+                }
+                if (event->socket.addr.sin_family == AF_INET) {
+                    if (bpf_probe_read(&event->socket.addr, sizeof(event->socket.addr), (void *)event->a[1]) != READ_OKAY) {
+                        BPF_PRINTK("ERROR, ACCEPT(%lu) failed to retrieve addr info from a1 0x%lx\n", event->syscall_id, event->a[1]);
+                        event->status |= STATUS_VALUE;
+                    }
+                } else if (event->socket.addr6.sin6_family == AF_INET6) {
+                    if (bpf_probe_read(&event->socket.addr6, sizeof(event->socket.addr6), (void *)event->a[1]) != READ_OKAY) {
+                        BPF_PRINTK("ERROR, ACCEPT(%lu) failed to retrieve addr info from a1 0x%lx\n", event->syscall_id, event->a[1]);
+                        event->status |= STATUS_VALUE;
+                    }
                 }
             }
             break;
