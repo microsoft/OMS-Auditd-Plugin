@@ -302,8 +302,6 @@ bool populate_syscall_conf(char *filename, config_s *config, int sysconf_map_fd,
         if (syscall[0] >= '0' && syscall[0] <= '9')
             syscall_num = atoi(syscall);
         else {
-//    qsort(name2num, SYSCALL_MAX+1, sizeof(syscall_names_s), comp_syscalls);
-
             strncpy(key.name, syscall, sizeof(key.name));
             name_index = bsearch(&key, syscall_names, SYSCALL_MAX+1, sizeof(syscall_names_s), comp_syscalls);
             if (!name_index) {

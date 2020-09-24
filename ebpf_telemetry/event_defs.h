@@ -121,7 +121,10 @@ typedef struct e_execve {
 
 // __NR_connect: 
 typedef struct e_socket {
-    struct sockaddr_in addr;
+    union {
+        struct sockaddr_in addr;
+        struct sockaddr_in6 addr6;
+    };
 } event_socket_s;
 
 // Event arguments structure

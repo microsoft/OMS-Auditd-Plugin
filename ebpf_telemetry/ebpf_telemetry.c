@@ -232,11 +232,14 @@ static void print_bpf_output(void *ctx, int cpu, void *data, __u32 size)
             case __NR_accept4:
             case __NR_connect: 
             {
-                char addr[INET_ADDRSTRLEN] = {0};
+                char addr[INET6_ADDRSTRLEN] = {0};
                 
-                if (event->socket.addr.sin_family == AF_INET){
+                if (event->socket.addr.sin_family == AF_INET) {
                     inet_ntop(AF_INET, &event->socket.addr.sin_addr, addr, INET_ADDRSTRLEN);
-                    snprintf(buf2, EVENT_BUF2_SIZE, " addr=%s:%hu", addr, ntohs(event->socket.addr.sin_port) );
+                    snprintf(buf2, EVENT_BUF2_SIZE, " addr=%s:%hu", addr, ntohs(event->socket.addr.sin_port));
+                } else if (event->socket.addr6.sin6_family == AF_INET6) {
+                    inet_ntop(AF_INET6, &event->socket.addr6.sin6_addr, addr, INET6_ADDRSTRLEN);
+                    snprintf(buf2, EVENT_BUF2_SIZE, " addr=[%s]:%hu", addr, ntohs(event->socket.addr6.sin6_port));
                 }
                 break;                
             }

@@ -30,6 +30,7 @@
 #include <bpf_helpers.h>
 #include <linux/socket.h>
 #include <linux/in.h>
+#include <linux/in6.h>
 #include <linux/string.h>
 #include <bpf_tracing.h>
 #include "../../event_defs.h"
