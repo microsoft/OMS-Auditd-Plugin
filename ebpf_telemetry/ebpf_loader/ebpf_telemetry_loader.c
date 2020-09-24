@@ -302,7 +302,7 @@ bool populate_syscall_conf(char *filename, config_s *config, int sysconf_map_fd,
         if (syscall[0] >= '0' && syscall[0] <= '9')
             syscall_num = atoi(syscall);
         else {
-            strncpy(key.name, syscall, sizeof(key.name));
+            snprintf(key.name, sizeof(key.name), "%s", syscall);
             name_index = bsearch(&key, syscall_names, SYSCALL_MAX+1, sizeof(syscall_names_s), comp_syscalls);
             if (!name_index) {
                 fprintf(stderr, "Cannot find syscall: %s\n", syscall);
@@ -315,6 +315,10 @@ bool populate_syscall_conf(char *filename, config_s *config, int sysconf_map_fd,
             continue;
 
         orig = (char *)malloc(read_len + 1);
+        if (!orig) {
+            fprintf(stderr, "Cannot malloc when reading syscall config\n");
+            exit(1);
+        }
         memcpy(orig, line, read_len + 1);
         error = false;
         eol = false;
