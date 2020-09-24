@@ -3,6 +3,24 @@ This is the beginning of work on a proof-of-concept to generate Linux
 telemetry using EBPF.  It is not production ready by any means and is provided
 here to permit collaboration and to share developments.
 
+# Dependencies
+
+- sudo apt install gcc g++ make cmake libelf-dev llvm clang
+
+You'll need kernel sources in order to build the EBPF programs.
+As I was on Ubuntu 18.04 in Azure with kernel 5.4.0 I did:
+- sudo apt install flex bison libncurses-dev libssl-dev
+- wget http://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.4.tar.xz
+- tar xvf linux-5.4.tar.xz
+- cd linux-5.4
+- make oldconfig
+- make
+- sudo make modules_install
+
+Then I created the symbolic link /usr/src/linux pointing at my linux-5.4 directory.
+- cd ..
+- sudo ln -s /path/to/linux-5.4 /usr/src/linux
+
 # Build
 From the ebpf_telemetry directory:
 
