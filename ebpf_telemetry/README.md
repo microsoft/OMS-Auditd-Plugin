@@ -7,6 +7,7 @@ This work currently only supports x64.
 
 # Dependencies
 
+- sudo apt update
 - sudo apt install gcc g++ make cmake libelf-dev llvm clang
 
 You'll need kernel sources in order to build the EBPF programs.
