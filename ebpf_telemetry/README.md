@@ -10,23 +10,7 @@ This work currently only supports x64.
 - sudo apt update
 - sudo apt install gcc g++ make cmake libelf-dev llvm clang
 
-You'll need kernel sources in order to build the EBPF programs.
-You can replace the tarball with one to match your kernel, or not!
-It shouldn't really matter as the required elements are common to all
-versions of Linux.
-- sudo apt install flex bison libncurses-dev libssl-dev
-- wget http://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.4.tar.xz
-- tar xvf linux-5.4.tar.xz
-- cd linux-5.4
-- make oldconfig
-- make
-- sudo make modules_install
-
-Create the symbolic link /usr/src/linux pointing at the linux-5.4 directory.
-It is important that the /path/to/linux-5.4 is an absolute path and not a relative
-one in order for the symbolic link to work correctly.
-- cd ..
-- sudo ln -s /path/to/linux-5.4 /usr/src/linux
+Please note, this project no longer requires kernel sources to build.
 
 # Clone
 - git clone https://github.com/microsoft/OMS-Auditd-Plugin.git
