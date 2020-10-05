@@ -109,6 +109,9 @@ bool filter_path(char *p)
     if (contains(p, "authorized_keys"))
         return false;
 
+    if (starts_with(p, "/dev/sd"))
+        return false;
+
     return true;
 }
 

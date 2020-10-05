@@ -42,14 +42,6 @@
 #    $ make                                                                     #
 #                                                                               #
 #################################################################################
-# TIP:                                                                          #
-# If this CMake file stops working, it could be because you're using a newer    #
-# kernel source and the include files have moved. A simple way of finding the   #
-# correct list of include directories is to modify the Makefiles in the kernel  #
-# source in ${LINUX_SRC}/samples/bpf and ${LINUX_SRC}/tools/lib/bpf and add the #
-# -v switch to the compiler. This will cause it to output all the switches it   #
-# was called with, plus all the directories it will search for headers.         #
-#################################################################################
 
 
 cmake_minimum_required(VERSION 3.0)
@@ -58,11 +50,7 @@ cmake_policy(SET CMP0048 NEW)
 # set the project name
 project(EBPF_Loader VERSION 0.1)
 
-# set linux source tree directory (must already have 'make && make headers_install')
-set(LINUX_SRC "/usr/src/linux")
-
 include(ExternalProject)
-
 
 #Set option for Debug Outputs for eBPF programs
 option(DEBUG_K "Enter debug mode" Off)
@@ -101,17 +89,6 @@ target_include_directories(ebpf_loader PUBLIC
                            "${libbpf_SOURCE_DIR}/include/tools"
                            "${libbpf_SOURCE_DIR}/include/uapi"
                            "${libbpf_SOURCE_DIR}/include/uapi/linux"
-                           "${LINUX_SRC}/tools/lib"
-                           "${LINUX_SRC}/tools/perf"
-                           "${LINUX_SRC}/tools/include"
-                           "${LINUX_SRC}/tools/arch/x86/include/uapi"
-                           "${LINUX_SRC}/tools/include/uapi"
-                           "${LINUX_SRC}/arch/x86/include/uapi"
-                           "${LINUX_SRC}/arch/x86/include/generated/uapi"
-                           "${LINUX_SRC}/include/uapi"
-                           "${LINUX_SRC}/include"
-                           "${LINUX_SRC}/include/x86_64-linux-gnu/"
-                           "${LINUX_SRC}/include/generated/uapi"
                            "/usr/include"
                            )
 
@@ -126,11 +103,9 @@ set(EBPF_PROGS
 
 
 
-#################################################################################
-# Everything below this point should be fairly static.  Ensure LINUX_SRC points #
-# to the correct directory for the kernel sources; otherwise, leave it alone    #
-# unless things start breaking. :)                                              #
-#################################################################################
+########################################################
+# Everything below this point should be fairly static. #
+########################################################
 
 
 #
@@ -159,19 +134,11 @@ if (DEBUG_K)
     list(APPEND CLANG_DEFINES -DDEBUG_K)
 endif()
 
-set(CLANG_INCLUDES -include "${LINUX_SRC}/include/linux/kconfig.h"
-                   -include "${LINUX_SRC}/samples/bpf/asm_goto_workaround.h"
+set(CLANG_INCLUDES 
+                   -I "/usr/include"
+                   -I "/usr/include/x86_64-linux-gnu"
+                   -I "${CMAKE_SOURCE_DIR}"
                    -I "${libbpf_SOURCE_DIR}/src"
-                   -I "${LINUX_SRC}/arch/x86/include"
-                   -I "${LINUX_SRC}/arch/x86/include/generated"
-                   -I "${LINUX_SRC}/include"
-                   -I "${LINUX_SRC}/arch/x86/include/uapi"
-                   -I "${LINUX_SRC}/arch/x86/include/generated/uapi"
-                   -I "${LINUX_SRC}/include/uapi"
-                   -I "${LINUX_SRC}/include/generated/uapi"
-                   -I "${LINUX_SRC}/ubuntu/include"
-                   -I "${LINUX_SRC}/samples/bpf"
-                   -I "${LINUX_SRC}/tools/testing/selftests/bpf/"
                    )
 
 #
@@ -184,7 +151,6 @@ set(CLANG_INCLUDES -include "${LINUX_SRC}/include/linux/kconfig.h"
 function(build_ebpf ebpfsrc)
     add_custom_command(OUTPUT ${ebpfsrc}.o
                        COMMAND "${CLANG}" -nostdinc -isystem `gcc -print-file-name=include` ${CLANG_INCLUDES} ${CLANG_DEFINES} -O2 ${CLANG_OPTIONS} -emit-llvm -c "${CMAKE_SOURCE_DIR}/ebpf_loader/ebpf_kern/${ebpfsrc}.c" -o -| "${LLC}" -march=bpf -filetype=obj -o "${ebpfsrc}.o"
-#                       COMMAND "${CLANG}" -nostdinc -isystem `gcc -print-file-name=include` ${CLANG_INCLUDES} ${CLANG_DEFINES} -O2 ${CLANG_OPTIONS} -emit-llvm -c "${CMAKE_SOURCE_DIR}/ebpf_loader/ebpf_kern/${ebpfsrc}.c" -o -| opt -always-inline -inline | "${LLC}" -march=bpf -filetype=obj -o "${ebpfsrc}.o"
                        COMMENT "Building EBPF object ${ebpfsrc}.o"
                        DEPENDS ebpf_kern/${ebpfsrc}.c
                        DEPENDS libbpf

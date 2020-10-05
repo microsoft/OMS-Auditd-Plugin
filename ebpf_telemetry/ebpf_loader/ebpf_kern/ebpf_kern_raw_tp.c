@@ -46,11 +46,11 @@ SEC("raw_tracepoint/sys_enter")
 __attribute__((flatten))
 int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 {
-    u64 pid_tid = bpf_get_current_pid_tgid();
-    u32 cpu_id = bpf_get_smp_processor_id();
+    uint64_t pid_tid = bpf_get_current_pid_tgid();
+    uint32_t cpu_id = bpf_get_smp_processor_id();
     args_s *event_args;
-    u32 syscall = ctx->args[1];
-    u32 config_id = 0;
+    uint32_t syscall = ctx->args[1];
+    uint32_t config_id = 0;
     config_s *config;
     char syscall_flags = 0;
 
@@ -87,14 +87,14 @@ SEC("raw_tracepoint/sys_exit")
 __attribute__((flatten))
 int sys_exit(struct bpf_raw_tracepoint_args *ctx)
 {
-    u64 pid_tid = bpf_get_current_pid_tgid();
-    u32 cpu_id = bpf_get_smp_processor_id();
+    uint64_t pid_tid = bpf_get_current_pid_tgid();
+    uint32_t cpu_id = bpf_get_smp_processor_id();
     event_s *event = NULL;
     args_s *event_args = NULL;
     struct pt_regs *regs = (struct pt_regs *)ctx->args[0];
-    u32 config_id = 0;
+    uint32_t config_id = 0;
     config_s *config;
-    u32 userland_pid = 0;
+    uint32_t userland_pid = 0;
     void *task;
     
     // retrieve config
@@ -131,7 +131,7 @@ int sys_exit(struct bpf_raw_tracepoint_args *ctx)
         set_event_exit_info(event, task, config);
 
     // set the return code
-    if (bpf_probe_read(&event->return_code, sizeof(s64), (void *)&SYSCALL_PT_REGS_RC(regs)) != 0){
+    if (bpf_probe_read(&event->return_code, sizeof(int64_t), (void *)&SYSCALL_PT_REGS_RC(regs)) != 0){
         BPF_PRINTK("ERROR, failed to get return code, exiting syscall %lu\n", event->syscall_id);
         event->status |= STATUS_RC;
     }

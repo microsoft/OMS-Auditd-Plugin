@@ -28,17 +28,17 @@
 // arguments a syscall expects; attempts to do so will cause the verifier
 // to reject it.
 struct tracepoint__syscalls__sys_enter {
-    __u64 pad;
-    __u32 __syscall_nr;
-    __u32 pad2;
-    __u64 a[6];
+    __uint64_t pad;
+    __uint32_t __syscall_nr;
+    __uint32_t pad2;
+    __uint64_t a[6];
 };
 
 // all sys_exit arguments are the same for traditional tracepoints.
 struct tracepoint__syscalls__sys_exit {
-    __u64 pad;
-    __u32 __syscall_nr;
-    __u32 pad2;
+    __uint64_t pad;
+    __uint32_t __syscall_nr;
+    __uint32_t pad2;
      long ret;
 };
 
@@ -48,10 +48,10 @@ SEC("tracepoint/syscalls/sys_enter0")
 __attribute__((flatten))
 int sys_enter0(struct tracepoint__syscalls__sys_enter *args)
 {
-    u64 pid_tid = bpf_get_current_pid_tgid();
-    u64 cpu_id = bpf_get_smp_processor_id();
+    uint64_t pid_tid = bpf_get_current_pid_tgid();
+    uint64_t cpu_id = bpf_get_smp_processor_id();
     args_s *event_args;
-    u32 syscall = args->__syscall_nr;
+    uint32_t syscall = args->__syscall_nr;
 
     // retrieve map storage for event
     event_args = bpf_map_lookup_elem(&args_storage_map, &cpu_id);
@@ -70,10 +70,10 @@ SEC("tracepoint/syscalls/sys_enter1")
 __attribute__((flatten))
 int sys_enter1(struct tracepoint__syscalls__sys_enter *args)
 {
-    u64 pid_tid = bpf_get_current_pid_tgid();
-    u64 cpu_id = bpf_get_smp_processor_id();
+    uint64_t pid_tid = bpf_get_current_pid_tgid();
+    uint64_t cpu_id = bpf_get_smp_processor_id();
     args_s *event_args;
-    u32 syscall = args->__syscall_nr;
+    uint32_t syscall = args->__syscall_nr;
 
     // retrieve map storage for event
     event_args = bpf_map_lookup_elem(&args_storage_map, &cpu_id);
@@ -94,10 +94,10 @@ SEC("tracepoint/syscalls/sys_enter2")
 __attribute__((flatten))
 int sys_enter2(struct tracepoint__syscalls__sys_enter *args)
 {
-    u64 pid_tid = bpf_get_current_pid_tgid();
-    u64 cpu_id = bpf_get_smp_processor_id();
+    uint64_t pid_tid = bpf_get_current_pid_tgid();
+    uint64_t cpu_id = bpf_get_smp_processor_id();
     args_s *event_args;
-    u32 syscall = args->__syscall_nr;
+    uint32_t syscall = args->__syscall_nr;
 
     // retrieve map storage for event
     event_args = bpf_map_lookup_elem(&args_storage_map, &cpu_id);
@@ -119,10 +119,10 @@ SEC("tracepoint/syscalls/sys_enter3")
 __attribute__((flatten))
 int sys_enter3(struct tracepoint__syscalls__sys_enter *args)
 {
-    u64 pid_tid = bpf_get_current_pid_tgid();
-    u64 cpu_id = bpf_get_smp_processor_id();
+    uint64_t pid_tid = bpf_get_current_pid_tgid();
+    uint64_t cpu_id = bpf_get_smp_processor_id();
     args_s *event_args;
-    u32 syscall = args->__syscall_nr;
+    uint32_t syscall = args->__syscall_nr;
 
     // retrieve map storage for event
     event_args = bpf_map_lookup_elem(&args_storage_map, &cpu_id);
@@ -145,10 +145,10 @@ SEC("tracepoint/syscalls/sys_enter4")
 __attribute__((flatten))
 int sys_enter4(struct tracepoint__syscalls__sys_enter *args)
 {
-    u64 pid_tid = bpf_get_current_pid_tgid();
-    u64 cpu_id = bpf_get_smp_processor_id();
+    uint64_t pid_tid = bpf_get_current_pid_tgid();
+    uint64_t cpu_id = bpf_get_smp_processor_id();
     args_s *event_args;
-    u32 syscall = args->__syscall_nr;
+    uint32_t syscall = args->__syscall_nr;
 
     // retrieve map storage for event
     event_args = bpf_map_lookup_elem(&args_storage_map, &cpu_id);
@@ -172,10 +172,10 @@ SEC("tracepoint/syscalls/sys_enter5")
 __attribute__((flatten))
 int sys_enter5(struct tracepoint__syscalls__sys_enter *args)
 {
-    u64 pid_tid = bpf_get_current_pid_tgid();
-    u64 cpu_id = bpf_get_smp_processor_id();
+    uint64_t pid_tid = bpf_get_current_pid_tgid();
+    uint64_t cpu_id = bpf_get_smp_processor_id();
     args_s *event_args;
-    u32 syscall = args->__syscall_nr;
+    uint32_t syscall = args->__syscall_nr;
 
     // retrieve map storage for event
     event_args = bpf_map_lookup_elem(&args_storage_map, &cpu_id);
@@ -200,10 +200,10 @@ SEC("tracepoint/syscalls/sys_enter6")
 __attribute__((flatten))
 int sys_enter6(struct tracepoint__syscalls__sys_enter *args)
 {
-    u64 pid_tid = bpf_get_current_pid_tgid();
-    u64 cpu_id = bpf_get_smp_processor_id();
+    uint64_t pid_tid = bpf_get_current_pid_tgid();
+    uint64_t cpu_id = bpf_get_smp_processor_id();
     args_s *event_args;
-    u32 syscall = args->__syscall_nr;
+    uint32_t syscall = args->__syscall_nr;
 
     // retrieve map storage for event
     event_args = bpf_map_lookup_elem(&args_storage_map, &cpu_id);
@@ -229,13 +229,13 @@ SEC("tracepoint/syscalls/sys_exit")
 __attribute__((flatten))
 int sys_exit(struct tracepoint__syscalls__sys_exit *args)
 {
-    u64 pid_tid = bpf_get_current_pid_tgid();
-    u32 cpu_id = bpf_get_smp_processor_id();
+    uint64_t pid_tid = bpf_get_current_pid_tgid();
+    uint32_t cpu_id = bpf_get_smp_processor_id();
     event_s *event = NULL;
     args_s *event_args = NULL;
-    u32 config_id = 0;
+    uint32_t config_id = 0;
     config_s *config;
-    u32 userland_pid = 0;
+    uint32_t userland_pid = 0;
     void *task;
 
     // retrieve config

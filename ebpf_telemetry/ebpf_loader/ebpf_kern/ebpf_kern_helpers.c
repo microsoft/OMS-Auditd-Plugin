@@ -26,7 +26,6 @@
 
 #include "ebpf_kern_common.h"
 
-
 // Our own inline helper functions
 
 // return pointer to struct member
@@ -56,9 +55,9 @@ static inline void *deref_member(void *base, unsigned int *refs)
 
 // return value pointed to by struct member
 __attribute__((always_inline))
-static inline u64 deref_ptr(void *base, unsigned int *refs)
+static inline uint64_t deref_ptr(void *base, unsigned int *refs)
 {
-    u64 result = 0;
+    uint64_t result = 0;
     void *ref;
 
     ref = deref_member(base, refs);
@@ -75,7 +74,7 @@ static inline bool deref_string_into(char *dest, unsigned int size, void *base, 
 {
     unsigned int i;
     void *ref = base;
-    u64 result = 0;
+    uint64_t result = 0;
 
     ref = deref_member(base, refs);
 
@@ -96,7 +95,7 @@ static inline bool deref_filepath_into(char *dest, void *base, unsigned int *ref
     char *temp = NULL;
     unsigned int i;
     unsigned int size = 0;
-    u32 map_id = bpf_get_smp_processor_id();
+    uint32_t map_id = bpf_get_smp_processor_id();
     void *path = NULL;
     void *dentry = NULL;
     void *newdentry = NULL;
@@ -304,11 +303,11 @@ static inline void init_args(args_s *event_args, unsigned long syscall_id)
 
 // check if this is an event to process
 __attribute__((always_inline))
-static inline bool sys_enter_check_and_init(args_s *event_args, u32 syscall, u64 pid_tid, u32 cpu_id)
+static inline bool sys_enter_check_and_init(args_s *event_args, uint32_t syscall, uint64_t pid_tid, uint32_t cpu_id)
 {
-    u32 config_id = 0;
+    uint32_t config_id = 0;
     config_s *config;
-    u32 userland_pid = 0;
+    uint32_t userland_pid = 0;
     char syscall_flags = 0;
 
     // retrieve config
@@ -330,11 +329,11 @@ static inline bool sys_enter_check_and_init(args_s *event_args, u32 syscall, u64
 
 // retrieve and process per-syscall filters
 __attribute__((always_inline))
-static inline bool check_event_filters(unsigned long *a, u32 syscall)
+static inline bool check_event_filters(unsigned long *a, uint32_t syscall)
 {
     sysconf_s *sysconf = NULL;
-    u32 sysconf_index = 0;
-    u32 index = 0;
+    uint32_t sysconf_index = 0;
+    uint32_t index = 0;
 
     // check if there are any filters first
     sysconf_index = syscall << 16;
@@ -387,7 +386,7 @@ static inline bool check_event_filters(unsigned long *a, u32 syscall)
 
 // complete and store event
 __attribute__((always_inline))
-static inline void sys_enter_complete_and_store(args_s *event_args, u32 syscall, u64 pid_tid)
+static inline void sys_enter_complete_and_store(args_s *event_args, uint32_t syscall, uint64_t pid_tid)
 {
     args_s args;
     memset(&args, 0, sizeof(args_s));
@@ -442,9 +441,9 @@ static inline bool set_event_exe_info(event_s *event, void *task, config_s *conf
     inode = (void *)deref_ptr(dentry, config->dentry_inode);
     if (!inode)
         return false;
-    event->exe_mode = (u16)deref_ptr(inode, config->inode_mode);
-    event->exe_ouid = (u32)deref_ptr(inode, config->inode_ouid);
-    event->exe_ogid = (u32)deref_ptr(inode, config->inode_ogid);
+    event->exe_mode = (uint16_t)deref_ptr(inode, config->inode_mode);
+    event->exe_ouid = (uint32_t)deref_ptr(inode, config->inode_ouid);
+    event->exe_ogid = (uint32_t)deref_ptr(inode, config->inode_ogid);
     return true;
 }
 
@@ -459,11 +458,11 @@ static inline bool set_event_exit_info(event_s *event, void *task, config_s *con
     event->bootns = bpf_ktime_get_ns();
 
     // get the ppid
-    event->ppid = (u32)deref_ptr(task, config->ppid);
+    event->ppid = (uint32_t)deref_ptr(task, config->ppid);
 
     // get the session
-    event->auid = (u32)deref_ptr(task, config->auid);
-    event->ses = (u32)deref_ptr(task, config->ses);
+    event->auid = (uint32_t)deref_ptr(task, config->auid);
+    event->ses = (uint32_t)deref_ptr(task, config->ses);
 
     if (!deref_string_into(event->tty, sizeof(event->tty), task, config->tty)){
         bpf_probe_read_str(event->tty, sizeof(event->tty), notty);
@@ -472,14 +471,14 @@ static inline bool set_event_exit_info(event_s *event, void *task, config_s *con
     // get the creds
     cred = (void *)deref_ptr(task, config->cred);
     if (cred) {
-        event->uid = (u32)deref_ptr(cred, config->cred_uid);
-        event->gid = (u32)deref_ptr(cred, config->cred_gid);
-        event->euid = (u32)deref_ptr(cred, config->cred_euid);
-        event->suid = (u32)deref_ptr(cred, config->cred_suid);
-        event->fsuid = (u32)deref_ptr(cred, config->cred_fsuid);
-        event->egid = (u32)deref_ptr(cred, config->cred_egid);
-        event->sgid = (u32)deref_ptr(cred, config->cred_sgid);
-        event->fsgid = (u32)deref_ptr(cred, config->cred_fsgid);
+        event->uid = (uint32_t)deref_ptr(cred, config->cred_uid);
+        event->gid = (uint32_t)deref_ptr(cred, config->cred_gid);
+        event->euid = (uint32_t)deref_ptr(cred, config->cred_euid);
+        event->suid = (uint32_t)deref_ptr(cred, config->cred_suid);
+        event->fsuid = (uint32_t)deref_ptr(cred, config->cred_fsuid);
+        event->egid = (uint32_t)deref_ptr(cred, config->cred_egid);
+        event->sgid = (uint32_t)deref_ptr(cred, config->cred_sgid);
+        event->fsgid = (uint32_t)deref_ptr(cred, config->cred_fsgid);
     } else {
         BPF_PRINTK("ERROR, failed to deref creds\n");
         event->status |= STATUS_CRED;
@@ -514,7 +513,7 @@ static inline bool set_event_exit_info(event_s *event, void *task, config_s *con
 
 // extract details from the arguments
 __attribute__((always_inline))
-static inline void set_event_arg_info(event_s *event, void *task, config_s *config, u32 cpu_id)
+static inline void set_event_arg_info(event_s *event, void *task, config_s *config, uint32_t cpu_id)
 {
     switch(event->syscall_id)
     {

@@ -24,15 +24,18 @@
 #ifndef KERN_COMMON_H
 #define KERN_COMMON_H
 
+#include <stdint.h>
 #include <linux/version.h>
-#include <linux/ptrace.h>
-#include <uapi/linux/bpf.h>
+#include <linux/bpf.h>
 #include <bpf_helpers.h>
 #include <linux/socket.h>
 #include <linux/in.h>
 #include <linux/in6.h>
+#include <linux/fcntl.h>
+#include <sys/socket.h>
 #include <linux/string.h>
-#include <bpf_tracing.h>
+#include <asm/unistd_64.h>
+#include <asm/ptrace.h>
 #include "../../event_defs.h"
 
 // debug tracing can be found using:
@@ -46,14 +49,26 @@
 #define BPF_PRINTK ((void)0);
 #endif
 
+// missing stddef.h defines
+#define NULL ((void *)0)
+typedef int bool;
+#define true 1
+#define false 0
+
 // x64 syscall macros
-#define SYSCALL_PT_REGS_PARM1(x) ((x)->di)
-#define SYSCALL_PT_REGS_PARM2(x) ((x)->si)
-#define SYSCALL_PT_REGS_PARM3(x) ((x)->dx)
+#define SYSCALL_PT_REGS_PARM1(x) ((x)->rdi)
+#define SYSCALL_PT_REGS_PARM2(x) ((x)->rsi)
+#define SYSCALL_PT_REGS_PARM3(x) ((x)->rdx)
 #define SYSCALL_PT_REGS_PARM4(x) ((x)->r10)
 #define SYSCALL_PT_REGS_PARM5(x) ((x)->r8)
 #define SYSCALL_PT_REGS_PARM6(x) ((x)->r9)
-#define SYSCALL_PT_REGS_RC(x)    ((x)->ax)
+#define SYSCALL_PT_REGS_RC(x)    ((x)->rax)
+
+// bpf_raw_tracepoint_args definition from /usr/src/linux/include/uapi/linux/bpf.h
+struct bpf_raw_tracepoint_args {
+        __u64 args[0];
+};
+
 
 #define MAX_PROC 512
 #define ARGS_HASH_SIZE 10240
@@ -64,7 +79,7 @@
 struct bpf_map_def SEC("maps") event_map = {
 	.type = BPF_MAP_TYPE_PERF_EVENT_ARRAY, //BPF_MAP_TYPE_HASH doesnt stack....
 	.key_size = sizeof(int),
-	.value_size = sizeof(u32),
+	.value_size = sizeof(uint32_t),
 	.max_entries = MAX_PROC, // MAX_PROC CPUs - this needs to accommodate most systems as this is CO:RE-alike
                         // Also, as this map is quite small (8 bytes per entry), we could potentially
                         // make this event bigger and it woulnd't cost much
@@ -74,7 +89,7 @@ struct bpf_map_def SEC("maps") event_map = {
 // one entry per cpu
 struct bpf_map_def SEC("maps") event_storage_map = {
     .type = BPF_MAP_TYPE_ARRAY,
-    .key_size = sizeof(u32),
+    .key_size = sizeof(uint32_t),
     .value_size = sizeof(event_s),
     .max_entries = MAX_PROC,
 };
@@ -83,7 +98,7 @@ struct bpf_map_def SEC("maps") event_storage_map = {
 // one entry per cpu
 struct bpf_map_def SEC("maps") args_storage_map = {
     .type = BPF_MAP_TYPE_ARRAY,
-    .key_size = sizeof(u32),
+    .key_size = sizeof(uint32_t),
     .value_size = sizeof(args_s),
     .max_entries = MAX_PROC,
 };
@@ -92,7 +107,7 @@ struct bpf_map_def SEC("maps") args_storage_map = {
 // one entry per cpu
 struct bpf_map_def SEC("maps") temppath_array = {
     .type = BPF_MAP_TYPE_ARRAY,
-    .key_size = sizeof(u32),
+    .key_size = sizeof(uint32_t),
     .value_size = PATH_MAX * 2,
     .max_entries = MAX_PROC,
 };
@@ -101,7 +116,7 @@ struct bpf_map_def SEC("maps") temppath_array = {
 // shared by all cpus because sys_enter and sys_exit could be on different cpus
 struct bpf_map_def SEC("maps") args_hash = {
     .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(u64),
+    .key_size = sizeof(uint64_t),
     .value_size = sizeof(args_s),
     .max_entries = ARGS_HASH_SIZE,
 };
@@ -110,7 +125,7 @@ struct bpf_map_def SEC("maps") args_hash = {
 // only one entry, which is the config struct
 struct bpf_map_def SEC("maps") config_map = {
     .type = BPF_MAP_TYPE_ARRAY,
-    .key_size = sizeof(u32),
+    .key_size = sizeof(uint32_t),
     .value_size = sizeof(config_s),
     .max_entries = 1,
 };
@@ -120,7 +135,7 @@ struct bpf_map_def SEC("maps") config_map = {
 // syscall indicies are per syscall, and each increments from 0
 struct bpf_map_def SEC("maps") sysconf_map = {
     .type = BPF_MAP_TYPE_HASH,
-    .key_size = sizeof(u32),
+    .key_size = sizeof(uint32_t),
     .value_size = sizeof(sysconf_s),
     .max_entries = SYSCONF_MAP_SIZE,
 };
