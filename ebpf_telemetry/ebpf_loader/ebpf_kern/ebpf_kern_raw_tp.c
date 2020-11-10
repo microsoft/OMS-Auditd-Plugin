@@ -44,7 +44,7 @@ static inline bool set_event_args(unsigned long *a, struct pt_regs *regs)
  
 SEC("raw_tracepoint/sys_enter")
 __attribute__((flatten))
-int sys_enter(struct bpf_raw_tracepoint_args *ctx)
+int sys_enter(struct bpf_our_raw_tracepoint_args *ctx)
 {
     uint64_t pid_tid = bpf_get_current_pid_tgid();
     uint32_t cpu_id = bpf_get_smp_processor_id();
@@ -85,7 +85,7 @@ int sys_enter(struct bpf_raw_tracepoint_args *ctx)
 
 SEC("raw_tracepoint/sys_exit")
 __attribute__((flatten))
-int sys_exit(struct bpf_raw_tracepoint_args *ctx)
+int sys_exit(struct bpf_our_raw_tracepoint_args *ctx)
 {
     uint64_t pid_tid = bpf_get_current_pid_tgid();
     uint32_t cpu_id = bpf_get_smp_processor_id();

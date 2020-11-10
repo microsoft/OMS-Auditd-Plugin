@@ -65,7 +65,7 @@ typedef int bool;
 #define SYSCALL_PT_REGS_RC(x)    ((x)->rax)
 
 // bpf_raw_tracepoint_args definition from /usr/src/linux/include/uapi/linux/bpf.h
-struct bpf_raw_tracepoint_args {
+struct bpf_our_raw_tracepoint_args {
         __u64 args[0];
 };
 
