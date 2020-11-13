@@ -16,8 +16,8 @@ dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildBundle
 dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildBundle\outputs
 dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildBundle\outputs\build
 
-if NOT EXIST %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\Sign\outputs\build exit /b 0
-if NOT EXIST %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildBundle\outputs\build exit /b 0
+if NOT EXIST %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\Sign\outputs\build exit /b 1
+if NOT EXIST %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildBundle\outputs\build exit /b 1
 
 Xcopy /Y %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\Sign\outputs\build\*.deb cloudvault
 Xcopy /Y %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\Sign\outputs\build\*.rpm cloudvault

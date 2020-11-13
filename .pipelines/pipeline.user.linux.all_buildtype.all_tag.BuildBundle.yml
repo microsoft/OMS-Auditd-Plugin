@@ -1,6 +1,6 @@
 
 workspace_options:
-  download_current_artifacts: false
+  download_current_artifacts: true
 
 artifact_publish_options:
   publish_to_cloudvault_artifacts: false
