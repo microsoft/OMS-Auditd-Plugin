@@ -7,12 +7,17 @@ environment:
     provider: 'appcontainer'
     image: 'cdpxlinux.azurecr.io/artifact/119af308-cf25-4d7b-9cd5-9807533563c0/official/auoms-build:latest'
     source_mode: 'link'
+
+artifact_publish_options:
+  publish_to_cloudvault_artifacts: false
+
 restore:
   commands:
     - !!defaultcommand
       name: 'Fetch Dependencies'
       command: 'build/cdpx_build_restore.sh'
       fail_on_stderr: false
+
 build:
   commands:
     - !!buildcommand

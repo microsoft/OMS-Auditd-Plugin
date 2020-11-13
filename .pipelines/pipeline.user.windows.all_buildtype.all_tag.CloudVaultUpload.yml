@@ -11,22 +11,19 @@ environment:
 workspace_options:
   download_current_artifacts: false
   force_workspace_wipe: false
-  enable_legacy_networking: true
+  enable_legacy_networking: false
 
 artifact_publish_options:
   publish_to_cloudvault_artifacts: true
 
 static_analysis_options:
 
-signing_options:
-  profile: 'azure'
-
 build:
   commands:
     - !!buildcommand
-      name: 'Sign auoms'
-      command: 'build/cdpx_sign.cmd'
+      name: 'Stage for CloudVault'
+      command: 'build/cdpx_cloudvault.cmd'
       artifacts:
-        - from: 'signed'
+        - from: 'cloudvault'
           include:
             - '**/*'

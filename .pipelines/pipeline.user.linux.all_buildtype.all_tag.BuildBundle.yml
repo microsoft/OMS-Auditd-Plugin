@@ -1,6 +1,9 @@
 
 workspace_options:
-  download_current_artifacts: true
+  download_current_artifacts: false
+
+artifact_publish_options:
+  publish_to_cloudvault_artifacts: false
 
 restore:
   commands:
