@@ -6,17 +6,14 @@ cd ..
 if EXIST signed rmdir /s signed
 mkdir signed
 
-dir signed
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildPackages
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildPackages\outputs
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildPackages\outputs\build
+dir artifacts
+dir "artifacts\drop BuildPackages"
+dir "artifacts\drop BuildPackages\build"
 
-if NOT EXIST %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildPackages\outputs\build exit /b 1
+if NOT EXIST "artifacts\drop BuildPackages\build" exit /b 1
 
-Xcopy /Y %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildPackages\outputs\build\*.deb signed
-Xcopy /Y %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildPackages\outputs\build\*.rpm signed
+Xcopy /Y "artifacts\drop BuildPackages\build\*.deb" signed
+Xcopy /Y "artifacts\drop BuildPackages\build\*.rpm" signed
 
 dir signed\*.deb
 

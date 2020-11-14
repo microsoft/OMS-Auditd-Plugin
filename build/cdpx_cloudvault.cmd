@@ -6,22 +6,20 @@ cd ..
 if EXIST cloudvault rmdir /s cloudvault
 mkdir cloudvault
 
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\Sign
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\Sign\outputs
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\Sign\outputs\build
+set DIR=%~dp0
 
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildBundle
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildBundle\outputs
-dir %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildBundle\outputs\build
+dir artifacts
+dir "artifacts\drop Sign"
+dir "artifacts\drop Sign\build"
+dir "artifacts\drop BuildBundle"
+dir "artifacts\drop BuildBundle\build"
 
-if NOT EXIST %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\Sign\outputs\build exit /b 1
-if NOT EXIST %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildBundle\outputs\build exit /b 1
+if NOT EXIST "artifacts\drop Sign\build" exit /b 1
+if NOT EXIST "artifacts\drop BuildBundle\build" exit /b 1
 
-Xcopy /Y %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\Sign\outputs\build\*.deb cloudvault
-Xcopy /Y %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\Sign\outputs\build\*.rpm cloudvault
-Xcopy /Y %CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH%\current\drop\BuildBundle\outputs\build\*.sh cloudvault
+Xcopy /Y "artifacts\drop Sign\build\*.deb" cloudvault
+Xcopy /Y "artifacts\drop Sign\build\*.rpm" cloudvault
+Xcopy /Y "artifacts\drop BuildBundle\build\*.sh" cloudvault
 
 dir cloudvault\*.deb
 

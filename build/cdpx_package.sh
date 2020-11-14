@@ -19,10 +19,14 @@
 cd $(dirname $0)/..
 SRC_ROOT=$(pwd)
 
-find ${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH} -type d
-ls -FlaR ${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH}
+find $SRC_ROOT/artifacts -type d
+ls -FlaR $SRC_ROOT/artifacts
 
-PACKAGE_DIR=${CDP_TEMP_PRIOR_DROP_FOLDER_CONTAINER_PATH}/current/drop/Sign/outputs/build
+set -e -v
+ln -s $SRC_ROOT/artifacts/drop\ Sign $SRC_ROOT/artifacts/drop-Sign
+set +e +v
+
+PACKAGE_DIR=$SRC_ROOT/artifacts/drop-Sign/build
 TARGET_DIR=$SRC_ROOT/target
 
 RPM_PKG=$(ls ${PACKAGE_DIR}/auoms-[0-9]*.rpm)
