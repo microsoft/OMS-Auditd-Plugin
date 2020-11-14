@@ -59,10 +59,10 @@ public:
         return true;
     }
 
-    bool Commit() override {
+    int Commit() override {
         _proc->ProcessData(_buffer.data(), _size);
         _size = 0;
-        return true;
+        return 1;
     }
 
     bool Rollback() override {

@@ -69,7 +69,7 @@ public:
             _cond.notify_all();
             return true;
         }
-        return _close;
+        return false;
     }
 
     void Close() {

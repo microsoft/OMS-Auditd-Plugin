@@ -17,7 +17,7 @@
 #ifndef AUOMS_CGROUPS_H
 #define AUOMS_CGROUPS_H
 
-#include <vector>
+#include <unordered_set>
 #include <memory>
 
 class CGroupCPU {
@@ -28,8 +28,8 @@ public:
     void AddSelfThread();
     void AddThread(long tid);
 
-    std::vector<uint64_t> GetProcs();
-    std::vector<uint64_t> GetTasks();
+    std::unordered_set<uint64_t> GetProcs();
+    std::unordered_set<uint64_t> GetTasks();
 
     uint64_t GetShares();
     void SetShares(uint64_t val);

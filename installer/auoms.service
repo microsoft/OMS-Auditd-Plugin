@@ -11,6 +11,8 @@ KillMode=process
 ExecStart=/etc/init.d/auoms start
 ExecStop=/etc/init.d/auoms stop
 ExecReload=/etc/init.d/auoms reload
+CPUWeight=5
+CPUQuota=25%
 
 [Install]
 WantedBy=multi-user.target

@@ -73,16 +73,14 @@ int RawEvent::AddEvent(EventBuilder& builder) {
     if (_num_dropped_records > 0 && _drop_count.size() > 0) {
         num_records += 1;
     }
-    auto ret = builder.BeginEvent(_event_id.Seconds(), _event_id.Milliseconds(), _event_id.Serial(), num_records);
-    if (ret != 1) {
-        return ret;
+    if (!builder.BeginEvent(_event_id.Seconds(), _event_id.Milliseconds(), _event_id.Serial(), num_records)) {
+        return 0;
     }
 
     if (_syscall_rec_idx > -1) {
-        ret = _records[_syscall_rec_idx]->AddRecord(builder);
-        if (ret != 1) {
+        if (!_records[_syscall_rec_idx]->AddRecord(builder)) {
             builder.CancelEvent();
-            return ret;
+            return 0;
         }
         _records[_syscall_rec_idx].reset(nullptr);
     }
@@ -91,44 +89,39 @@ int RawEvent::AddEvent(EventBuilder& builder) {
         if (!rec) {
             continue;
         }
-        ret = rec->AddRecord(builder);
-        if (ret != 1) {
+        if (!rec->AddRecord(builder)) {
             builder.CancelEvent();
-            return ret;
+            return 0;
         }
         if (rec->GetRecordType() == RecordType::EXECVE) {
             for (std::unique_ptr<RawEventRecord>& rec: _execve_records) {
-                ret = rec->AddRecord(builder);
-                if (ret != 1) {
+                if (!rec->AddRecord(builder)) {
                     builder.CancelEvent();
-                    return ret;
+                    return 0;
                 }
             }
         }
     }
     if (_num_dropped_records > 0 && _drop_count.size() > 0) {
-        ret = builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_DROPPED_RECORDS), std::string_view(RecordTypeToName(RecordType::AUOMS_DROPPED_RECORDS)), std::string_view(""), static_cast<uint16_t>(_drop_count.size()));
-        if (ret != 1) {
+        if (!builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_DROPPED_RECORDS), std::string_view(RecordTypeToName(RecordType::AUOMS_DROPPED_RECORDS)), std::string_view(""), static_cast<uint16_t>(_drop_count.size()))) {
             builder.CancelEvent();
-            return ret;
+            return 0;
         }
         for (auto& e: _drop_count) {
-            ret = builder.AddField(RecordTypeToName(e.first), std::to_string(e.second), "", field_type_t::UNCLASSIFIED);
-            if (ret != 1) {
+            if (!builder.AddField(RecordTypeToName(e.first), std::to_string(e.second), "", field_type_t::UNCLASSIFIED)) {
                 builder.CancelEvent();
-                return ret;
+                return 0;
             }
         }
-        ret = builder.EndRecord();
-        if (ret != 1) {
+        if (!builder.EndRecord()) {
             builder.CancelEvent();
-            return ret;
+            return 0;
         }
     }
     return builder.EndEvent();
 }
 
-int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
+bool RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
     std::lock_guard<std::mutex> lock(_mutex);
 
     _bytes_metric->Update(static_cast<double>(record->GetSize()));
@@ -136,14 +129,15 @@ int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
 
     // Drop empty records unless it is the EOE record.
     if (record->IsEmpty() && record->GetRecordType() != RecordType::EOE) {
-        return 0;
+        return false;
     }
 
     auto event_id = record->GetEventId();
-    int ret = 0;
-    auto found = _events.on(event_id, [this,&record,&ret](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, std::shared_ptr<RawEvent>& event) {
+    auto found = _events.on(event_id, [this,&record](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, std::shared_ptr<RawEvent>& event) {
         if (event->AddRecord(std::move(record))) {
-            ret = event->AddEvent(*_builder);
+            if (event->AddEvent(*_builder) == -1) {
+                _dropped_event_metric->Update(1.0);
+            }
             return CacheEntryOP::REMOVE;
         } else {
             return CacheEntryOP::TOUCH;
@@ -153,7 +147,10 @@ int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
         auto event = std::make_shared<RawEvent>(record->GetEventId());
         if (event->AddRecord(std::move(record))) {
             _event_metric->Update(1.0);
-            return event->AddEvent(*_builder);
+            if (event->AddEvent(*_builder) == -1) {
+                _dropped_event_metric->Update(1.0);
+            }
+            return true;
         } else {
             _events.add(event_id, event);
         }
@@ -161,13 +158,15 @@ int RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
     // Don't wait for Flush to be called, preemptively flush oldest if the cache size limit is exceeded
     _events.for_all_oldest_first([this](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
         if (entry_count > MAX_CACHE_ENTRY) {
-            event->AddEvent(*_builder);
+            if (event->AddEvent(*_builder) == -1) {
+                _dropped_event_metric->Update(1.0);
+            }
             _event_metric->Update(1.0);
             return CacheEntryOP::REMOVE;
         }
         return CacheEntryOP::STOP;
     });
-    return 1;
+    return true;
 }
 
 void RawEventAccumulator::Flush(long milliseconds) {
@@ -177,7 +176,9 @@ void RawEventAccumulator::Flush(long milliseconds) {
 
         _events.for_all_oldest_first([this,now,milliseconds](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
             if (entry_count > MAX_CACHE_ENTRY || std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()-last_touched.time_since_epoch()) > std::chrono::milliseconds(milliseconds)) {
-                event->AddEvent(*_builder);
+                if (event->AddEvent(*_builder) == -1) {
+                    _dropped_event_metric->Update(1.0);
+                }
                 _event_metric->Update(1.0);
                 return CacheEntryOP::REMOVE;
             }
@@ -185,7 +186,9 @@ void RawEventAccumulator::Flush(long milliseconds) {
         });
     } else {
         _events.for_all_oldest_first([this](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, const EventId& key, std::shared_ptr<RawEvent>& event) {
-            event->AddEvent(*_builder);
+            if (event->AddEvent(*_builder) == -1) {
+                _dropped_event_metric->Update(1.0);
+            }
             _event_metric->Update(1.0);
             return CacheEntryOP::REMOVE;
         });

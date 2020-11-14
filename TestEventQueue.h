@@ -30,9 +30,9 @@ public:
         return true;
     }
 
-    virtual bool Commit() {
+    virtual int Commit() {
         _events.emplace_back(std::make_shared<std::vector<uint8_t>>(_buffer.begin(), _buffer.end()));
-        return true;
+        return 1;
     }
 
     virtual bool Rollback() {

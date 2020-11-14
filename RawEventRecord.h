@@ -34,7 +34,7 @@ public:
     inline char* Data() { return _data.data(); };
 
     bool Parse(RecordType record_type, size_t size);
-    int AddRecord(EventBuilder& builder);
+    bool AddRecord(EventBuilder& builder);
 
     inline EventId GetEventId() { return _event_id; }
     inline RecordType GetRecordType() { return _record_type; }

@@ -48,7 +48,7 @@ public:
         return true;
     }
 
-    bool Commit() override {
+    int Commit() override {
         Event event(_buffer.data(), _size);
         std::vector<EventRecord> recs;
         for(auto& rec :event) {
@@ -59,7 +59,7 @@ public:
         _converter.Convert(recs, _cmdline);
         _cmdlines.emplace_back(_cmdline);
         _size = 0;
-        return true;
+        return 1;
     }
 
     bool Rollback() override {

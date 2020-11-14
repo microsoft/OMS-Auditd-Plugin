@@ -511,6 +511,7 @@ int main(int argc, char**argv) {
     }
     Logger::Info("Acquire singleton lock");
 
+    std::atomic_long ingest_thread_id(0);
     std::shared_ptr<CGroupCPU> cgcpu_root;
     std::shared_ptr<CGroupCPU> cgcpu;
     if (!disable_cgroups) {
@@ -519,13 +520,29 @@ int main(int argc, char**argv) {
             cgcpu = CPULimits::CGFromConfig(config, "auomscollect");
             // systemd may not have put auomscollect into the default cgroup at this point
             // Wait a few seconds before moving into the right cgroup so we avoid getting moved back out by systemd
-            std::thread cg_thread([&cgcpu]() {
-                sleep(5);
-                try {
-                    cgcpu->AddSelf();
-                } catch (const std::exception &ex) {
-                    Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
-                    Logger::Warn("CPU Limits cannot be enforced");
+            std::thread cg_thread([&cgcpu_root,&cgcpu,&ingest_thread_id]() {
+                int sleep_time = 10;
+                // Loop forever to make sure we stay in our cgroup
+                while (!Signals::IsExit()) {
+                    sleep(sleep_time);
+                    sleep_time = 60;
+                    try {
+                        cgcpu->AddSelf();
+                    } catch (const std::exception &ex) {
+                        Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
+                        Logger::Warn("CPU Limits cannot be enforced");
+                        return;
+                    }
+                    long tid = ingest_thread_id.load();
+                    if (tid != 0) {
+                        try {
+                            cgcpu_root->AddThread(tid);
+                        } catch (std::runtime_error &ex) {
+                            Logger::Error("Failed to move ingest thread to root cgroup: %s", ex.what());
+                            // Set the id back to 0 so we don't keep trying.
+                            ingest_thread_id.store(0);
+                        }
+                    }
                 }
             });
             cg_thread.detach();
@@ -622,18 +639,7 @@ int main(int argc, char**argv) {
     std::thread ingest_thread([&]() {
         auto thread_id = CGroups::GetSelfThreadId();
         Logger::Info("Starting ingest thead (%ld)", thread_id);
-        // Move this thread back to the root cgroup (thus outside the auomscollect specific cgroup
-        if (!disable_cgroups && cgcpu_root) {
-            std::thread cg_thread([&cgcpu_root, thread_id]() {
-                sleep(10);
-                try {
-                    cgcpu_root->AddThread(thread_id);
-                } catch (std::runtime_error &ex) {
-                    Logger::Error("Failed to move ingest thread to root cgroup: %s", ex.what());
-                }
-            });
-            cg_thread.detach();
-        }
+        ingest_thread_id.store(thread_id);
         if (netlink_mode) {
             bool restart;
             do {

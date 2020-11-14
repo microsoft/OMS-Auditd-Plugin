@@ -328,7 +328,7 @@ int32_t EventBuilder::GetEventPid() {
     return EVENT_PID(_data);
 }
 
-bool EventBuilder::EndEvent() {
+int EventBuilder::EndEvent() {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }

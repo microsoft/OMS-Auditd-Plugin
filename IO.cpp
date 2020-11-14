@@ -212,7 +212,7 @@ ssize_t IOBase::ReadAll(void *buf, size_t size, const std::function<bool()>& fn)
 
 ssize_t IOBase::DiscardAll(size_t size, const std::function<bool()>& fn)
 {
-    uint8_t buffer[4096];
+    uint8_t buffer[1024*32];
     size_t nleft = size;
     do {
         int fd = _fd.load();
@@ -221,7 +221,7 @@ ssize_t IOBase::DiscardAll(size_t size, const std::function<bool()>& fn)
         }
         errno = 0;
         size_t n = nleft;
-        if (nleft < sizeof(buffer)) {
+        if (n > sizeof(buffer)) {
             n = sizeof(buffer);
         }
         ssize_t nr = read(fd, buffer, n);

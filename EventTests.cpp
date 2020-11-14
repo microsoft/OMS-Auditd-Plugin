@@ -35,44 +35,44 @@ BOOST_AUTO_TEST_CASE( test )
 
     EventBuilder builder(event_queue, DefaultPrioritizer::Create(0));
 
-    int ret = builder.BeginEvent(1, 3, 4, 2);
-    if (ret != 1) {
+    bool ret = builder.BeginEvent(1, 3, 4, 2);
+    if (!ret) {
         BOOST_FAIL("BeginEvent failed: " + std::to_string(ret));
     }
     ret = builder.BeginRecord(1, "test1", "raw record text1", 3);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("BeginRecord failed: " + std::to_string(ret));
     }
     ret = builder.AddField("field1", "raw1", "interp1", field_type_t::UNCLASSIFIED);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
     ret = builder.AddField("field2", "2", "user2", field_type_t::UID);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
     ret = builder.AddField("field3", "raw3", "interp3", field_type_t::UNCLASSIFIED);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
     ret = builder.EndRecord();
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("EndRecord failed: " + std::to_string(ret));
     }
     ret = builder.BeginRecord(2, "test2", "raw record text2", 2);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("BeginRecord failed: " + std::to_string(ret));
     }
     ret = builder.AddField("field1", "raw1", nullptr, field_type_t::UNCLASSIFIED);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
     ret = builder.AddField("field2", "raw2", "interp2", field_type_t::UNCLASSIFIED);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
     ret = builder.EndRecord();
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("EndRecord failed: " + std::to_string(ret));
     }
     builder.SetEventFlags(5);
@@ -180,39 +180,39 @@ BOOST_AUTO_TEST_CASE( test )
     BOOST_CHECK_EQUAL(rec, event.end());
 
     ret = builder.BeginEvent(1, 3, 4, 1);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("BeginEvent failed: " + std::to_string(ret));
     }
     ret = builder.BeginRecord(1, "test1", "raw text", 6);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("BeginRecord failed: " + std::to_string(ret));
     }
     ret = builder.AddField("field3", "raw3", "interp3", field_type_t::UNCLASSIFIED);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
     ret = builder.AddField("field6", "raw6", "interp6", field_type_t::UNCLASSIFIED);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
     ret = builder.AddField("field1", "raw1", "interp1", field_type_t::UNCLASSIFIED);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
     ret = builder.AddField("field4", "raw4", "interp4", field_type_t::UNCLASSIFIED);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
     ret = builder.AddField("field5", "raw5", "interp5", field_type_t::UNCLASSIFIED);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
     ret = builder.AddField("field2", "raw2", "interp2", field_type_t::UNCLASSIFIED);
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("AddField failed: " + std::to_string(ret));
     }
     ret = builder.EndRecord();
-    if (ret != 1) {
+    if (!ret) {
         BOOST_FAIL("EndRecord failed: " + std::to_string(ret));
     }
     ret = builder.EndEvent();
