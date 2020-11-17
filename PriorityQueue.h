@@ -368,7 +368,8 @@ public:
     void Commit(const std::shared_ptr<QueueCursorHandle>& cursor_handle, uint32_t priority, uint64_t seq);
     void Close(const std::shared_ptr<QueueCursorHandle>& cursor_handle);
 
-    bool Put(uint32_t priority, const void* data, size_t size);
+    // Return 1 on success, 0 on queue closed, and -1 if item too large
+    int Put(uint32_t priority, const void* data, size_t size);
 
     void Save(long save_delay, bool final_save = false);
     void Saver(long save_delay);

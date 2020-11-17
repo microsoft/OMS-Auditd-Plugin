@@ -214,5 +214,5 @@ bool OperationalStatus::send_status() {
     if(!_builder.EndRecord()) {
         return false;
     }
-    return _builder.EndEvent();
+    return _builder.EndEvent() != 0;
 }

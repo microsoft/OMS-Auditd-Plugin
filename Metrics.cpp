@@ -131,7 +131,7 @@ bool Metrics::send_metrics() {
             if (!_builder->EndRecord()) {
                 return false;
             }
-            if (!_builder->EndEvent()) {
+            if (!_builder->EndEvent() != 0) {
                 return false;
             }
         }

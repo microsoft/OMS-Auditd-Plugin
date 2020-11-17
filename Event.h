@@ -239,8 +239,11 @@ private:
 
 class IEventBuilderAllocator {
 public:
+    // Return true on success, false if closed
     virtual bool Allocate(void** data, size_t size) = 0;
-    virtual bool Commit() = 0;
+    // Return 1 on success, 0 on closed, and -1 if item too large
+    virtual int Commit() = 0;
+    // Return true on success, false if closed
     virtual bool Rollback() = 0;
 };
 
@@ -279,7 +282,7 @@ public:
     uint16_t GetEventFlags();
     void SetEventPid(int32_t pid);
     int32_t GetEventPid();
-    bool EndEvent();
+    int EndEvent();
     bool CancelEvent();
     bool BeginRecord(uint32_t record_type, const char* record_name, const char* record_text, uint16_t num_fields);
     bool BeginRecord(uint32_t record_type, const std::string_view& record_name, const std::string_view& record_text, uint16_t num_fields);

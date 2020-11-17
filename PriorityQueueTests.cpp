@@ -66,7 +66,7 @@ BOOST_AUTO_TEST_CASE( queue_simple ) {
 
     for (uint8_t i = 1; i <= 10; i++) {
         data[0] = i;
-        if (!queue->Put(0, data.data(), data.size())) {
+        if (queue->Put(0, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
 
@@ -109,6 +109,29 @@ BOOST_AUTO_TEST_CASE( queue_simple ) {
     BOOST_CHECK_EQUAL(stats._total._bytes_written, 0);
 }
 
+BOOST_AUTO_TEST_CASE( queue_oversided_item ) {
+    TempDir dir("/tmp/PriorityQueueTests");
+
+    auto queue = PriorityQueue::Open(dir.Path(), 8, 1024*1024, 16, 0, 0, 0);
+    if (!queue) {
+        BOOST_FAIL("Failed to open queue");
+    }
+
+    auto cursor_handle = queue->OpenCursor("test");
+
+    std::array<uint8_t, PriorityQueue::MAX_ITEM_SIZE+1> data;
+    data.fill(0);
+
+    data[0] = 1;
+    if (queue->Put(0, data.data(), data.size()) != -1) {
+        BOOST_FAIL("queue->Put() failed to reject oversided item!");
+    }
+
+    if (queue->Put(0, data.data(), data.size()-1) != 1) {
+        BOOST_FAIL("queue->Put() failed add item!");
+    }
+}
+
 BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
     TempDir dir("/tmp/PriorityQueueTests");
 
@@ -124,7 +147,7 @@ BOOST_AUTO_TEST_CASE( queue_cursor_rollback ) {
 
     for (uint8_t i = 1; i <= 10; i++) {
         data[0] = i;
-        if (!queue->Put(0, data.data(), data.size())) {
+        if (queue->Put(0, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -199,7 +222,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
 
     for (uint8_t i = 1; i < 6; i++) {
         data[0] = i;
-        if (!queue->Put(0, data.data(), data.size())) {
+        if (queue->Put(0, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -208,7 +231,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor ) {
 
     for (uint8_t i = 6; i <= 10; i++) {
         data[0] = i;
-        if (!queue->Put(0, data.data(), data.size())) {
+        if (queue->Put(0, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -300,7 +323,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
 
         for (uint8_t i = 1; i < 6; i++) {
             data[0] = i;
-            if (!queue->Put(0, data.data(), data.size())) {
+            if (queue->Put(0, data.data(), data.size()) != 1) {
                 BOOST_FAIL("queue->Put() failed!");
             }
         }
@@ -309,7 +332,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_multi_cursor_reopen ) {
 
         for (uint8_t i = 6; i <= 10; i++) {
             data[0] = i;
-            if (!queue->Put(0, data.data(), data.size())) {
+            if (queue->Put(0, data.data(), data.size()) != 1) {
                 BOOST_FAIL("queue->Put() failed!");
             }
         }
@@ -455,7 +478,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_priority ) {
 
     for (auto& in: input_pairs) {
         data[0] = in.first;
-        if (!queue->Put(in.second, data.data(), data.size())) {
+        if (queue->Put(in.second, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -508,7 +531,7 @@ BOOST_AUTO_TEST_CASE( queue_simple_priority2 ) {
         for (uint8_t i = 0; i < 2; i++) {
             auto expected = (p*2)+i;
             data[0] = expected;
-            if (!queue->Put(p, data.data(), data.size())) {
+            if (queue->Put(p, data.data(), data.size()) != 1) {
                 BOOST_FAIL("queue->Put() failed!");
             }
 
@@ -749,7 +772,7 @@ BOOST_AUTO_TEST_CASE( queue_max_unsaved_files ) {
     // This first set of inputs should reach the max mem limit
     for (auto& in: input_pairs) {
         data[0] = in.first;
-        if (!queue->Put(in.second, data.data(), data.size())) {
+        if (queue->Put(in.second, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -769,7 +792,7 @@ BOOST_AUTO_TEST_CASE( queue_max_unsaved_files ) {
     // This set of inputs should exceed the max mem limits
     for (auto& in: input2_pairs) {
         data[0] = in.first;
-        if (!queue->Put(in.second, data.data(), data.size())) {
+        if (queue->Put(in.second, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -1010,7 +1033,7 @@ BOOST_AUTO_TEST_CASE( queue_multi_cursor_fs_loss ) {
         // This first set of inputs should reach the max mem limit
         for (auto& in: input_pairs) {
             data[0] = in.first;
-            if (!queue->Put(in.second, data.data(), data.size())) {
+            if (queue->Put(in.second, data.data(), data.size()) != 1) {
                 BOOST_FAIL("queue->Put() failed!");
             }
         }
@@ -1120,7 +1143,7 @@ BOOST_AUTO_TEST_CASE( queue_multi_cursor_concurrent ) {
             return c1_ready && c2_ready;
         });
         reinterpret_cast<int*>(data.data())[0] = i;
-        if (!queue->Put(0, data.data(), data.size())) {
+        if (queue->Put(0, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -1162,7 +1185,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_multi_cursor ) {
 
     for (int i = 0; i < num_items; i++) {
         reinterpret_cast<int*>(data.data())[0] = i;
-        if (!queue->Put(0, data.data(), data.size())) {
+        if (queue->Put(0, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -1257,7 +1280,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_remove_cursor ) {
 
     for (int i = 0; i < num_items; i++) {
         reinterpret_cast<int*>(data.data())[0] = i;
-        if (!queue->Put(0, data.data(), data.size())) {
+        if (queue->Put(0, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -1326,7 +1349,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_clean_delete_cursor ) {
 
         for (int i = 0; i < num_items; i++) {
             reinterpret_cast<int *>(data.data())[0] = i;
-            if (!queue->Put(0, data.data(), data.size())) {
+            if (queue->Put(0, data.data(), data.size()) != 1) {
                 BOOST_FAIL("queue->Put() failed!");
             }
         }
@@ -1407,7 +1430,7 @@ BOOST_AUTO_TEST_CASE( queue_max_fs_bytes ) {
 
     for (int i = 0; i < num_items; i++) {
         reinterpret_cast<int*>(data.data())[0] = i;
-        if (!queue->Put(0, data.data(), data.size())) {
+        if (queue->Put(0, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -1467,7 +1490,7 @@ BOOST_AUTO_TEST_CASE( queue_max_fs_pct ) {
 
     for (int i = 0; i < num_items; i++) {
         reinterpret_cast<int*>(data.data())[0] = i;
-        if (!queue->Put(0, data.data(), data.size())) {
+        if (queue->Put(0, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -1521,7 +1544,7 @@ BOOST_AUTO_TEST_CASE( queue_min_fs_free_pct ) {
 
     for (int i = 0; i < num_items; i++) {
         reinterpret_cast<int*>(data.data())[0] = i;
-        if (!queue->Put(0, data.data(), data.size())) {
+        if (queue->Put(0, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -1555,7 +1578,7 @@ BOOST_AUTO_TEST_CASE( queue_save_delay ) {
 
     for (int i = 0; i < 9; i++) {
         reinterpret_cast<int*>(data.data())[0] = i;
-        if (!queue->Put(0, data.data(), data.size())) {
+        if (queue->Put(0, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -1597,7 +1620,7 @@ BOOST_AUTO_TEST_CASE( queue_cursor_commit ) {
 
         for (int i = 0; i < 32; i++) {
             reinterpret_cast<int *>(data.data())[0] = i;
-            if (!queue->Put(0, data.data(), data.size())) {
+            if (queue->Put(0, data.data(), data.size()) != 1) {
                 BOOST_FAIL("queue->Put() failed!");
             }
         }
@@ -1755,7 +1778,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_force_clean ) {
 
     for (auto& in: input_pairs1) {
         data[0] = in.first;
-        if (!queue->Put(in.second, data.data(), data.size())) {
+        if (queue->Put(in.second, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -1782,7 +1805,7 @@ BOOST_AUTO_TEST_CASE( queue_fs_force_clean ) {
 
     for (auto& in: input_pairs2) {
         data[0] = in.first;
-        if (!queue->Put(in.second, data.data(), data.size())) {
+        if (queue->Put(in.second, data.data(), data.size()) != 1) {
             BOOST_FAIL("queue->Put() failed!");
         }
     }
@@ -1839,7 +1862,7 @@ BOOST_AUTO_TEST_CASE( queue_empty_cursor_reset ) {
 
         for (int i = 0; i < 32; i++) {
             reinterpret_cast<int *>(data.data())[0] = i;
-            if (!queue->Put(0, data.data(), data.size())) {
+            if (queue->Put(0, data.data(), data.size()) != 1) {
                 BOOST_FAIL("queue->Put() failed!");
             }
         }
@@ -1872,7 +1895,7 @@ BOOST_AUTO_TEST_CASE( queue_empty_cursor_reset ) {
 
         for (int i = 0; i < 32; i++) {
             reinterpret_cast<int *>(data.data())[0] = i;
-            if (!queue->Put(0, data.data(), data.size())) {
+            if (queue->Put(0, data.data(), data.size()) != 1) {
                 BOOST_FAIL("queue->Put() failed!");
             }
         }

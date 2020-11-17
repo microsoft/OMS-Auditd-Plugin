@@ -99,7 +99,7 @@ int main(int argc, char**argv) {
     bool netlink_only = false;
 
     int opt;
-    while ((opt = getopt(argc, argv, "nc:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:ns")) != -1) {
         switch (opt) {
             case 'c':
                 config_file = optarg;
@@ -339,12 +339,18 @@ int main(int argc, char**argv) {
             // systemd may not have put auoms into the default cgroup at this point
             // Wait a few seconds before moving into the right cgroup so we avoid getting moved back out by systemd
             std::thread cg_thread([&cgcpu]() {
-                sleep(5);
-                try {
-                    cgcpu->AddSelf();
-                } catch (const std::exception &ex) {
-                    Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
-                    Logger::Warn("CPU Limits cannot be enforced");
+                int sleep_time = 5;
+                // Loop forever to make sure we stay in our cgroup
+                while (!Signals::IsExit()) {
+                    sleep(sleep_time);
+                    sleep_time = 60;
+                    try {
+                        cgcpu->AddSelf();
+                    } catch (const std::exception &ex) {
+                        Logger::Error("Failed to configure cpu cgroup: %s", ex.what());
+                        Logger::Warn("CPU Limits cannot be enforced");
+                        return;
+                    }
                 }
             });
             cg_thread.detach();

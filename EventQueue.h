@@ -34,7 +34,8 @@ public:
         return true;
     }
 
-    bool Commit() override {
+    // Return 1 on success, 0 on queue closed, and -1 if item was too large
+    int Commit() override {
         Event event(_buffer.data(), _size);
         auto ret =  _queue->Put(event.Priority(), _buffer.data(), _size);
         _size = 0;

@@ -655,11 +655,15 @@ void PriorityQueue::Close(const std::shared_ptr<QueueCursorHandle>& cursor_handl
     _cursor_handles.erase(cursor_handle->_id);
 }
 
-bool PriorityQueue::Put(uint32_t priority, const void* data, size_t size) {
+int PriorityQueue::Put(uint32_t priority, const void* data, size_t size) {
     std::unique_lock<std::mutex> lock(_mutex);
 
+    if (size > MAX_ITEM_SIZE) {
+        return -1;
+    }
+
     if (_closed) {
-        return false;
+        return 0;
     }
 
     if (priority >= _num_priorities) {
@@ -692,7 +696,7 @@ bool PriorityQueue::Put(uint32_t priority, const void* data, size_t size) {
         c->notify(priority, item->Sequence());
     }
 
-    return true;
+    return 1;
 }
 
 void PriorityQueue::Save(long save_delay, bool final_save) {

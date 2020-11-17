@@ -48,34 +48,41 @@ uint64_t ReadUint64(const std::string& path) {
 }
 
 void CGroupCPU::AddSelf() {
-    AppendUint64(_dir + CGROUP_PROCS_FILE, 0);
+    auto self_pid = getpid();
+    auto pids = GetProcs();
+    if (pids.count(self_pid) == 0) {
+        AppendUint64(_dir + CGROUP_PROCS_FILE, 0);
+    }
 }
 
 void CGroupCPU::AddSelfThread() {
-    auto tid = syscall(SYS_gettid);
-    AppendUint64(_dir + CGROUP_TASKS_FILE, tid);
+    auto tid = CGroups::GetSelfThreadId();
+    AddThread(tid);
 }
 
 void CGroupCPU::AddThread(long tid) {
-    AppendUint64(_dir + CGROUP_TASKS_FILE, tid);
+    auto tids = GetTasks();
+    if (tids.count(tid) == 0) {
+        AppendUint64(_dir + CGROUP_TASKS_FILE, tid);
+    }
 }
 
-std::vector<uint64_t> CGroupCPU::GetProcs() {
+std::unordered_set<uint64_t> CGroupCPU::GetProcs() {
     auto lines = ReadFile(_dir + CGROUP_PROCS_FILE);
-    std::vector<uint64_t> pids;
+    std::unordered_set<uint64_t> pids;
     pids.reserve(lines.size());
     for (auto& line : lines) {
-        pids.emplace_back(stoll(line));
+        pids.emplace(stoll(line));
     }
     return pids;
 }
 
-std::vector<uint64_t> CGroupCPU::GetTasks() {
+std::unordered_set<uint64_t> CGroupCPU::GetTasks() {
     auto lines = ReadFile(_dir + CGROUP_TASKS_FILE);
-    std::vector<uint64_t> tids;
+    std::unordered_set<uint64_t> tids;
     tids.reserve(lines.size());
     for (auto& line : lines) {
-        tids.emplace_back(stoll(line));
+        tids.emplace(stoll(line));
     }
     return tids;
 }

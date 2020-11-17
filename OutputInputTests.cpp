@@ -30,20 +30,21 @@
 #include "Gate.h"
 #include "Signals.h"
 #include "StringUtils.h"
+#include "UnixDomainWriter.h"
 
 bool BuildEvent(std::shared_ptr<EventBuilder>& builder, uint64_t sec, uint32_t msec, uint64_t serial, int seq) {
-    if (builder->BeginEvent(sec, msec, serial, 1) != 1) {
+    if (!builder->BeginEvent(sec, msec, serial, 1)) {
         return false;
     }
-    if (builder->BeginRecord(1, "TEST", "", 1) != 1) {
+    if (!builder->BeginRecord(1, "TEST", "", 1)) {
         builder->CancelEvent();
         return false;
     }
-    if (builder->AddField("seq", std::to_string(seq), nullptr, field_type_t::UNCLASSIFIED) != 1) {
+    if (!builder->AddField("seq", std::to_string(seq), nullptr, field_type_t::UNCLASSIFIED)) {
         builder->CancelEvent();
         return false;
     }
-    if(builder->EndRecord() != 1) {
+    if(!builder->EndRecord()) {
         builder->CancelEvent();
         return false;
     }
@@ -513,5 +514,92 @@ BOOST_AUTO_TEST_CASE( dropped_conn_test ) {
         Event event(_outputs[i].data(), _outputs[i].size());
         auto event_seq = GetEventSeq(event);
         BOOST_REQUIRE_EQUAL(i, event_seq);
+    }
+}
+
+BOOST_AUTO_TEST_CASE( oversized_event_test ) {
+    TempDir dir("/tmp/OutputInputTests");
+
+    std::string socket_path = dir.Path() + "/input.socket";
+    std::string status_socket_path = dir.Path() + "/status.socket";
+
+    std::mutex log_mutex;
+    std::vector<std::string> log_lines;
+    Logger::SetLogFunction([&log_mutex,&log_lines](const char* ptr, size_t size){
+        std::lock_guard<std::mutex> lock(log_mutex);
+        log_lines.emplace_back(ptr, size);
+    });
+
+    Signals::Init();
+    Signals::Start();
+
+    auto operational_status = std::make_shared<OperationalStatus>("", nullptr);
+
+    Inputs inputs(socket_path, operational_status);
+    if (!inputs.Initialize()) {
+        BOOST_FAIL("Failed to initialize inputs");
+    }
+
+    Gate done_gate;
+    std::vector<std::string> _outputs;
+
+    std::thread input_thread([&]() {
+        Signals::InitThread();
+        while (!Signals::IsExit()) {
+            if (!inputs.HandleData([&_outputs](void* ptr, size_t size) {
+                _outputs.emplace_back(reinterpret_cast<char*>(ptr), size);
+            })) {
+                break;
+            };
+        }
+        done_gate.Open();
+    });
+
+    inputs.Start();
+
+    UnixDomainWriter udw(socket_path);
+
+    if (!udw.Open()) {
+        BOOST_FAIL("Failed to open inputs socket");
+    }
+
+    std::array<uint8_t, InputBuffer::MAX_DATA_SIZE+1> _data;
+    _data.fill(0);
+    uint32_t header;
+    header = static_cast<uint32_t>(1) << 24;
+    header |= static_cast<uint32_t>(InputBuffer::MAX_DATA_SIZE+1);
+    reinterpret_cast<uint32_t*>(_data.data())[0] = header;
+
+    if (dynamic_cast<IWriter*>(&udw)->WriteAll(_data.data(), _data.size()) != IO::OK) {
+        BOOST_FAIL("Failed write data to input socket");
+    }
+
+    if (dynamic_cast<IWriter*>(&udw)->WriteAll(_data.data(), _data.size()) != IO::OK) {
+        BOOST_FAIL("Failed write data to input socket");
+    }
+
+    if (dynamic_cast<IWriter*>(&udw)->WriteAll(_data.data(), _data.size()) != IO::OK) {
+        BOOST_FAIL("Failed write data to input socket");
+    }
+
+    udw.Close();
+
+    inputs.Stop();
+
+    if (!done_gate.Wait(Gate::OPEN, 1000)) {
+        BOOST_FAIL("Time out waiting for inputs thread to exit");
+    }
+
+    input_thread.join();
+
+    int lcnt = 0;
+    for (auto& msg : log_lines) {
+        if (msg == "RawEventReader: Message size (262145) in header is too large (> 262144), reading and discarding message contents\n") {
+            lcnt += 1;
+        }
+    }
+
+    if (lcnt != 3) {
+        BOOST_FAIL("Expected 3 'header it too large' messages");
     }
 }

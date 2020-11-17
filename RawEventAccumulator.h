@@ -58,9 +58,10 @@ public:
         _bytes_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "raw_data", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
         _record_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "raw_data", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
         _event_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "raw_data", "events", MetricPeriod::SECOND, MetricPeriod::HOUR);
+        _dropped_event_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "raw_data", "dropped_events", MetricPeriod::SECOND, MetricPeriod::HOUR);
     }
 
-    int AddRecord(std::unique_ptr<RawEventRecord> record);
+    bool AddRecord(std::unique_ptr<RawEventRecord> record);
     void Flush(long milliseconds);
 
 private:
@@ -71,6 +72,7 @@ private:
     std::shared_ptr<Metric> _bytes_metric;
     std::shared_ptr<Metric> _record_metric;
     std::shared_ptr<Metric> _event_metric;
+    std::shared_ptr<Metric> _dropped_event_metric;
     Cache<EventId, std::shared_ptr<RawEvent>> _events;
 };
 
