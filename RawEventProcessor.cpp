@@ -309,6 +309,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                 break;
             case RecordType::AUOMS_DROPPED_RECORDS:
                 dropped_rec = rec;
+                num_fields += dropped_rec->NumFields();
                 break;
             default:
                 if (rec.NumFields() > 0) {

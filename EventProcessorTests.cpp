@@ -25,6 +25,7 @@
 #include "RawEventAccumulator.h"
 #include "StringUtils.h"
 #include "EventPrioritizer.h"
+#include "InputBuffer.h"
 
 #include <fstream>
 #include <stdexcept>
@@ -60,6 +61,9 @@ public:
     }
 
     int Commit() override {
+        if (_size > InputBuffer::MAX_DATA_SIZE) {
+            return -1;
+        }
         _proc->ProcessData(_buffer.data(), _size);
         _size = 0;
         return 1;
@@ -293,4 +297,54 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     for (size_t idx = 0; idx < expected_queue->GetEventCount(); ++idx) {
         diff_event(idx, expected_queue->GetEvent(idx), actual_queue->GetEvent(idx));
     }
+}
+
+BOOST_AUTO_TEST_CASE( oversized_event_test ) {
+    TempDir dir("/tmp/EventProcessorTests");
+
+    write_file(dir.Path() + "/passwd", passwd_file_text);
+    write_file(dir.Path() + "/group", group_file_text);
+
+    auto user_db = std::make_shared<UserDB>(dir.Path());
+
+    user_db->update();
+
+    auto actual_queue = new TestEventQueue();
+    auto metrics_queue = new TestEventQueue();
+    auto prioritizer = DefaultPrioritizer::Create(0);
+    auto actual_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_queue);
+    auto metrics_allocator = std::shared_ptr<IEventBuilderAllocator>(metrics_queue);
+    auto actual_builder = std::make_shared<EventBuilder>(actual_allocator, prioritizer);
+    auto metrics_builder = std::make_shared<EventBuilder>(metrics_allocator, prioritizer);
+
+    auto proc_filter = std::make_shared<ProcFilter>(user_db);
+    auto filtersEngine = std::make_shared<FiltersEngine>();
+    auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
+
+    auto metrics = std::make_shared<Metrics>(metrics_builder);
+
+    auto raw_proc = std::make_shared<RawEventProcessor>(actual_builder, user_db, processTree, filtersEngine, metrics);
+
+    auto actual_raw_queue = new RawEventQueue(raw_proc);
+    auto actual_raw_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_raw_queue);
+    auto actual_raw_builder = std::make_shared<EventBuilder>(actual_raw_allocator, prioritizer);
+
+    RawEventAccumulator accumulator(actual_raw_builder, metrics);
+
+    auto lines = split(oversized_event_text, '\n');
+    for (auto& line: lines) {
+        std::unique_ptr<RawEventRecord> record = std::make_unique<RawEventRecord>();
+        std::memcpy(record->Data(), line.c_str(), line.size());
+        if (record->Parse(RecordType::UNKNOWN, line.size())) {
+            accumulator.AddRecord(std::move(record));
+        } else {
+            Logger::Warn("Received unparsable event data: %s", line.c_str());
+        }
+    }
+    accumulator.Flush(0);
+
+    BOOST_REQUIRE_EQUAL(actual_queue->GetEventCount(), 1);
+
+    Event e = actual_queue->GetEvent(0);
+    BOOST_REQUIRE_LE(e.Size(), InputBuffer::MAX_DATA_SIZE);
 }

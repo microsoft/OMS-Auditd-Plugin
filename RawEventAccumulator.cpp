@@ -118,7 +118,12 @@ int RawEvent::AddEvent(EventBuilder& builder) {
             return 0;
         }
     }
-    return builder.EndEvent();
+
+    auto ret = builder.EndEvent();
+    if (ret == -1) {
+        Logger::Warn("RawEvent::AddEvent(): Event exceeded queue item size limit");
+    }
+    return ret;
 }
 
 bool RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
