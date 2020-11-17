@@ -96,6 +96,7 @@ extern const std::string group_file_text;
 
 extern std::vector<const char*> raw_test_events;
 extern const std::vector<bool> raw_events_do_flush;
+extern const std::string oversized_event_text;
 extern const std::vector<TestEvent> test_events;
 extern const std::vector<const char*> oms_test_events;
 extern const std::vector<const char*> fluent_test_events;
