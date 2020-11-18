@@ -295,21 +295,19 @@ bool DoNetlinkCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& byte
 }
 
 int main(int argc, char**argv) {
-    // Enable core dumps
-    struct rlimit limits;
-    limits.rlim_cur = RLIM_INFINITY;
-    limits.rlim_max = RLIM_INFINITY;
-    setrlimit(RLIMIT_CORE, &limits);
-
     std::string config_file = AUOMSCOLLECT_CONF;
     int stop_delay = 0; // seconds
     bool netlink_mode = false;
+    bool debug_mode = false;
 
     int opt;
-    while ((opt = getopt(argc, argv, "c:ns:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:dns:")) != -1) {
         switch (opt) {
             case 'c':
                 config_file = optarg;
+                break;
+            case 'd':
+                debug_mode = true;
                 break;
             case 's':
                 stop_delay = atoi(optarg);
@@ -320,6 +318,14 @@ int main(int argc, char**argv) {
             default:
                 usage();
         }
+    }
+
+    if (debug_mode) {
+        // Enable core dumps
+        struct rlimit limits;
+        limits.rlim_cur = RLIM_INFINITY;
+        limits.rlim_max = RLIM_INFINITY;
+        setrlimit(RLIMIT_CORE, &limits);
     }
 
     auto user_db = std::make_shared<UserDB>();

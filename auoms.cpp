@@ -88,21 +88,18 @@ bool parsePath(std::vector<std::string>& dirs, const std::string& path_str) {
 }
 
 int main(int argc, char**argv) {
-    // Enable core dumps
-    struct rlimit limits;
-    limits.rlim_cur = RLIM_INFINITY;
-    limits.rlim_max = RLIM_INFINITY;
-    setrlimit(RLIMIT_CORE, &limits);
-
-
     std::string config_file = AUOMS_CONF;
     bool netlink_only = false;
+    bool debug_mode = false;
 
     int opt;
-    while ((opt = getopt(argc, argv, "c:ns")) != -1) {
+    while ((opt = getopt(argc, argv, "c:dn")) != -1) {
         switch (opt) {
             case 'c':
                 config_file = optarg;
+                break;
+            case 'd':
+                debug_mode = true;
                 break;
             case 'n':
                 netlink_only = true;
@@ -110,6 +107,14 @@ int main(int argc, char**argv) {
             default:
                 usage();
         }
+    }
+
+    if (debug_mode) {
+        // Enable core dumps
+        struct rlimit limits;
+        limits.rlim_cur = RLIM_INFINITY;
+        limits.rlim_max = RLIM_INFINITY;
+        setrlimit(RLIMIT_CORE, &limits);
     }
 
     Config config;
