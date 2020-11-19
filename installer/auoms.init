@@ -7,9 +7,12 @@
 #
 ### BEGIN INIT INFO
 # Provides:             auoms
+# Required-Start:       $local_fs
+# Required-Stop:
 # Default-Start:        2 3 4 5
-# Default-Stop:
+# Default-Stop:         0 1 6
 # Short-Description:    OMS audit data collection daemon
+# Description:          OMS audit data collection daemon
 ### END INIT INFO
 
 # source function library
