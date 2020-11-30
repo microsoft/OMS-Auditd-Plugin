@@ -487,13 +487,24 @@ bool is_auditd_plugin_enabled_in_file(const std::string& path) {
 }
 
 bool is_auditd_plugin_enabled() {
+    bool audit_path_exists = PathExists("/etc/audit/plugins.d");
+    bool audisp_path_exists = PathExists("/etc/audisp/plugins.d");
+
+    if (!audit_path_exists && !audisp_path_exists) {
+        return false;
+    }
+
     bool audit = false;
-    if (PathExists("/etc/audit/plugins.d")) {
+    if (audit_path_exists) {
         audit = is_auditd_plugin_enabled_in_file("/etc/audit/plugins.d/auoms.conf");
+    } else {
+        audit = true;
     }
     bool audisp = false;
-    if (PathExists("/etc/audisp/plugins.d")) {
-        return is_auditd_plugin_enabled_in_file("/etc/audisp/plugins.d/auoms.conf");
+    if (audisp_path_exists) {
+        audisp = is_auditd_plugin_enabled_in_file("/etc/audisp/plugins.d/auoms.conf");
+    } else {
+        audisp = true;
     }
     return audit && audisp;
 }
