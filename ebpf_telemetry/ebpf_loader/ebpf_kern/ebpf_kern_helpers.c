@@ -35,6 +35,8 @@ static inline void *deref_member(void *base, unsigned int *refs)
     unsigned int i;
     void *ref = base;
     void *result = ref;
+    unsigned int breakindex = 0;
+    bool breakloop = false; // problems with clang loop unrolling led to this...
 
     if (!refs || refs[0] == DEREF_END)
         return NULL;
@@ -42,15 +44,22 @@ static inline void *deref_member(void *base, unsigned int *refs)
 #ifdef NOLOOPS
     #pragma unroll
 #endif
-    for (i=0; i<NUM_REDIRECTS - 1 && refs[i+1] != DEREF_END; i++) {
-        if (bpf_probe_read(&result, sizeof(result), ref + refs[i]) != READ_OKAY)
-            return NULL;
-        ref = result;
-        if (!ref)
-            return NULL;
+    for (i=0; i<NUM_REDIRECTS - 1; i++) {
+        if (refs[i+1] == DEREF_END) {
+            breakindex = i;
+            breakloop = true;
+        }
+        if (!breakloop) {
+            if (bpf_probe_read(&result, sizeof(result), ref + refs[i]) != READ_OKAY)
+                return NULL;
+            ref = result;
+            if (!ref)
+                return NULL;
+        }
     }
 
-    return result + refs[i];
+//    return result + refs[i];
+    return result + refs[breakindex & (NUM_REDIRECTS - 1)];
 }
 
 // return value pointed to by struct member
