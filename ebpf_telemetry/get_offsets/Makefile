@@ -35,4 +35,4 @@ conf:
 	@sudo dmesg -C
 	@sudo insmod get_offsets.ko
 	@sudo rmmod get_offsets.ko
-	@dmesg | grep '^\[' | tail -n +3 | head -n -2 | cut -d' ' -f2-
+	@dmesg | grep '^\[' | tail -n +3 | head -n -2 | cut -d']' -f2- | cut -d' ' -f2-
