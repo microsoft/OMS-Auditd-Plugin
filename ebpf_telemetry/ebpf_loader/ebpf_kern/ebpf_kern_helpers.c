@@ -183,10 +183,10 @@ static inline bool deref_filepath_into(char *dest, void *base, unsigned int *ref
     // copy the path from the temporary location to the destination
     if (size == 2)
         // path is simply "/"
-        dlen = bpf_probe_read_str(dest, PATH_MAX, &temp[PATH_MAX - size]);
+        dlen = bpf_probe_read_str(dest, PATH_MAX, &temp[(PATH_MAX - size) & (PATH_MAX -1)]);
     else if (size > 2)
         // otherwise don't copy the extra slash
-        dlen = bpf_probe_read_str(dest, PATH_MAX, &temp[PATH_MAX - (size - 1)]);
+        dlen = bpf_probe_read_str(dest, PATH_MAX, &temp[(PATH_MAX - (size - 1)) & (PATH_MAX -1)]);
     if (dlen <= 0)
         return false;
 
@@ -198,11 +198,11 @@ __attribute__((always_inline))
 static inline bool copy_commandline(event_execve_s *e, void *task, config_s *config)
 {
     // read the more reliable cmdline from task_struct->mm->arg_start
-    void *arg_start = (void *)deref_ptr(task, config->mm_arg_start);
-    void *arg_end = (void *)deref_ptr(task, config->mm_arg_end);
+    uint64_t arg_start = deref_ptr(task, config->mm_arg_start);
+    uint64_t arg_end = deref_ptr(task, config->mm_arg_end);
     if (arg_start >= arg_end)
         return false;
-    unsigned int arg_len = arg_end - arg_start;
+    int arg_len = arg_end - arg_start;
     if (arg_len > (CMDLINE_MAX_LEN - 1))
         arg_len = CMDLINE_MAX_LEN - 1;
 
