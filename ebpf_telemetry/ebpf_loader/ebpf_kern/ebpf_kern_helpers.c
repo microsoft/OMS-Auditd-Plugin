@@ -99,7 +99,7 @@ static inline bool deref_string_into(char *dest, unsigned int size, void *base, 
 __attribute__((always_inline))
 static inline bool deref_filepath_into(char *dest, void *base, unsigned int *refs, config_s *config)
 {
-    int dlen;
+    int dlen, dlen2;
     char *dname = NULL;
     char *temp = NULL;
     unsigned int i;
@@ -142,22 +142,18 @@ static inline bool deref_filepath_into(char *dest, void *base, unsigned int *ref
             return false;
         // store this dentry name in start of second half of our temporary storage
         dlen = bpf_probe_read_str(&temp[PATH_MAX], PATH_MAX, dname);
-        if (dlen <= 0 || dlen >= PATH_MAX || size + dlen > PATH_MAX)
-            return false;
         // get parent dentry
         bpf_probe_read(&newdentry, sizeof(newdentry), dentry + config->dentry_parent[0]);
+        // copy the temporary copy to the first half of our temporary storage, building it backwards from the middle of it
+        dlen2 = bpf_probe_read_str(&temp[(PATH_MAX - size - dlen) & (PATH_MAX - 1)], dlen & (PATH_MAX - 1), &temp[PATH_MAX]);
         // check if current dentry name is valid
-        if (dlen > 0) {
-            // copy the temporary copy to the first half of our temporary storage, building it backwards from the middle of it
-            dlen = bpf_probe_read_str(&temp[(PATH_MAX - size - dlen) & (PATH_MAX - 1)], dlen & (PATH_MAX - 1), &temp[PATH_MAX]);
-            if (dlen <= 0)
-                return false;
-            if (size > 0)
-                // overwrite the null char with a slash
-                temp[(PATH_MAX - size - 1) & (PATH_MAX - 1)] = '/';
-            size = (size + dlen) & (PATH_MAX - 1);  // by restricting size to PATH_MAX we help the verifier keep the complexity
-                                                    // low enough so that it can analyse the loop without hitting the 1M ceiling
-        }
+        if (dlen2 <= 0 || dlen <= 0 || dlen >= PATH_MAX || size + dlen > PATH_MAX)
+            return false;
+        if (size > 0)
+            // overwrite the null char with a slash
+            temp[(PATH_MAX - size - 1) & (PATH_MAX - 1)] = '/';
+        size = (size + dlen2) & (PATH_MAX - 1);  // by restricting size to PATH_MAX we help the verifier keep the complexity
+                                                // low enough so that it can analyse the loop without hitting the 1M ceiling
         // check if this is the root of the filesystem
         if (!newdentry || dentry == newdentry) {
             // check if we're on a mounted partition
@@ -173,7 +169,7 @@ static inline bool deref_filepath_into(char *dest, void *base, unsigned int *ref
             // another check for real root
             if (dentry == newdentry)
                 break;
-            size = (size - dlen) & (PATH_MAX - 1);  // ditto above message about restricting size to PATH_MAX
+            size = (size - dlen2) & (PATH_MAX - 1);  // ditto above message about restricting size to PATH_MAX
         }
 
         // go up one directory
