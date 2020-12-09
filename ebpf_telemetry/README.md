@@ -12,6 +12,24 @@ This work currently only supports x64.
 
 Please note, this project no longer requires kernel sources to build.
 
+Please also note, that the version of clang needs to align with the kernel version
+to some degree.  This is due to later versions of clang optimising out variable
+clamps (var &= CONST_POWER_OF_2 -1, for example) where it can work out that the clamping
+is unnecessary.  Unfortunately, the verifiers in earlier versions of the kernel don't
+necessarily realise the limited range that a variable could hold, and therefore will
+complain that indices could be negative, when clearly they could not.
+
+As such:
+* if you are running Ubuntu 16.04, please install clang+llvm 6;
+* if you are running Ubuntu 18.04, please use the latest clang available to you, which
+  should be 6;
+* if you are running Ubuntu 20.04, please use the latest clang available to you, which
+  should be 10;
+
+For distros other than Ubuntu:
+* if you are running kernel <=5.3, please install clang+llvm 6;
+* if you are running kernel >=5.4, please install clang+llvm 10 or 11.
+
 # Clone
 - git clone https://github.com/microsoft/OMS-Auditd-Plugin.git
 - cd OMS-Auditd-Plugin
