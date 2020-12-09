@@ -43,10 +43,10 @@
 // 
 // when adding code, change these to keep within these limits
 #ifdef SUB4096
-#define FILEPATH_NUMDIRS 9
+#define FILEPATH_NUMDIRS 6
 #else
 #ifdef NOLOOPS
-#define FILEPATH_NUMDIRS 18
+#define FILEPATH_NUMDIRS 15
 #else
 #define FILEPATH_NUMDIRS 95
 #endif
