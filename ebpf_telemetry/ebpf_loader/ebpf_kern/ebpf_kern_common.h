@@ -74,6 +74,9 @@ struct bpf_our_raw_tracepoint_args {
 #define ARGS_HASH_SIZE 10240
 #define SYSCONF_MAP_SIZE 10240
 
+#ifndef BPF_F_CURRENT_CPU
+#define BPF_F_CURRENT_CPU 0xffffffffULL
+#endif
 
 // creat a map to transport events to userland via perf ring buffer
 struct bpf_map_def SEC("maps") event_map = {
