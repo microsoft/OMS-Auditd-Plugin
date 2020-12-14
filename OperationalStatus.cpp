@@ -114,6 +114,13 @@ void OperationalStatus::run() {
 
     _listener.Start();
 
+    // Send first status 15 seconds after startup
+    if(!_sleep(15000)) {
+        if (!send_status()) {
+            return;
+        }
+    }
+
     // Generate a status message once an hour
     while(!_sleep(3600000)) {
         if (!send_status()) {

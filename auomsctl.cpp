@@ -47,6 +47,12 @@
 #define AUOMSCOLLECT_COMM "auomscollect"
 #define AUDITD_COMM "auditd"
 
+#define ETC_AUDIT_PLUGINS_DIR "/etc/audit/plugins.d"
+#define ETC_AUDISP_PLUGINS_DIR "/etc/audisp/plugins.d"
+
+#define ETC_AUDIT_PLUGINS_AUOMS_CONF "/etc/audit/plugins.d/auoms.conf"
+#define ETC_AUDISP_PLUGINS_AUOMS_CONF "/etc/audisp/plugins.d/auoms.conf"
+
 #define PROC_WAIT_TIME 10
 
 void usage()
@@ -470,43 +476,47 @@ std::string get_service_util_path() {
 /**********************************************************************************************************************
  **
  *********************************************************************************************************************/
-bool is_auditd_plugin_enabled_in_file(const std::string& path) {
+
+enum AuditdPluginConfigState:int {
+    AUDITD_PLUGIN_ENABLED=1,
+    AUDITD_PLUGIN_DISABLED=2,
+    AUDITD_PLUGIN_MIXED=3,
+    AUDITD_PLUGIN_MISSING=4,
+};
+
+AuditdPluginConfigState get_auditd_plugin_state_in_file(const std::string& path) {
+    if (!PathExists(Dirname(path))) {
+        return AUDITD_PLUGIN_MISSING;
+    }
     if (!PathExists(path)) {
-        return false;
+        return AUDITD_PLUGIN_DISABLED;
     }
     auto lines = ReadFile(path);
     for (auto& line: lines) {
         auto parts = split(line, '=');
         if (parts.size() == 2) {
             if (trim_whitespace(parts[0]) == "active" && trim_whitespace(parts[1]) == "yes") {
-                return true;
+                return AUDITD_PLUGIN_ENABLED;
             }
         }
     }
-    return false;
+
+    return AUDITD_PLUGIN_DISABLED;
 }
 
-bool is_auditd_plugin_enabled() {
-    bool audit_path_exists = PathExists("/etc/audit/plugins.d");
-    bool audisp_path_exists = PathExists("/etc/audisp/plugins.d");
+AuditdPluginConfigState get_auditd_plugin_state() {
+    AuditdPluginConfigState audit_state = get_auditd_plugin_state_in_file(ETC_AUDIT_PLUGINS_AUOMS_CONF);
+    AuditdPluginConfigState audisp_state = get_auditd_plugin_state_in_file(ETC_AUDISP_PLUGINS_AUOMS_CONF);
 
-    if (!audit_path_exists && !audisp_path_exists) {
-        return false;
-    }
-
-    bool audit = false;
-    if (audit_path_exists) {
-        audit = is_auditd_plugin_enabled_in_file("/etc/audit/plugins.d/auoms.conf");
+    if (audit_state == AUDITD_PLUGIN_MISSING) {
+        return audisp_state;
+    } else if (audisp_state == AUDITD_PLUGIN_MISSING) {
+        return audit_state;
+    } else if (audit_state != audisp_state) {
+        return AUDITD_PLUGIN_MIXED;
     } else {
-        audit = true;
+        return audit_state;
     }
-    bool audisp = false;
-    if (audisp_path_exists) {
-        audisp = is_auditd_plugin_enabled_in_file("/etc/audisp/plugins.d/auoms.conf");
-    } else {
-        audisp = true;
-    }
-    return audit && audisp;
 }
 
 void set_auditd_plugin_status(bool enabled) {
@@ -524,14 +534,14 @@ void set_auditd_plugin_status(bool enabled) {
     lines.emplace_back("#args =");
     lines.emplace_back("format = string");
 
-    if (PathExists("/etc/audit/plugins.d")) {
-        WriteFile("/etc/audit/plugins.d/auoms.conf", lines);
-        chmod("/etc/audit/plugins.d/auoms.conf", 0640);
+    if (PathExists(ETC_AUDIT_PLUGINS_DIR)) {
+        WriteFile(ETC_AUDIT_PLUGINS_AUOMS_CONF, lines);
+        chmod(ETC_AUDIT_PLUGINS_AUOMS_CONF, 0640);
     }
 
-    if (PathExists("/etc/audisp/plugins.d")) {
-        WriteFile("/etc/audisp/plugins.d/auoms.conf", lines);
-        chmod("/etc/audisp/plugins.d/auoms.conf", 0640);
+    if (PathExists(ETC_AUDISP_PLUGINS_DIR)) {
+        WriteFile(ETC_AUDISP_PLUGINS_AUOMS_CONF, lines);
+        chmod(ETC_AUDISP_PLUGINS_AUOMS_CONF, 0640);
     }
 }
 
@@ -886,7 +896,8 @@ int enable_auoms() {
             }
         }
 
-        if (!is_auditd_plugin_enabled()) {
+        auto plugin_state = get_auditd_plugin_state();
+        if (plugin_state == AUDITD_PLUGIN_DISABLED || plugin_state == AUDITD_PLUGIN_MIXED) {
             set_auditd_plugin_status(true);
             if (PathExists(AUDITD_BIN)) {
                 if (!restart_auditd_service()) {
@@ -944,7 +955,8 @@ int disable_auoms() {
             disable_service();
         }
 
-        if (is_auditd_plugin_enabled()) {
+        auto plugin_state = get_auditd_plugin_state();
+        if (plugin_state == AUDITD_PLUGIN_ENABLED || plugin_state == AUDITD_PLUGIN_MIXED) {
             set_auditd_plugin_status(false);
             if (PathExists(AUDITD_BIN)) {
                 restart_auditd_service(); // Will also kill auomscollect if it didn't stop normally
@@ -1043,8 +1055,9 @@ int restart_auoms(bool all) {
  */
 int show_auoms_state() {
     try {
+        auto plugin_state = get_auditd_plugin_state();
         if (!is_service_enabled()) {
-            if (is_auditd_plugin_enabled() || is_service_proc_running(AUOMS_COMM)) {
+            if (plugin_state == AUDITD_PLUGIN_ENABLED || plugin_state == AUDITD_PLUGIN_MIXED || is_service_proc_running(AUOMS_COMM)) {
                 std::cout << "partially-disabled" << std::endl;
                 return 3;
             } else {
@@ -1052,7 +1065,7 @@ int show_auoms_state() {
                 return 2;
             }
         } else {
-            if (!is_auditd_plugin_enabled()) {
+            if (plugin_state == AUDITD_PLUGIN_DISABLED || plugin_state == AUDITD_PLUGIN_MIXED) {
                 std::cout << "partially-enabled" << std::endl;
                 return 4;
             } else if (!is_service_proc_running(AUOMS_COMM)) {
@@ -1188,7 +1201,7 @@ int tap_audit_multicast() {
     try {
         auto ki = KernelInfo::GetKernelInfo();
         if (!ki.HasAuditMulticast()) {
-            Logger::Error("Audit multicast not supported in kerenel version %s", ki.KernelVersion().c_str());
+            Logger::Error("Audit multicast not supported in kernel version %s", ki.KernelVersion().c_str());
             return 1;
         }
     } catch (std::exception &ex) {
@@ -1578,7 +1591,8 @@ int upgrade() {
 
     try {
         // Use auditd plugin file to determine if auoms should be enabled
-        if (is_service_enabled() || is_auditd_plugin_enabled()) {
+        auto plugin_state = get_auditd_plugin_state();
+        if (is_service_enabled() || plugin_state == AUDITD_PLUGIN_ENABLED || plugin_state == AUDITD_PLUGIN_MIXED) {
             // Stop services
             if (PathExists(AUDITD_BIN)) {
                 stop_auditd_service();
