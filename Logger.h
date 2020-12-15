@@ -18,7 +18,22 @@
 
 #include <string>
 #include <cstdarg>
+#include <unordered_map>
 #include <functional>
+#include <memory>
+#include <chrono>
+#include <mutex>
+
+class LogMetric {
+public:
+    LogMetric(std::chrono::system_clock::time_point time): _start_time(time), _end_time(time), _fmt(), _first_msg(), _count(0) {}
+    std::chrono::system_clock::time_point _start_time;
+    std::chrono::system_clock::time_point _end_time;
+
+    std::string _fmt;
+    std::string _first_msg;
+    size_t _count;
+};
 
 class Logger {
 public:
@@ -28,12 +43,17 @@ public:
     static void Warn(const char* fmt, ...) __attribute__ ((format (printf, 1, 2)));
     static void Error(const char* fmt, ...) __attribute__ ((format (printf, 1, 2)));
     static void Debug(const char* fmt, ...) __attribute__ ((format (printf, 1, 2)));
+
+    static size_t GetMetrics(std::vector<std::shared_ptr<LogMetric>>& metrics, bool flush_all);
 private:
     static void _log_write(int level, const char* fmt, va_list ap);
 
+    static std::mutex _mutex;
     static std::string _ident;
     static bool _enable_syslog;
     static std::function<void(const char* ptr, size_t size)> _log_fn;
+    static std::unordered_map<std::string, std::shared_ptr<LogMetric>> _current_metrics;
+    static std::vector<std::shared_ptr<LogMetric>> _past_metrics;
 };
 
 

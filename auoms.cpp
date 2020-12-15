@@ -392,7 +392,7 @@ int main(int argc, char**argv) {
     }
     operational_status->Start();
 
-    auto metrics = std::make_shared<Metrics>(queue);
+    auto metrics = std::make_shared<Metrics>("auoms", queue);
     metrics->Start();
 
     auto syscall_metrics = std::make_shared<SyscallMetrics>(metrics);
@@ -533,6 +533,7 @@ int main(int argc, char**argv) {
         inputs.Stop();
         outputs.Stop(false); // Trigger outputs shutdown but don't block
         user_db->Stop(); // Stop user db monitoring
+        metrics->FlushLogMetrics();
         queue->Close(); // Close queue, this will trigger exit of autosave thread
         outputs.Wait(); // Wait for outputs to finish shutdown
         autosave_thread.join(); // Wait for autosave thread to exit

@@ -181,7 +181,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     auto metrics_queue = new TestEventQueue();
     auto metrics_allocator = std::shared_ptr<IEventBuilderAllocator>(metrics_queue);
     auto metrics_builder = std::make_shared<EventBuilder>(metrics_allocator, prioritizer);
-    auto metrics = std::make_shared<Metrics>(metrics_builder);
+    auto metrics = std::make_shared<Metrics>("test", metrics_builder);
 
     RawEventAccumulator accumulator(raw_builder, metrics);
 

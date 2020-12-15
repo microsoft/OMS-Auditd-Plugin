@@ -259,7 +259,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     auto filtersEngine = std::make_shared<FiltersEngine>();
     auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
 
-    auto metrics = std::make_shared<Metrics>(metrics_builder);
+    auto metrics = std::make_shared<Metrics>("test", metrics_builder);
 
     auto cmdline_redactor = std::make_shared<CmdlineRedactor>();
 
@@ -323,7 +323,7 @@ BOOST_AUTO_TEST_CASE( oversized_event_test ) {
     auto filtersEngine = std::make_shared<FiltersEngine>();
     auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
 
-    auto metrics = std::make_shared<Metrics>(metrics_builder);
+    auto metrics = std::make_shared<Metrics>("test", metrics_builder);
 
     auto cmdline_redactor = std::make_shared<CmdlineRedactor>();
 

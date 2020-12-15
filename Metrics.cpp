@@ -60,7 +60,16 @@ void Metrics::run() {
         if (!send_metrics()) {
             return;
         }
+        if (!send_log_metrics(false)) {
+            return;
+        }
     }
+}
+
+void system_time_sec_msec(const std::chrono::system_clock::time_point st, uint64_t& sec, uint32_t& msec) {
+    sec = std::chrono::system_clock::to_time_t(st);
+    auto sec_st = std::chrono::system_clock::from_time_t(sec);
+    msec = std::chrono::duration_cast<std::chrono::milliseconds>(st - sec_st).count();
 }
 
 std::string system_time_to_iso3339(const std::chrono::system_clock::time_point st) {
@@ -136,5 +145,86 @@ bool Metrics::send_metrics() {
             }
         }
     }
+
+    return true;
+}
+
+bool Metrics::send_log_metrics(bool flush_all) {
+    auto rec_type = RecordType::AUOMS_METRIC;
+    auto rec_type_name = RecordTypeToName(RecordType::AUOMS_METRIC);
+
+    std::vector<std::shared_ptr<LogMetric>> log_metrics;
+    Logger::GetMetrics(log_metrics, flush_all);
+
+    for (auto& lm : log_metrics) {
+        uint64_t sec;
+        uint32_t msec;
+        system_time_sec_msec(lm->_start_time, sec, msec);
+
+        int num_fields = 11;
+        bool include_fist_msg = false;
+        if (lm->_first_msg.compare(0, lm->_first_msg.size()-1, lm->_fmt) != 0) {
+            num_fields = 12;
+            include_fist_msg = true;
+        }
+
+        if (!_builder->BeginEvent(sec, msec, 0, 1)) {
+            return false;
+        }
+        if (!_builder->BeginRecord(static_cast<uint32_t>(rec_type), rec_type_name, "", num_fields)) {
+            return false;
+        }
+        if (!_builder->AddField("version", AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED)) {
+            return false;
+        }
+        if (!_builder->AddField("StartTime", system_time_to_iso3339(lm->_start_time), nullptr,
+                                field_type_t::UNCLASSIFIED)) {
+            return false;
+        }
+        if (!_builder->AddField("EndTime", system_time_to_iso3339(lm->_end_time), nullptr,
+                                field_type_t::UNCLASSIFIED)) {
+            return false;
+        }
+        if (!_builder->AddField("Namespace", _proc_name, nullptr, field_type_t::UNCLASSIFIED)) {
+            return false;
+        }
+        if (!_builder->AddField("Name", "log", nullptr, field_type_t::UNCLASSIFIED)) {
+            return false;
+        }
+        if (!_builder->AddField("SamplePeriod", std::to_string(static_cast<uint64_t>(MetricPeriod::MINUTE)), nullptr,
+                                field_type_t::UNCLASSIFIED)) {
+            return false;
+        }
+        if (!_builder->AddField("NumSamples", std::to_string(1), nullptr,
+                                field_type_t::UNCLASSIFIED)) {
+            return false;
+        }
+        if (!_builder->AddField("Min", std::to_string(static_cast<double>(lm->_count)), nullptr, field_type_t::UNCLASSIFIED)) {
+            return false;
+        }
+        if (!_builder->AddField("Max", std::to_string(static_cast<double>(lm->_count)), nullptr, field_type_t::UNCLASSIFIED)) {
+            return false;
+        }
+        if (!_builder->AddField("Avg", std::to_string(static_cast<double>(lm->_count)), nullptr, field_type_t::UNCLASSIFIED)) {
+            return false;
+        }
+        if (!_builder->AddField("Message", lm->_fmt, nullptr,
+                                field_type_t::UNCLASSIFIED)) {
+            return false;
+        }
+        if (include_fist_msg) {
+            if (!_builder->AddField("Data", lm->_first_msg, nullptr,
+                                    field_type_t::UNCLASSIFIED)) {
+                return false;
+            }
+        }
+        if (!_builder->EndRecord()) {
+            return false;
+        }
+        if (!_builder->EndEvent() != 0) {
+            return false;
+        }
+    }
+
     return true;
 }

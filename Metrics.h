@@ -248,17 +248,20 @@ private:
 
 class Metrics: public RunBase {
 public:
-    explicit Metrics(std::shared_ptr<EventBuilder> builder): _builder(std::move(builder)) {}
-    explicit Metrics(std::shared_ptr<PriorityQueue> queue): _builder(std::make_shared<EventBuilder>(std::make_shared<EventQueue>(std::move(queue)), nullptr)) {}
+    explicit Metrics(const std::string& proc_name, std::shared_ptr<EventBuilder> builder): _proc_name(proc_name), _builder(std::move(builder)) {}
+    explicit Metrics(const std::string& proc_name, std::shared_ptr<PriorityQueue> queue): _proc_name(proc_name), _builder(std::make_shared<EventBuilder>(std::make_shared<EventQueue>(std::move(queue)), nullptr)) {}
 
     std::shared_ptr<Metric> AddMetric(MetricType metric_type, const std::string& namespace_name, const std::string& name, MetricPeriod sample_period, MetricPeriod agg_period);
 
+    void FlushLogMetrics() { send_log_metrics(true); }
 protected:
     void run() override;
 
 private:
     bool send_metrics();
+    bool send_log_metrics(bool flush_all);
 
+    std::string _proc_name;
     std::shared_ptr<EventBuilder> _builder;
     std::mutex _mutex;
     std::unordered_map<std::string, std::shared_ptr<Metric>> _metrics;
