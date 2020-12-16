@@ -527,6 +527,7 @@ int main(int argc, char**argv) {
             // systemd may not have put auomscollect into the default cgroup at this point
             // Wait a few seconds before moving into the right cgroup so we avoid getting moved back out by systemd
             std::thread cg_thread([&cgcpu_root,&cgcpu,&ingest_thread_id]() {
+                Signals::InitThread();
                 int sleep_time = 10;
                 // Loop forever to make sure we stay in our cgroup
                 while (!Signals::IsExit()) {
@@ -643,6 +644,7 @@ int main(int argc, char**argv) {
 
     // The ingest tasks needs to run outside cgroup limits
     std::thread ingest_thread([&]() {
+        Signals::InitThread();
         auto thread_id = CGroups::GetSelfThreadId();
         Logger::Info("Starting ingest thead (%ld)", thread_id);
         ingest_thread_id.store(thread_id);

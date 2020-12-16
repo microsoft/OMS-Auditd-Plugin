@@ -37,22 +37,23 @@ void Input::run() {
             on_stopping();
             return;
         }
-
         auto ret = _reader.ReadEvent(ptr, _buffer->MAX_DATA_SIZE, _conn.get(), [this]() { return IsStopping(); });
         if (ret <= 0) {
-            switch (ret) {
-                case IO::FAILED:
-                    Logger::Info("Input(%d): Stopping due to failed event read", _fd);
-                    break;
-                case IO::CLOSED:
-                    Logger::Info("Input(%d): Stopping due to closed connection", _fd);
-                    break;
-                case IO::INTERRUPTED:
-                    Logger::Info("Input(%d): Stopping due to interrupted event read", _fd);
-                    break;
-                default:
-                    Logger::Info("Input(%d): Stopping due to failed event read", _fd);
-                    break;
+            if (!IsStopping()) {
+                switch (ret) {
+                    case IO::FAILED:
+                        Logger::Info("Input(%d): Stopping due to failed event read", _fd);
+                        break;
+                    case IO::CLOSED:
+                        Logger::Info("Input(%d): Stopping due to closed connection", _fd);
+                        break;
+                    case IO::INTERRUPTED:
+                        Logger::Info("Input(%d): Stopping due to interrupted event read", _fd);
+                        break;
+                    default:
+                        Logger::Info("Input(%d): Stopping due to failed event read", _fd);
+                        break;
+                }
             }
             _buffer->AbandonWrite();
             // For CLOSED and INTERRUPTED just stop.
@@ -66,19 +67,21 @@ void Input::run() {
 
             ret = _reader.WriteAck(event, _conn.get());
             if (ret != IO::OK) {
-                switch (ret) {
-                    case IO::FAILED:
-                        Logger::Info("Input(%d): Stopping due to failed ack write", _fd);
-                        break;
-                    case IO::CLOSED:
-                        Logger::Info("Input(%d): Stopping due to closed connection", _fd);
-                        break;
-                    case IO::INTERRUPTED:
-                        Logger::Info("Input(%d): Stopping due to interrupted ack write", _fd);
-                        break;
-                    default:
-                        Logger::Info("Input(%d): Stopping due to failed ack write", _fd);
-                        break;
+                if (!IsStopping()) {
+                    switch (ret) {
+                        case IO::FAILED:
+                            Logger::Info("Input(%d): Stopping due to failed ack write", _fd);
+                            break;
+                        case IO::CLOSED:
+                            Logger::Info("Input(%d): Stopping due to closed connection", _fd);
+                            break;
+                        case IO::INTERRUPTED:
+                            Logger::Info("Input(%d): Stopping due to interrupted ack write", _fd);
+                            break;
+                        default:
+                            Logger::Info("Input(%d): Stopping due to failed ack write", _fd);
+                            break;
+                    }
                 }
                 // For CLOSED and INTERRUPTED just stop.
                 // INTERRUPTED should only be returned is IsStopping() is true

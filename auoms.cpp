@@ -344,6 +344,7 @@ int main(int argc, char**argv) {
             // systemd may not have put auoms into the default cgroup at this point
             // Wait a few seconds before moving into the right cgroup so we avoid getting moved back out by systemd
             std::thread cg_thread([&cgcpu]() {
+                Signals::InitThread();
                 int sleep_time = 5;
                 // Loop forever to make sure we stay in our cgroup
                 while (!Signals::IsExit()) {
