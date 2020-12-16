@@ -187,7 +187,7 @@ int main(int argc, char**argv) {
     }
 
     if (config.HasKey("backlog_wait_time")) {
-        backlog_limit = static_cast<uint32_t>(config.GetUint64("backlog_wait_time"));
+        backlog_wait_time = static_cast<uint32_t>(config.GetUint64("backlog_wait_time"));
     }
 
     std::string input_socket_path = run_dir + "/input.socket";

@@ -312,9 +312,9 @@ void AuditRulesMonitor::check_audit_status() {
             return;
         }
     }
-    if (status.HasFeature(AuditStatus::Feature::BacklogWaitTime) && status.GetBacklogWaitTime() < _backlog_wait_time) {
+    if (status.HasFeature(AuditStatus::Feature::BacklogWaitTime) && status.GetBacklogWaitTime() != _backlog_wait_time) {
         AuditStatus new_status;
-        Logger::Error("Increasing audit backlog wait time from %u to %u", status.GetBacklogWaitTime(), _backlog_wait_time);
+        Logger::Error("Changing audit backlog wait time from %u to %u", status.GetBacklogWaitTime(), _backlog_wait_time);
         new_status.SetBacklogWaitTime(_backlog_wait_time);
         ret = NetlinkRetry([this,&new_status]() {
             return new_status.UpdateStatus(_netlink);
