@@ -27,13 +27,12 @@ class ProcessInfo {
 public:
     ~ProcessInfo();
 
-    static std::unique_ptr<ProcessInfo> Open();
-    static std::unique_ptr<ProcessInfo> Open(int pid);
+    static std::unique_ptr<ProcessInfo> Open(int cmdline_size_limit);
+    static std::unique_ptr<ProcessInfo> Open(int pid, int cmdline_size_limit);
 
     bool next();
 
     void format_cmdline(std::string& str);
-    bool get_arg1(std::string& str);
 
     inline int pid()   { return _pid; }
     inline int ppid()  { return _ppid; }
@@ -58,7 +57,7 @@ public:
     inline bool is_cmdline_truncated() { return _cmdline_truncated; }
 
 private:
-    explicit ProcessInfo(void* dp);
+    explicit ProcessInfo(void* dp, int cmdline_size_limit);
 
     bool parse_stat();
     bool parse_status();
@@ -67,7 +66,7 @@ private:
     void clear();
 
     void* _dp;
-
+    int _cmdline_size_limit;
     time_t _boot_time;
 
     int _pid;
