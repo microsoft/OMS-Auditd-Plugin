@@ -356,7 +356,7 @@ bool ProcessInfo::read(int pid) {
     // Kernel processes will not have anything in the cmdline file.
     if (exe_status == 1) {
         // The Event field value size limit is UINT16_MAX (including NULL terminator)
-        if (!read_file(path + "/cmdline", _cmdline, UINT16_MAX - 1, _cmdline_truncated)) {
+        if (!read_file(path + "/cmdline", _cmdline, _cmdline_size_limit, _cmdline_truncated)) {
             // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
             if (errno != ENOENT && errno != ESRCH) {
                 Logger::Warn("Failed to read /proc/%d/cmdline: %s", pid, strerror(errno));
@@ -383,27 +383,6 @@ void ProcessInfo::format_cmdline(std::string& str) {
     ExecveConverter::ConvertRawCmdline(std::string_view(reinterpret_cast<char*>(_cmdline.data()), _cmdline.size()), str);
 }
 
-bool ProcessInfo::get_arg1(std::string& str) {
-    str.clear();
-
-    const char* ptr = reinterpret_cast<const char*>(_cmdline.data());
-
-    // Skip arg 0
-    const char* end = ptr+_cmdline.size();
-    while(ptr < end && *ptr != 0) {
-        ++ptr;
-    }
-
-    if (*ptr != 0) {
-        return false;
-    }
-
-    ++ptr;
-
-    size_t size = bash_escape_string(str, ptr, end-ptr);
-    return size != 0;
-}
-
 std::string ProcessInfo::starttime() {
     static auto clk_tick = sysconf(_SC_CLK_TCK);
     if (_starttime_str.empty()) {
@@ -422,8 +401,9 @@ std::string ProcessInfo::starttime() {
     return _starttime_str;
 }
 
-ProcessInfo::ProcessInfo(void* dp) {
+ProcessInfo::ProcessInfo(void* dp, int cmdline_size_limit) {
     _dp = reinterpret_cast<DIR*>(dp);
+    _cmdline_size_limit = cmdline_size_limit;
     _boot_time = boot_time() * 1000;
 }
 
@@ -454,18 +434,18 @@ void ProcessInfo::clear() {
     _starttime_str.clear();
 }
 
-std::unique_ptr<ProcessInfo> ProcessInfo::Open() {
+std::unique_ptr<ProcessInfo> ProcessInfo::Open(int cmdline_size_limit) {
     DIR *dp = opendir("/proc");
 
     if (dp == nullptr) {
         return std::unique_ptr<ProcessInfo>();
     }
 
-    return std::unique_ptr<ProcessInfo>(new ProcessInfo(dp));
+    return std::unique_ptr<ProcessInfo>(new ProcessInfo(dp, cmdline_size_limit));
 }
 
-std::unique_ptr<ProcessInfo> ProcessInfo::Open(int pid) {
-    auto proc = std::unique_ptr<ProcessInfo>(new ProcessInfo(nullptr));
+std::unique_ptr<ProcessInfo> ProcessInfo::Open(int pid, int cmdline_size_limit) {
+    auto proc = std::unique_ptr<ProcessInfo>(new ProcessInfo(nullptr, cmdline_size_limit));
     if (proc->read(pid)) {
         return proc;
     }

@@ -25,17 +25,19 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <linux/netlink.h>
+#include <sys/stat.h>
 
 #ifndef SOL_NETLINIK
 // This isn't defined in older socket.h include files.
 #define SOL_NETLINK	270
 #endif
 
-
 //constexpr int CLEAN_PROCESS_TIMEOUT = 300;
 //constexpr int CLEAN_PROCESS_INTERVAL = 300;
-constexpr int CLEAN_PROCESS_TIMEOUT = 60;
-constexpr int CLEAN_PROCESS_INTERVAL = 60;
+constexpr int CLEAN_PROCESS_TIMEOUT = 5;
+constexpr int CLEAN_PROCESS_INTERVAL = 5;
+
+constexpr int CMDLINE_SIZE_LIMIT = 1024;
 
 bool ProcessNotify::InitProcSocket()
 {
@@ -367,12 +369,25 @@ void ProcessTree::RemovePid(int pid)
     }
 }
 
+bool proc_is_gone(pid_t pid) {
+    struct stat st;
+    char buf[128];
+
+    sprintf(buf, "/proc/%d", pid);
+
+    auto ret = stat(buf, &st);
+    if (ret == 0) {
+        return false;
+    }
+    return true;
+}
+
 void ProcessTree::Clean()
 {
     std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
 
     for (auto element = _processes.begin(); element != _processes.end();) {
-        if (element->second->_exited) {
+        if (element->second->_exited || proc_is_gone(element->second->_pid)) {
             std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - element->second->_exit_time;
             if (elapsed_seconds.count() > CLEAN_PROCESS_TIMEOUT) {
                 // remove this process
@@ -442,7 +457,7 @@ void ProcessTree::PopulateTree()
     std::string exe;
     std::string cmdline;
 
-    auto pinfo = ProcessInfo::Open();
+    auto pinfo = ProcessInfo::Open(CMDLINE_SIZE_LIMIT);
     if (!pinfo) {
         return;
     }
@@ -555,7 +570,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
 {
     std::shared_ptr<ProcessTreeItem> process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_procfs, pid);
 
-    auto pinfo = ProcessInfo::Open(pid);
+    auto pinfo = ProcessInfo::Open(pid, CMDLINE_SIZE_LIMIT);
     if (!pinfo) {
         return nullptr;
     }

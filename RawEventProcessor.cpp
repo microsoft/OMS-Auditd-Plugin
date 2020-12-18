@@ -898,7 +898,7 @@ void RawEventProcessor::DoProcessInventory() {
         return;
     }
 
-    auto pinfo = ProcessInfo::Open();
+    auto pinfo = ProcessInfo::Open(64*1024);
     if (!pinfo) {
         Logger::Error("Failed to open '/proc': %s", strerror(errno));
         return;
