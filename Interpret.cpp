@@ -122,7 +122,9 @@ bool InterpretSockaddrField(std::string& out, const EventRecord& record, const E
                 out.append(addr->sun_path, strnlen(addr->sun_path, std::min(path_size, sizeof(addr->sun_path))));
             } else {
                 out.push_back('@');
-                out.append(&addr->sun_path[1], path_size-1);
+                if (path_size > 1) {
+                    out.append(&addr->sun_path[1], path_size - 1);
+                }
             }
             out.append(" }");
             break;
