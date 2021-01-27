@@ -159,14 +159,20 @@ tests : test
 
 ext_include: $(INTERMEDIATE_DIR)/ext_include
 
-$(INTERMEDIATE_DIR)/ext_include :
+$(INTERMEDIATE_DIR)/ext_include $(INTERMEDIATE_DIR)/ext_lib : $(ROOT_DIR)/rapidjson-1.0.2.tar.gz $(ROOT_DIR)/msgpack-c-cpp-2.0.0.zip $(ROOT_DIR)/re2-2020-11-01.zip
 	@echo "========================= Creating ext_include dir"
-	$(MKPATH) $(INTERMEDIATE_DIR)/tmp/ext_include
+	$(MKPATH) $(INTERMEDIATE_DIR)/tmp/ext_include/re2
+	$(MKPATH) $(INTERMEDIATE_DIR)/tmp/ext_lib
 	tar zxf $(ROOT_DIR)/rapidjson-1.0.2.tar.gz -C $(INTERMEDIATE_DIR)/tmp
 	cp -r $(INTERMEDIATE_DIR)/tmp/rapidjson-1.0.2/include/* $(INTERMEDIATE_DIR)/tmp/ext_include
 	unzip -q -d $(INTERMEDIATE_DIR)/tmp $(ROOT_DIR)/msgpack-c-cpp-2.0.0.zip
 	cp -r $(INTERMEDIATE_DIR)/tmp/msgpack-c-cpp-2.0.0/include/* $(INTERMEDIATE_DIR)/tmp/ext_include
+	unzip -q -d $(INTERMEDIATE_DIR)/tmp $(ROOT_DIR)/re2-2020-11-01.zip
+	cd $(INTERMEDIATE_DIR)/tmp/re2-2020-11-01; make
+	cp $(INTERMEDIATE_DIR)/tmp/re2-2020-11-01/re2/{filtered_re2.h,re2.h,set.h,stringpiece.h} $(INTERMEDIATE_DIR)/tmp/ext_include/re2
+	cp $(INTERMEDIATE_DIR)/tmp/re2-2020-11-01/obj/libre2.a $(INTERMEDIATE_DIR)/tmp/ext_lib
 	mv $(INTERMEDIATE_DIR)/tmp/ext_include $(INTERMEDIATE_DIR)
+	mv $(INTERMEDIATE_DIR)/tmp/ext_lib $(INTERMEDIATE_DIR)
 	$(RMDIR) $(INTERMEDIATE_DIR)/tmp
 
 ifeq ($(ULINUX),1)

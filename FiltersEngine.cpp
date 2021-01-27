@@ -154,7 +154,7 @@ bool FiltersEngine::ProcessMatchFilter(const std::shared_ptr<ProcessTreeItem>& p
         }
     }
     if (pfs._match_mask & PFS_MATCH_EXE_REGEX) {
-        if (!std::regex_search(process->_exe, pfs._exeRegex)) {
+        if (!re2::RE2::PartialMatch(process->_exe, *pfs._exeRegex)) {
             return false;
         }
     }
@@ -173,7 +173,7 @@ bool FiltersEngine::ProcessMatchFilter(const std::shared_ptr<ProcessTreeItem>& p
                 return false;
             }
         } else if (cf._matchType == MatchRegex) {
-            if (!std::regex_search(process->_cmdline, cf._matchRegex)) {
+            if (!re2::RE2::PartialMatch(process->_cmdline, *cf._matchRegex)) {
                 return false;
             }
         }

@@ -34,7 +34,7 @@ BOOST_AUTO_TEST_CASE( unquoted_value )
 
 BOOST_AUTO_TEST_CASE( quoted_value )
 {
-    TempFile file("/tmp/ConfigTests.", "key = \"value\"");
+    TempFile file("/tmp/ConfigTests.", R"(key = "value")");
     Config config;
 
     config.Load(file.Path());
@@ -45,13 +45,13 @@ BOOST_AUTO_TEST_CASE( quoted_value )
 
 BOOST_AUTO_TEST_CASE( quoted_value_with_quotes )
 {
-    TempFile file("/tmp/ConfigTests.", "key = \"value\\\"with\\\"quotes\\\"\"");
+    TempFile file("/tmp/ConfigTests.", R"(key = "value\"with\"quotes\"")");
     Config config;
 
     config.Load(file.Path());
 
     BOOST_CHECK( config.HasKey("key") );
-    BOOST_CHECK_EQUAL(config.GetString("key"), "value\"with\"quotes\"");
+    BOOST_CHECK_EQUAL(config.GetString("key"), R"(value"with"quotes")");
 }
 
 BOOST_AUTO_TEST_CASE( missing_equal)
@@ -72,7 +72,7 @@ BOOST_AUTO_TEST_CASE( extra_chars_unquoted )
 
 BOOST_AUTO_TEST_CASE( extra_chars_quoted )
 {
-    TempFile file("/tmp/ConfigTests.", "key = \"value text\" extra");
+    TempFile file("/tmp/ConfigTests.", R"(key = "value text" extra)");
     Config config;
 
     BOOST_REQUIRE_THROW(config.Load(file.Path()), std::runtime_error);
@@ -80,7 +80,7 @@ BOOST_AUTO_TEST_CASE( extra_chars_quoted )
 
 BOOST_AUTO_TEST_CASE( missing_end_quote )
 {
-    TempFile file("/tmp/ConfigTests.", "key = \"value text");
+    TempFile file("/tmp/ConfigTests.", R"(key = "value text)");
     Config config;
 
     BOOST_REQUIRE_THROW(config.Load(file.Path()), std::runtime_error);
@@ -88,7 +88,7 @@ BOOST_AUTO_TEST_CASE( missing_end_quote )
 
 BOOST_AUTO_TEST_CASE( missing_end_quote_with_quotes )
 {
-    TempFile file("/tmp/ConfigTests.", "key = \"value\\\"text\\\"");
+    TempFile file("/tmp/ConfigTests.", R"(key = "value\"text\")");
     Config config;
 
     BOOST_REQUIRE_THROW(config.Load(file.Path()), std::runtime_error);
@@ -148,4 +148,58 @@ BOOST_AUTO_TEST_CASE( multi_line_json_value )
     }
 
     BOOST_CHECK_EQUAL(doc.FindMember("key")->value.GetString(), "value");
+}
+
+BOOST_AUTO_TEST_CASE( raw_quoted_value )
+{
+    TempFile file("/tmp/ConfigTests.", R"(key = R"C(value)C")");
+    Config config;
+
+    config.Load(file.Path());
+
+    BOOST_CHECK( config.HasKey("key") );
+    BOOST_CHECK_EQUAL(config.GetString("key"), "value");
+}
+
+BOOST_AUTO_TEST_CASE( raw_quoted_value2 )
+{
+    TempFile file("/tmp/ConfigTests.", R"C(key = R"(value)")C");
+    Config config;
+
+    config.Load(file.Path());
+
+    BOOST_CHECK( config.HasKey("key") );
+    BOOST_CHECK_EQUAL(config.GetString("key"), "value");
+}
+
+BOOST_AUTO_TEST_CASE( raw_quoted_value_bad_end_quote )
+{
+    TempFile file("/tmp/ConfigTests.", R"C(key = R"(value")C");
+    Config config;
+
+    BOOST_REQUIRE_THROW(config.Load(file.Path()), std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE( raw_quoted_value_bad_end_quote2 )
+{
+    TempFile file("/tmp/ConfigTests.", R"C(key = R"(value))C");
+    Config config;
+
+    BOOST_REQUIRE_THROW(config.Load(file.Path()), std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE( raw_quoted_value_bad_end_quote3 )
+{
+    TempFile file("/tmp/ConfigTests.", R"C(key = R"(value)X")C");
+    Config config;
+
+    BOOST_REQUIRE_THROW(config.Load(file.Path()), std::runtime_error);
+}
+
+BOOST_AUTO_TEST_CASE( raw_quoted_value_mismatched_delim )
+{
+    TempFile file("/tmp/ConfigTests.", R"C(key = R"X(value)Y")C");
+    Config config;
+
+    BOOST_REQUIRE_THROW(config.Load(file.Path()), std::runtime_error);
 }

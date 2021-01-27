@@ -134,6 +134,7 @@ int main(int argc, char**argv) {
 
     std::string outconf_dir = AUOMS_OUTCONF_DIR;
     std::string rules_dir = AUOMS_RULES_DIR;
+    std::string redact_dir = AUOMS_REDACT_DIR;
     std::string data_dir = AUOMS_DATA_DIR;
     std::string run_dir = AUOMS_RUN_DIR;
 
@@ -146,6 +147,10 @@ int main(int argc, char**argv) {
 
     if (config.HasKey("rules_dir")) {
         rules_dir = config.GetString("rules_dir");
+    }
+
+    if (config.HasKey("redact_dir")) {
+        rules_dir = config.GetString("redact_dir");
     }
 
     if (config.HasKey("data_dir")) {
@@ -366,6 +371,9 @@ int main(int argc, char**argv) {
         }
     }
 
+    auto cmdline_redactor = std::make_shared<CmdlineRedactor>();
+    cmdline_redactor->LoadFromDir(redact_dir);
+
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
     Signals::Init();
@@ -483,7 +491,7 @@ int main(int argc, char**argv) {
     auto event_queue = std::make_shared<EventQueue>(queue);
     auto builder = std::make_shared<EventBuilder>(event_queue, event_prioritizer);
 
-    RawEventProcessor rep(builder, user_db, processTree, filtersEngine, metrics);
+    RawEventProcessor rep(builder, user_db, cmdline_redactor, processTree, filtersEngine, metrics);
     inputs.Start();
 
     Signals::SetExitHandler([&inputs]() {

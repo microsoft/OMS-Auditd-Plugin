@@ -261,7 +261,9 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
 
     auto metrics = std::make_shared<Metrics>(metrics_builder);
 
-    auto raw_proc = std::make_shared<RawEventProcessor>(actual_builder, user_db, processTree, filtersEngine, metrics);
+    auto cmdline_redactor = std::make_shared<CmdlineRedactor>();
+
+    auto raw_proc = std::make_shared<RawEventProcessor>(actual_builder, user_db, cmdline_redactor, processTree, filtersEngine, metrics);
 
     auto actual_raw_queue = new RawEventQueue(raw_proc);
     auto actual_raw_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_raw_queue);
@@ -323,7 +325,9 @@ BOOST_AUTO_TEST_CASE( oversized_event_test ) {
 
     auto metrics = std::make_shared<Metrics>(metrics_builder);
 
-    auto raw_proc = std::make_shared<RawEventProcessor>(actual_builder, user_db, processTree, filtersEngine, metrics);
+    auto cmdline_redactor = std::make_shared<CmdlineRedactor>();
+
+    auto raw_proc = std::make_shared<RawEventProcessor>(actual_builder, user_db, cmdline_redactor, processTree, filtersEngine, metrics);
 
     auto actual_raw_queue = new RawEventQueue(raw_proc);
     auto actual_raw_allocator = std::shared_ptr<IEventBuilderAllocator>(actual_raw_queue);

@@ -29,6 +29,10 @@
 #define AUOMS_RULES_DIR "/etc/opt/microsoft/auoms/rules.d"
 #endif
 
+#ifndef AUOMS_REDACT_DIR
+#define AUOMS_REDACT_DIR "/etc/opt/microsoft/auoms/redact.d"
+#endif
+
 #ifndef AUOMS_OUTCONF_DIR
 #define AUOMS_OUTCONF_DIR "/etc/opt/microsoft/auoms/outconf.d"
 #endif

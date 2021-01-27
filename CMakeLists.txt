@@ -27,7 +27,9 @@ if(DEFINED DO_STATIC_LINK)
     # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
     # and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
     # for why it is safe to use -static-libgcc -static-libstdc++
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+    set(CMAKE_EXE_LINKER_FLAGS "-L ${CMAKE_BINARY_DIR}/../ext_lib ${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+else()
+    set(CMAKE_EXE_LINKER_FLAGS "-L ${CMAKE_BINARY_DIR}/../ext_lib ${CMAKE_EXE_LINKER_FLAGS}")
 endif()
 
 include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include)
@@ -174,6 +176,7 @@ add_executable(auoms
         LockFile.cpp
         CGroups.cpp
         CPULimits.cpp
+        CmdlineRedactor.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -183,6 +186,7 @@ add_executable(auoms
 #set_target_properties(auoms PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 target_link_libraries(auoms
+        libre2.a
         dl
         pthread
         rt
@@ -412,9 +416,12 @@ add_executable(EventProcessorTests
         ExecveConverter.cpp
         Metrics.cpp
         Cache.h
+        CmdlineRedactor.cpp
+        FileUtils.cpp
 )
 
 target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
+        libre2.a
         dl
         pthread
         rt
@@ -461,6 +468,7 @@ add_executable(OMSEventWriterTests
 )
 
 target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}
+        libre2.a
         pthread
 )
 
@@ -509,3 +517,21 @@ target_link_libraries(OutputInputTests ${Boost_LIBRARIES}
 )
 
 add_test(OutputInputTests ${CMAKE_BINARY_DIR}/OutputInputTests --log_sink=OutputInputTests.log --report_sink=OutputInputTests.report)
+
+
+add_executable(CmdlineRedactorTests
+        CmdlineRedactorTests.cpp
+        CmdlineRedactor.cpp
+        Config.cpp
+        Logger.cpp
+        FileUtils.cpp
+        StringUtils.cpp
+)
+
+target_link_libraries(CmdlineRedactorTests
+        libre2.a
+        ${Boost_LIBRARIES}
+        pthread
+)
+
+add_test(CmdlineRedactorTests ${CMAKE_BINARY_DIR}/CmdlineRedactorTests --log_sink=CmdlineRedactorTests.log --report_sink=CmdlineRedactorTests.report)
