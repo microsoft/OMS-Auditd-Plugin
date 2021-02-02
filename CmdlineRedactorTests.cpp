@@ -38,7 +38,7 @@ BOOST_AUTO_TEST_CASE( basic_redact_rule_test ) {
 
     for (auto& test : tests) {
         std::string str = std::get<0>(test);
-        auto r = rule.Check(str);
+        auto r = rule.Apply(str);
         if (r != std::get<2>(test)) {
             BOOST_FAIL("CmdlineRedactionRule::Check() returned invalid result");
         }
@@ -65,7 +65,7 @@ BOOST_AUTO_TEST_CASE( basic_redact_test ) {
 
     for (auto& test : tests) {
         std::string str = std::get<0>(test);
-        auto r = rule.Check(str);
+        auto r = rule.Apply(str);
         if (r != std::get<2>(test)) {
             BOOST_FAIL("CmdlineRedactionRule::Check() returned invalid result");
         }
