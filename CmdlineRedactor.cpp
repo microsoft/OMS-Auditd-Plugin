@@ -29,6 +29,10 @@ std::shared_ptr<CmdlineRedactionRule> CmdlineRedactionRule::LoadFromFile(const s
         std::string replacement_char = "*";
         if (config.HasKey("replacement_char")) {
             replacement_char = config.GetString("replacement_char");
+            if (replacement_char.length() > 1) {
+                replacement_char.resize(1);
+                Logger::Warn("Configured replacement_char (%s) is too long, truncating to 1 char", replacement_char.c_str());
+            }
         }
 
         if (!config.HasKey("regex")) {
@@ -50,7 +54,7 @@ std::shared_ptr<CmdlineRedactionRule> CmdlineRedactionRule::LoadFromFile(const s
     return nullptr;
 }
 
-bool CmdlineRedactionRule::Check(std::string& cmdline) const {
+bool CmdlineRedactionRule::Apply(std::string& cmdline) const {
     if (cmdline.empty()) {
         return false;
     }
@@ -102,10 +106,10 @@ void CmdlineRedactor::LoadFromDir(const std::string& dir) {
     }
 }
 
-bool CmdlineRedactor::Check(std::string& cmdline) const {
+bool CmdlineRedactor::ApplyRules(std::string& cmdline) const {
     auto res = false;
     for (auto& rule: _rules) {
-        if (rule->Check(cmdline)) {
+        if (rule->Apply(cmdline)) {
             res = true;
         }
     }

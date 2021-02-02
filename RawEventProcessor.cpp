@@ -579,7 +579,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         proctitle_field = EventRecordField();
 
         _execve_converter.Convert(execve_recs, _cmdline);
-        _cmdline_redactor->Check(_cmdline);
+        _cmdline_redactor->ApplyRules(_cmdline);
 
         if (!_builder->AddField(SV_CMDLINE, _cmdline, nullptr, field_type_t::UNESCAPED)) {
             throw std::runtime_error("Queue closed");
@@ -605,7 +605,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     if (proctitle_rec && proctitle_field) {
         unescape_raw_field(_unescaped_val, proctitle_field.RawValuePtr(), proctitle_field.RawValueSize());
         ExecveConverter::ConvertRawCmdline(_unescaped_val, _cmdline);
-        _cmdline_redactor->Check(_cmdline);
+        _cmdline_redactor->ApplyRules(_cmdline);
 
         if (!_builder->AddField(SV_PROCTITLE, _cmdline, nullptr, field_type_t::PROCTITLE)) {
             throw std::runtime_error("Queue closed");
@@ -866,7 +866,7 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
 
     pinfo->format_cmdline(_tmp_val);
 
-    _cmdline_redactor->Check(_tmp_val);
+    _cmdline_redactor->ApplyRules(_tmp_val);
 
     bool cmdline_truncated = false;
     if (_tmp_val.size() > UINT16_MAX-1) {

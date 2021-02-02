@@ -150,7 +150,7 @@ int main(int argc, char**argv) {
     }
 
     if (config.HasKey("redact_dir")) {
-        rules_dir = config.GetString("redact_dir");
+        redact_dir = config.GetString("redact_dir");
     }
 
     if (config.HasKey("data_dir")) {

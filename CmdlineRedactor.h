@@ -35,7 +35,7 @@ public:
     inline std::string CompileError() const { return _regex.error(); }
 
     // Return true if redaction applied
-    bool Check(std::string& cmdline) const;
+    bool Apply(std::string& cmdline) const;
 
 private:
     re2::RE2 _regex;
@@ -50,7 +50,7 @@ public:
 
     void LoadFromDir(const std::string& dir);
 
-    bool Check(std::string& cmdline) const;
+    bool ApplyRules(std::string& cmdline) const;
 
 private:
     std::vector<std::shared_ptr<CmdlineRedactionRule>> _rules;
