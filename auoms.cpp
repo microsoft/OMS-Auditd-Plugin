@@ -372,7 +372,7 @@ int main(int argc, char**argv) {
     }
 
     auto cmdline_redactor = std::make_shared<CmdlineRedactor>();
-    cmdline_redactor->LoadFromDir(redact_dir);
+    cmdline_redactor->LoadFromDir(redact_dir, true);
 
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
