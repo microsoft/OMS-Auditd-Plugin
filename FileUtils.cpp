@@ -59,6 +59,23 @@ std::string Dirname(const std::string& path) {
     return dir;
 }
 
+std::string Basename(const std::string& path, const std::string& suffix) {
+    std::string name = path;
+    while(name.back() == '/') {
+        name.resize(name.size()-1);
+    }
+
+    auto idx = name.rfind('/');
+    if (idx != std::string::npos && idx != 0) {
+        name = name.substr(idx+1);
+    }
+
+    if (name.size() >= suffix.size() && name.compare(name.size()-suffix.size(), suffix.size(), suffix) == 0) {
+        name.resize(name.size()-suffix.size());
+    }
+    return name;
+}
+
 std::vector<std::string> GetDirList(const std::string& dir) {
     std::vector<std::string> files;
     std::array<char, 4096> buffer;

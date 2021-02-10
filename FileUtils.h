@@ -26,6 +26,8 @@ bool IsDir(const std::string& path);
 
 std::string Dirname(const std::string& path);
 
+std::string Basename(const std::string& path, const std::string& suffix);
+
 std::vector<std::string> GetDirList(const std::string& dir);
 
 std::vector<std::string> ReadFile(const std::string& path);

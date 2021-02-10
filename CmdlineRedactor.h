@@ -19,14 +19,15 @@
 
 #include <string>
 #include <regex>
+#include <unordered_set>
 #include <re2/re2.h>
 
 class CmdlineRedactionRule {
 public:
     static std::shared_ptr<CmdlineRedactionRule> LoadFromFile(const std::string& path);
 
-    CmdlineRedactionRule(const std::string& regex, char replacement_char):
-            _regex(regex), _replacement_char(replacement_char) {}
+    CmdlineRedactionRule(const std::string& name, const std::string& regex, char replacement_char):
+            _name(name), _regex(regex), _replacement_char(replacement_char) {}
 
 
     // Returns false if the compile failed
@@ -34,10 +35,14 @@ public:
 
     inline std::string CompileError() const { return _regex.error(); }
 
+    inline std::string Name() { return _name; }
+    inline void SetName(const std::string& name) { _name = name; }
+
     // Return true if redaction applied
     bool Apply(std::string& cmdline) const;
 
 private:
+    std::string _name;
     re2::RE2 _regex;
     char _replacement_char;
 };
@@ -50,9 +55,10 @@ public:
 
     void LoadFromDir(const std::string& dir);
 
-    bool ApplyRules(std::string& cmdline) const;
+    bool ApplyRules(std::string& cmdline, std::string& rule_names) const;
 
 private:
+    std::unordered_set<std::string> _rule_names;
     std::vector<std::shared_ptr<CmdlineRedactionRule>> _rules;
 };
 

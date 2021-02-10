@@ -21,34 +21,49 @@
 #include "Logger.h"
 #include "StringUtils.h"
 
+
 std::shared_ptr<CmdlineRedactionRule> CmdlineRedactionRule::LoadFromFile(const std::string& path) {
+    using namespace std::string_literals;
+
+    static auto invalid_name_chars = R"inv(,/"'`$%&<>?{}[]|\)inv"s;
+
     Config config;
     try {
         config.Load(path);
+
+        std::string name = Basename(path, ".config");
+        if (config.HasKey("name")) {
+            name = config.GetString("name");
+        }
+
+        if (name.find_first_of(invalid_name_chars) != std::string::npos) {
+            Logger::Error("CmdlineRedactionRule::LoadFromFile(%s): Name (%s) contains invalid characters (%s)", path.c_str(), name.c_str(), invalid_name_chars.c_str());
+            return nullptr;
+        }
 
         std::string replacement_char = "*";
         if (config.HasKey("replacement_char")) {
             replacement_char = config.GetString("replacement_char");
             if (replacement_char.length() > 1) {
                 replacement_char.resize(1);
-                Logger::Warn("Configured replacement_char (%s) is too long, truncating to 1 char", replacement_char.c_str());
+                Logger::Warn("CmdlineRedactionRule::LoadFromFile(%s): Configured replacement_char (%s) is too long, truncating to 1 char", path.c_str(), replacement_char.c_str());
             }
         }
 
         if (!config.HasKey("regex")) {
-            Logger::Error("CmdlineRedactionRule::LoadFromFile(): Config (%s) is missing the 'regex' value", path.c_str());
+            Logger::Error("CmdlineRedactionRule::LoadFromFile(%s): Config is missing the 'regex' value", path.c_str());
             return nullptr;
         }
         std::string regex = config.GetString("regex");
 
-        auto ret = std::make_shared<CmdlineRedactionRule>(regex, replacement_char[0]);
+        auto ret = std::make_shared<CmdlineRedactionRule>(name, regex, replacement_char[0]);
         if (!ret->Compile()) {
-            Logger::Error("CmdlineRedactionRule::LoadFromFile(): Failed to load from (%s): Invalid regex: %s", path.c_str(), ret->CompileError().c_str());
+            Logger::Error("CmdlineRedactionRule::LoadFromFile(%s): Failed to load: Invalid regex: %s", path.c_str(), ret->CompileError().c_str());
             return nullptr;
         }
         return ret;
     } catch (std::exception& ex) {
-        Logger::Error("CmdlineRedactionRule::LoadFromFile(): Failed to load from (%s): %s", path.c_str(), ex.what());
+        Logger::Error("CmdlineRedactionRule::LoadFromFile(%s): Failed to load: %s", path.c_str(), ex.what());
     }
 
     return nullptr;
@@ -99,6 +114,15 @@ void CmdlineRedactor::LoadFromDir(const std::string& dir) {
     for (auto& name: files) {
         if (ends_with(name, ".conf")) {
             auto rule = CmdlineRedactionRule::LoadFromFile(dir + "/" + name);
+
+            // Make sure rule names are unique
+            auto base_name = rule->Name();
+            int rnum = 1;
+            while (_rule_names.count(rule->Name())) {
+                rule->SetName(base_name+std::to_string(rnum));
+                rnum += 1;
+            }
+
             if (rule) {
                 _rules.emplace_back(rule);
             }
@@ -106,10 +130,16 @@ void CmdlineRedactor::LoadFromDir(const std::string& dir) {
     }
 }
 
-bool CmdlineRedactor::ApplyRules(std::string& cmdline) const {
+bool CmdlineRedactor::ApplyRules(std::string& cmdline, std::string& rule_names) const {
+    rule_names.resize(0);
+
     auto res = false;
     for (auto& rule: _rules) {
         if (rule->Apply(cmdline)) {
+            if (rule_names.size() > 0) {
+                rule_names.push_back(',');
+            }
+            rule_names.append(rule->Name());
             res = true;
         }
     }

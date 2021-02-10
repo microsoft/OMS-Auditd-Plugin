@@ -130,6 +130,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     static auto SV_PATH_OGID = "path_ogid"sv;
     static auto SV_EMPTY = ""sv;
     static auto SV_CMDLINE = "cmdline"sv;
+    static auto SV_REDACTORS = "redactors"sv;
     static auto SV_CONTAINERID = "containerid"sv;
     static auto SV_DROPPED = "dropped_"sv;
     static auto SV_PID = "pid"sv;
@@ -361,6 +362,11 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         num_fields -= 1;
     }
 
+    if (execve_recs.size() > 0 || (proctitle_rec && proctitle_field)) {
+        // for redactors field
+        num_fields += 1;
+    }
+
     if (num_fields == 0) {
         return false;
     }
@@ -579,9 +585,13 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         proctitle_field = EventRecordField();
 
         _execve_converter.Convert(execve_recs, _cmdline);
-        _cmdline_redactor->ApplyRules(_cmdline);
+        _cmdline_redactor->ApplyRules(_cmdline, _tmp_val);
 
         if (!_builder->AddField(SV_CMDLINE, _cmdline, nullptr, field_type_t::UNESCAPED)) {
+            throw std::runtime_error("Queue closed");
+        }
+
+        if (!_builder->AddField(SV_REDACTORS, _tmp_val, nullptr, field_type_t::UNESCAPED)) {
             throw std::runtime_error("Queue closed");
         }
     } else {
@@ -605,9 +615,13 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     if (proctitle_rec && proctitle_field) {
         unescape_raw_field(_unescaped_val, proctitle_field.RawValuePtr(), proctitle_field.RawValueSize());
         ExecveConverter::ConvertRawCmdline(_unescaped_val, _cmdline);
-        _cmdline_redactor->ApplyRules(_cmdline);
+        _cmdline_redactor->ApplyRules(_cmdline, _tmp_val);
 
         if (!_builder->AddField(SV_PROCTITLE, _cmdline, nullptr, field_type_t::PROCTITLE)) {
+            throw std::runtime_error("Queue closed");
+        }
+
+        if (!_builder->AddField(SV_REDACTORS, _tmp_val, nullptr, field_type_t::UNESCAPED)) {
             throw std::runtime_error("Queue closed");
         }
     }
@@ -801,7 +815,7 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
 
     _builder->SetEventFlags(EVENT_FLAG_IS_AUOMS_EVENT);
 
-    uint16_t num_fields = 16;
+    uint16_t num_fields = 17;
 
     static auto auoms_proc_inv_str = RecordTypeToName(RecordType::AUOMS_PROCESS_INVENTORY);
     if (!_builder->BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_PROCESS_INVENTORY), auoms_proc_inv_str, ""sv, num_fields)) {
@@ -864,17 +878,17 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
         return false;
     }
 
-    pinfo->format_cmdline(_tmp_val);
+    pinfo->format_cmdline(_cmdline);
 
-    _cmdline_redactor->ApplyRules(_tmp_val);
+    _cmdline_redactor->ApplyRules(_cmdline, _tmp_val);
 
-    bool cmdline_truncated = false;
-    if (_tmp_val.size() > UINT16_MAX-1) {
-        _tmp_val.resize(UINT16_MAX-1);
-        cmdline_truncated = true;
+    bool cmdline_truncated = pinfo->is_cmdline_truncated();
+
+    if (!add_str_field("cmdline"sv, _cmdline, field_type_t::UNESCAPED)) {
+        return false;
     }
 
-    if (!add_str_field("cmdline"sv, _tmp_val, field_type_t::UNESCAPED)) {
+    if (!add_str_field("redactors"sv, _tmp_val, field_type_t::UNESCAPED)) {
         return false;
     }
 
