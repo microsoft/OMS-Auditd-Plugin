@@ -234,6 +234,8 @@ add_executable(auomsctl
         Event.cpp
         UserDB.cpp
         KernelInfo.cpp
+        Config.cpp
+        CmdlineRedactor.cpp
 )
 
 # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
@@ -243,6 +245,7 @@ add_executable(auomsctl
 #set_target_properties(auomsctl PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 target_link_libraries(auomsctl
+        libre2.a
         pthread
         rt
 )

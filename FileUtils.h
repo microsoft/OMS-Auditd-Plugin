@@ -24,6 +24,9 @@ bool PathExists(const std::string& path);
 
 bool IsDir(const std::string& path);
 
+// Return true if the path exists, and is only writable by root (uid 0)
+bool IsOnlyRootWritable(const std::string& path);
+
 std::string Dirname(const std::string& path);
 
 std::string Basename(const std::string& path, const std::string& suffix);

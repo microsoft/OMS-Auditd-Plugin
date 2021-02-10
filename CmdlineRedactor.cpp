@@ -21,6 +21,7 @@
 #include "Logger.h"
 #include "StringUtils.h"
 
+#define CONFIG_SUFFIX ".conf"
 
 std::shared_ptr<CmdlineRedactionRule> CmdlineRedactionRule::LoadFromFile(const std::string& path) {
     using namespace std::string_literals;
@@ -31,7 +32,7 @@ std::shared_ptr<CmdlineRedactionRule> CmdlineRedactionRule::LoadFromFile(const s
     try {
         config.Load(path);
 
-        std::string name = Basename(path, ".config");
+        std::string name = Basename(path, CONFIG_SUFFIX);
         if (config.HasKey("name")) {
             name = config.GetString("name");
         }
@@ -99,20 +100,32 @@ void CmdlineRedactor::AddRule(const std::shared_ptr<CmdlineRedactionRule>& rule)
     _rules.emplace_back(rule);
 }
 
-void CmdlineRedactor::LoadFromDir(const std::string& dir) {
+void CmdlineRedactor::LoadFromDir(const std::string& dir, bool require_only_root) {
     if (!PathExists(dir)) {
         return;
     }
+
+    if (require_only_root && !IsOnlyRootWritable(dir)) {
+        Logger::Error("CmdlineRedactor::LoadFromDir(%s): Dir is not secure, it is writable by non-root users. Redaction rules will not be loaded.", dir.c_str());
+        return;
+    }
+
     std::vector<std::string> files;
     try {
         files = GetDirList(dir);
     } catch (std::exception& ex) {
-        Logger::Error("CmdlineRedactor::LoadFromDir(): Failed to read dir (%s): %s", dir.c_str(), ex.what());
+        Logger::Error("CmdlineRedactor::LoadFromDir(%s): Failed to read dir: %s", dir.c_str(), ex.what());
         return;
     }
     std::sort(files.begin(), files.end());
     for (auto& name: files) {
-        if (ends_with(name, ".conf")) {
+        std::string path = dir + "/" + name;
+        if (require_only_root && !IsOnlyRootWritable(path)) {
+            Logger::Error("CmdlineRedactor::LoadFromDir(%s): File (%s) is not secure, it is writable by non-root users. It will not be loaded.", dir.c_str(), name.c_str());
+            continue;
+        }
+
+        if (ends_with(name, CONFIG_SUFFIX)) {
             auto rule = CmdlineRedactionRule::LoadFromFile(dir + "/" + name);
 
             // Make sure rule names are unique
@@ -136,7 +149,7 @@ bool CmdlineRedactor::ApplyRules(std::string& cmdline, std::string& rule_names) 
     auto res = false;
     for (auto& rule: _rules) {
         if (rule->Apply(cmdline)) {
-            if (rule_names.size() > 0) {
+            if (!rule_names.empty()) {
                 rule_names.push_back(',');
             }
             rule_names.append(rule->Name());

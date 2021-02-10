@@ -45,6 +45,20 @@ bool IsDir(const std::string& path) {
     return false;
 }
 
+bool IsOnlyRootWritable(const std::string& path) {
+    struct stat st;
+    auto ret = stat(path.c_str(), &st);
+    if (ret != 0 || st.st_uid != 0) {
+        return false;
+    }
+    if (st.st_gid != 0) {
+        // If gid is not root, then both group and other write bit must be cleared
+        return (st.st_mode & (S_IWGRP|S_IWOTH)) == 0;
+    } else {
+        // If gid is root, then only other write bit must be cleared
+        return (st.st_mode & S_IWOTH) == 0;
+    }
+}
 std::string Dirname(const std::string& path) {
     std::string dir = path;
     while(dir.back() == '/') {

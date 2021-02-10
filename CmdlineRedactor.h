@@ -53,7 +53,7 @@ public:
 
     void AddRule(const std::shared_ptr<CmdlineRedactionRule>& rule);
 
-    void LoadFromDir(const std::string& dir);
+    void LoadFromDir(const std::string& dir, bool require_only_root);
 
     bool ApplyRules(std::string& cmdline, std::string& rule_names) const;
 
