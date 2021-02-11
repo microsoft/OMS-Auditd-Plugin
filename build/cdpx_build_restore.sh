@@ -44,3 +44,14 @@ if [ $? -ne 0 ]; then
     echo "Download of ${ROOT}/msgpack-c-cpp-2.0.0.zip failed or file is corrupted!" >& 2
     exit 1
 fi
+
+if [ ! -e ${ROOT}/re2-2020-11-01.zip ]; then
+    echo "re2 zip file (${ROOT}/re2-2020-11-01.zip) is missing. Downloading..." >& 2
+    wget -O ${ROOT}/re2-2020-11-01.zip https://github.com/google/re2/archive/2020-11-01.zip >& 2
+fi
+
+echo "b7a29e40083005d280136205a925a49a1cc2b22df7c2a5e3764c35d1c70f4441  ${ROOT}/re2-2020-11-01.zip" | sha256sum -c -
+if [ $? -ne 0 ]; then
+    echo "Download of ${ROOT}/re2-2020-11-01.zip failed or file is corrupted!" >& 2
+    exit 1
+fi

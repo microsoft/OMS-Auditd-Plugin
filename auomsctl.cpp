@@ -40,6 +40,7 @@
 
 #include "env_config.h"
 #include "KernelInfo.h"
+#include "CmdlineRedactor.h"
 
 #define AUOMS_SERVICE_NAME "auoms"
 #define AUDITD_SERVICE_NAME "auditd"
@@ -1713,6 +1714,28 @@ int spam_netlink(const std::string& dur_str, const std::string& num_str) {
 /**********************************************************************************************************************
  **
  *********************************************************************************************************************/
+int test_redaction(std::string& dir) {
+    CmdlineRedactor cr;
+
+    cr.LoadFromDir(dir, false);
+
+    std::string cmdline;
+    std::string rule_names;
+
+    for (; std::getline(std::cin, cmdline); ) {
+        if (cr.ApplyRules(cmdline, rule_names)) {
+            std::cout << "Redacted("<< rule_names <<"): " << cmdline << "\n";
+        } else {
+            std::cout << "Not Redacted: " << cmdline << "\n";
+        }
+    }
+
+    return 0;
+}
+
+/**********************************************************************************************************************
+ **
+ *********************************************************************************************************************/
 int main(int argc, char**argv) {
     if (argc < 2 || strlen(argv[1]) < 2) {
         usage();
@@ -1842,6 +1865,14 @@ int main(int argc, char**argv) {
             exit(1);
         }
         return spam_netlink(argv[2], argv[3]);
+    } else if (strcmp(argv[1], "test_redaction") == 0) {
+        if (argc < 2) {
+            usage();
+            exit(1);
+        }
+        std::string dir;
+        dir = argv[2];
+        return test_redaction(dir);
     }
 
     usage();

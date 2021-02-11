@@ -21,12 +21,13 @@
 #include "UserDB.h"
 #include "ProcessTree.h"
 #include "ExecveConverter.h"
+#include "CmdlineRedactor.h"
 #include "Metrics.h"
 
 class RawEventProcessor {
 public:
-    RawEventProcessor(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<UserDB>& user_db, const std::shared_ptr<ProcessTree>& processTree, const std::shared_ptr<FiltersEngine> filtersEngine, const std::shared_ptr<Metrics>& metrics):
-    _builder(builder), _user_db(user_db), _state_ptr(nullptr), _processTree(processTree), _filtersEngine(filtersEngine), _metrics(metrics),
+    RawEventProcessor(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<UserDB>& user_db, const std::shared_ptr<CmdlineRedactor>& cmdline_redactor, const std::shared_ptr<ProcessTree>& processTree, const std::shared_ptr<FiltersEngine> filtersEngine, const std::shared_ptr<Metrics>& metrics):
+    _builder(builder), _user_db(user_db), _cmdline_redactor(cmdline_redactor), _state_ptr(nullptr), _processTree(processTree), _filtersEngine(filtersEngine), _metrics(metrics),
         _event_flags(0), _pid(0), _ppid(0), _uid(-1), _last_proc_event_gen(0)
     {
         _bytes_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "data", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
@@ -51,6 +52,7 @@ private:
 
     std::shared_ptr<EventBuilder> _builder;
     std::shared_ptr<UserDB> _user_db;
+    std::shared_ptr<CmdlineRedactor> _cmdline_redactor;
     void* _state_ptr;
     std::shared_ptr<ProcessTree> _processTree;
     std::shared_ptr<FiltersEngine> _filtersEngine;

@@ -24,7 +24,7 @@
 #include <list>
 #include <unordered_map>
 #include <queue>
-#include <regex>
+#include <re2/re2.h>
 #include "Config.h"
 #include "UserDB.h"
 #include "ProcessInfo.h"
@@ -35,7 +35,7 @@ enum StringMatchType { MatchUndefined, MatchEquals, MatchStartsWith, MatchContai
 struct cmdlineFilter {
     enum StringMatchType _matchType;
     std::string _matchValue;
-    std::regex _matchRegex;
+    std::shared_ptr<re2::RE2> _matchRegex;
 };
 
 bool operator==(const cmdlineFilter& a, const cmdlineFilter& b);
@@ -52,11 +52,15 @@ struct ProcFilterSpec {
         std::copy(syscalls.cbegin(), syscalls.cend(), std::inserter(_syscalls, _syscalls.end()));
         _exeMatchValue = exeMatchValue;
         if (match_mask & PFS_MATCH_EXE_REGEX) {
-            _exeRegex = std::regex(exeMatchValue, std::regex::optimize);
+            re2::RE2::Options re2_opts;
+            re2_opts.set_never_capture(true);
+            _exeRegex = std::make_shared<re2::RE2>(exeMatchValue, re2_opts);
         }
         for (auto cf : cmdlineFilters) {
             if (cf._matchType == MatchRegex) {
-                cf._matchRegex = std::regex(cf._matchValue, std::regex::optimize);
+                re2::RE2::Options re2_opts;
+                re2_opts.set_never_capture(true);
+                cf._matchRegex = std::make_shared<re2::RE2>(cf._matchValue, re2_opts);
             }
             _cmdlineFilters.emplace_back(cf);
         }
@@ -68,7 +72,7 @@ struct ProcFilterSpec {
     uint32_t _gid;
     std::vector<std::string> _syscalls;
     std::string _exeMatchValue;
-    std::regex _exeRegex;
+    std::shared_ptr<re2::RE2> _exeRegex;
     std::vector<cmdlineFilter> _cmdlineFilters;
 };
 

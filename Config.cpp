@@ -72,6 +72,19 @@ void Config::Load(const std::string& path)
                 throw std::runtime_error("Invalid characters following value: Line " + std::to_string(line_num));
             }
             val = nval;
+        } else if (val.size() > 3 && val[0] == 'R' && val[1] == '"') {
+            auto spidx = val.find_first_of('(', 2);
+            if (spidx == std::string::npos) {
+                throw std::runtime_error("Invalid raw string value: Line " + std::to_string(line_num));
+            }
+            auto delim = val.substr(2, spidx-2);
+            if (val[val.size()-1] != '"' || val[val.size()-2-delim.size()] != ')') {
+                throw std::runtime_error("Invalid raw string value: Line " + std::to_string(line_num));
+            }
+            if (val.substr(val.size()-1-delim.size(), delim.size()) != delim) {
+                throw std::runtime_error("Invalid raw string value: Line " + std::to_string(line_num));
+            }
+            val = val.substr(spidx+1, val.size()-((delim.size()*2)+5));
         } else if (val[0] == '{' || val[0] == '[') {
             int start_line_num = line_num;
             std::string nval = val;

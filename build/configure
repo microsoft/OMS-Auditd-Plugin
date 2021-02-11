@@ -78,6 +78,16 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+if [ ! -e ${root_dir}/re2-2020-11-01.zip ]; then
+    echo "re2 zip file (${root_dir}/re2-2020-11-01.zip) is missing. Downloading..." >& 2
+    wget -O ${root_dir}/re2-2020-11-01.zip https://github.com/google/re2/archive/2020-11-01.zip >& 2
+fi
+
+echo "b7a29e40083005d280136205a925a49a1cc2b22df7c2a5e3764c35d1c70f4441  ${root_dir}/re2-2020-11-01.zip" | sha256sum -c -
+if [ $? -ne 0 ]; then
+    echo "Download of ${root_dir}/re2-2020-11-01.zip failed or file is corrupted!" >& 2
+    exit 1
+fi
 
 number_of_bits() {
     # Always favor 64-bit if we get something unanticipated
