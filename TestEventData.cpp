@@ -81,6 +81,11 @@ type=UNKNOWN[1327] msg=audit(1563470055.876:7605216): proctitle=2F62696E2F736800
         R"event(type=SYSCALL audit(1572298453.690:5717): arch=c00000b7 syscall=222 success=yes exit=281129964019712 a0=0 a1=16a048 a2=5 a3=802 items=0 ppid=1 pid=1450 auid=4294967295 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=(none) ses=4294967295 comm="agetty" exe="/usr/sbin/agetty" key=(null)
 type=INTEGRITY_POLICY_RULE audit(1572298453.690:5717): IPE=ctx ( op: [execute] dmverity_verified: [false] boot_verified: [true] audit_pathname: [/usr/lib/libc-2.28.so] )  [ action = allow ] [ boot_verified = true ]
 )event",
+        R"event(type=AVC msg=audit(1613060404.822:23533145): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="/snap/core/10823/usr/lib/snapd/snap-confine" pid=14358 comm="apparmor_parser"
+type=AVC msg=audit(1613060404.822:23533145): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="/snap/core/10823/usr/lib/snapd/snap-confine//mount-namespace-capture-helper" pid=14358 comm="apparmor_parser"
+type=SYSCALL msg=audit(1613060404.822:23533145): arch=c000003e syscall=1 success=yes exit=84354 a0=6 a1=7fa3f4e7d010 a2=14982 a3=0 items=0 ppid=14357 pid=14358 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts5 ses=44067 comm="apparmor_parser" exe="/sbin/apparmor_parser" key=(null)
+type=PROCTITLE msg=audit(1613060404.822:23533145): proctitle=61707061726D6F725F706172736572002D2D7265706C616365002D2D77726974652D6361636865002D2D63616368652D6C6F633D2F7661722F63616368652F61707061726D6F72002D4F006E6F2D657870722D73696D706C696679002D2D7175696574002F7661722F6C69622F736E6170642F61707061726D6F722F70726F66
+)event"
 };
 
 const std::vector<bool> raw_events_do_flush {
@@ -92,6 +97,7 @@ const std::vector<bool> raw_events_do_flush {
     false,
     false,
     false,
+    true,
     true,
     true,
 };
@@ -192,7 +198,7 @@ const std::vector<TestEvent> test_events {
                 // EXECVE
                 {"argc", "6", nullptr, field_type_t::UNCLASSIFIED},
                 {"cmdline", "logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \"", nullptr, field_type_t::UNESCAPED},
-                {"redactors", "", nullptr, field_type_t::UNESCAPED},
+                {"redactors", "", nullptr, field_type_t::UNCLASSIFIED},
                 {"containerid", "", nullptr, field_type_t::UNCLASSIFIED},
             }}}
         },
@@ -217,7 +223,7 @@ const std::vector<TestEvent> test_events {
                 // EXECVE
                 {"argc", "6", nullptr, field_type_t::UNCLASSIFIED},
                 {"cmdline", "logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \"", nullptr, field_type_t::UNESCAPED},
-                {"redactors", "", nullptr, field_type_t::UNESCAPED},
+                {"redactors", "", nullptr, field_type_t::UNCLASSIFIED},
                 {"containerid", "", nullptr, field_type_t::UNCLASSIFIED},
             }}}
         },
@@ -251,7 +257,7 @@ const std::vector<TestEvent> test_events {
                 // EXECVE
                 {"argc", "6", nullptr, field_type_t::UNCLASSIFIED},
                 {"cmdline", "logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \"", nullptr, field_type_t::UNESCAPED},
-                {"redactors", "", nullptr, field_type_t::UNESCAPED},
+                {"redactors", "", nullptr, field_type_t::UNCLASSIFIED},
                 {"containerid", "", nullptr, field_type_t::UNCLASSIFIED},
             }}}
         },
@@ -323,7 +329,7 @@ const std::vector<TestEvent> test_events {
                 {"exe", "\"/usr/sbin/chronyd\"", nullptr, field_type_t::ESCAPED},
                 {"key", "\"time-change\"", "time-change", field_type_t::ESCAPED_KEY},
                 {"proctitle", "/usr/sbin/chronyd", nullptr, field_type_t::PROCTITLE},
-                {"redactors", "", nullptr, field_type_t::UNESCAPED},
+                {"redactors", "", nullptr, field_type_t::UNCLASSIFIED},
                 {"containerid", "", nullptr, field_type_t::UNCLASSIFIED},
             }}}
         },
@@ -373,7 +379,7 @@ const std::vector<TestEvent> test_events {
                 // EXECVE
                 {"argc", "5", nullptr, field_type_t::UNCLASSIFIED},
                 {"cmdline", "iptables -w -t security --flush", nullptr, field_type_t::UNESCAPED},
-                {"redactors", "", nullptr, field_type_t::UNESCAPED},
+                {"redactors", "", nullptr, field_type_t::UNCLASSIFIED},
                 {"containerid", "", nullptr, field_type_t::UNCLASSIFIED},
             }}}
         },
@@ -405,7 +411,7 @@ const std::vector<TestEvent> test_events {
                 {"exe", "\"/usr/sbin/xtables-multi\"", nullptr, field_type_t::ESCAPED},
                 {"key", "(null)", nullptr, field_type_t::ESCAPED_KEY},
                 {"proctitle", "/bin/sh -c \"iptables -w -t security --flush\"", nullptr, field_type_t::PROCTITLE},
-                {"redactors", "", nullptr, field_type_t::UNESCAPED},
+                {"redactors", "", nullptr, field_type_t::UNCLASSIFIED},
                 {"NETFILTER_CFG_table", "security", nullptr, field_type_t::UNCLASSIFIED},
                 {"NETFILTER_CFG_family", "2", nullptr, field_type_t::NFPROTO},
                 {"NETFILTER_CFG_entries", "4", nullptr, field_type_t::UNCLASSIFIED},
@@ -443,6 +449,52 @@ const std::vector<TestEvent> test_events {
                 {"containerid", "", nullptr, field_type_t::UNCLASSIFIED},
             }}}
         },
+        {1613060404, 822, 23533145, 1, 14358, {
+            {static_cast<uint32_t>(RecordType::AUOMS_SYSCALL), "AUOMS_SYSCALL", "", {
+                // SYSCALL
+                {"arch", "c000003e", "x86_64", field_type_t::ARCH},
+                {"syscall", "1", "write", field_type_t::SYSCALL},
+                {"success", "yes", nullptr, field_type_t::UNCLASSIFIED},
+                {"exit", "84354", nullptr, field_type_t::EXIT},
+                {"a0", "6", nullptr, field_type_t::A0},
+                {"a1", "7fa3f4e7d010", nullptr, field_type_t::A1},
+                {"a2", "14982", nullptr, field_type_t::A2},
+                {"a3", "0", nullptr, field_type_t::A3},
+                {"ppid", "14357", nullptr, field_type_t::UNCLASSIFIED},
+                {"pid", "14358", nullptr, field_type_t::UNCLASSIFIED},
+                {"auid", "1000", "user", field_type_t::UID},
+                {"uid", "0", "root", field_type_t::UID},
+                {"gid", "0", "root", field_type_t::GID},
+                {"euid", "0", "root", field_type_t::UID},
+                {"suid", "0", "root", field_type_t::UID},
+                {"fsuid", "0", "root", field_type_t::UID},
+                {"egid", "0", "root", field_type_t::GID},
+                {"sgid", "0", "root", field_type_t::GID},
+                {"fsgid", "0", "root", field_type_t::GID},
+                {"tty", "pts5", nullptr, field_type_t::UNCLASSIFIED},
+                {"ses", "44067", nullptr, field_type_t::SESSION},
+                {"comm", "\"apparmor_parser\"", nullptr, field_type_t::ESCAPED},
+                {"exe", "\"/sbin/apparmor_parser\"", nullptr, field_type_t::ESCAPED},
+                {"key", "(null)", nullptr, field_type_t::ESCAPED_KEY},
+                {"proctitle", "apparmor_parser --replace --write-cache --cache-loc=/var/cache/apparmor -O no-expr-simplify --quiet /var/lib/snapd/apparmor/prof", nullptr, field_type_t::PROCTITLE},
+                {"redactors", "", nullptr, field_type_t::UNCLASSIFIED},
+                {"AVC_apparmor", "\"STATUS\"", nullptr, field_type_t::ESCAPED},
+                {"AVC_operation", "\"profile_replace\"", nullptr, field_type_t::ESCAPED},
+                {"AVC_info", "\"same as current profile, skipping\"", nullptr, field_type_t::ESCAPED},
+                {"AVC_profile", "\"unconfined\"", nullptr, field_type_t::ESCAPED},
+                {"AVC_name", "\"/snap/core/10823/usr/lib/snapd/snap-confine\"", nullptr, field_type_t::ESCAPED},
+                {"AVC_pid", "14358", nullptr, field_type_t::UNCLASSIFIED},
+                {"AVC_comm", "\"apparmor_parser\"", nullptr, field_type_t::ESCAPED},
+                {"AVC[2]_apparmor", "\"STATUS\"", nullptr, field_type_t::ESCAPED},
+                {"AVC[2]_operation", "\"profile_replace\"", nullptr, field_type_t::ESCAPED},
+                {"AVC[2]_info", "\"same as current profile, skipping\"", nullptr, field_type_t::ESCAPED},
+                {"AVC[2]_profile", "\"unconfined\"", nullptr, field_type_t::ESCAPED},
+                {"AVC[2]_name", "\"/snap/core/10823/usr/lib/snapd/snap-confine//mount-namespace-capture-helper\"", nullptr, field_type_t::ESCAPED},
+                {"AVC[2]_pid", "14358", nullptr, field_type_t::UNCLASSIFIED},
+                {"AVC[2]_comm", "\"apparmor_parser\"", nullptr, field_type_t::ESCAPED},
+                {"containerid", "", nullptr, field_type_t::UNCLASSIFIED},
+            }}}
+        },
 };
 /*
 const std::vector<const char*> oms_test_events = {
@@ -461,6 +513,7 @@ const std::vector<const char*> oms_test_events = {
         R"event([1563470055.872,{"MessageType":"AUOMS_EVENT","Timestamp":"1563470055.872","SerialNumber":7605215,"ProcessFlags":0,"records":[{"RecordTypeCode":14688,"RecordType":"AUOMS_EXECVE","arch":"x86_64","syscall":"execve","success":"yes","exit":"0","a0":"ad1150","a1":"ad03d0","a2":"ad0230","a3":"fc2c9fc5","ppid":"16244","pid":"91098","audit_user":"unset","auid":"4294967295","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"-1","comm":"iptables","exe":"/usr/sbin/xtables-multi","key":"auoms","key_r":"\"auoms\"","cwd":"/var/lib/waagent","name":"/usr/sbin/iptables","inode":"1579593","dev":"08:02","mode":"file,755","o_user":"root","ouid":"0","owner_group":"root","ogid":"0","rdev":"00:00","nametype":"NORMAL","path_name":"[\"/usr/sbin/iptables\",\"/lib64/ld-linux-x86-64.so.2\"]","path_nametype":"[\"NORMAL\",\"NORMAL\"]","path_mode":"[\"0100755\",\"0100755\"]","path_ouid":"[\"0\",\"0\"]","path_ogid":"[\"0\",\"0\"]","argc":"5","cmdline":"iptables -w -t security --flush","redactors":"","containerid":""}]}])event",
         R"event([1563470055.876,{"MessageType":"AUOMS_EVENT","Timestamp":"1563470055.876","SerialNumber":7605216,"ProcessFlags":0,"records":[{"RecordTypeCode":10001,"RecordType":"AUOMS_SYSCALL","arch":"x86_64","syscall":"setsockopt","success":"yes","exit":"0","a0":"4","a1":"0","a2":"40","a3":"c31600","ppid":"16244","pid":"91098","audit_user":"unset","auid":"4294967295","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"-1","comm":"iptables","exe":"/usr/sbin/xtables-multi","key":"(null)","proctitle":"/bin/sh -c \"iptables -w -t security --flush\"","redactors":"","NETFILTER_CFG_table":"security","NETFILTER_CFG_family":"2","NETFILTER_CFG_entries":"4","containerid":""}]}])event",
         R"event([1572298453.69,{"MessageType":"AUOMS_EVENT","Timestamp":"1572298453.690","SerialNumber":5717,"ProcessFlags":0,"records":[{"RecordTypeCode":10001,"RecordType":"AUOMS_SYSCALL","arch":"aarch64","syscall":"mmap","success":"yes","exit":"281129964019712","a0":"0","a1":"16a048","a2":"5","a3":"802","ppid":"1","pid":"1450","audit_user":"unset","auid":"4294967295","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"-1","comm":"agetty","exe":"/usr/sbin/agetty","key":"(null)","INTEGRITY_POLICY_RULE_unparsed_text":"IPE=ctx ( op: [execute] dmverity_verified: [false] boot_verified: [true] audit_pathname: [/usr/lib/libc-2.28.so] )  [ action = allow ] [ boot_verified = true ]","containerid":""}]}])event",
+        R"event([1613060404.822,{"MessageType":"AUOMS_EVENT","Timestamp":"1613060404.822","SerialNumber":23533145,"ProcessFlags":0,"records":[{"RecordTypeCode":10001,"RecordType":"AUOMS_SYSCALL","arch":"x86_64","syscall":"write","success":"yes","exit":"84354","a0":"6","a1":"7fa3f4e7d010","a2":"14982","a3":"0","ppid":"14357","pid":"14358","audit_user":"user","auid":"1000","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"pts5","ses":"44067","comm":"apparmor_parser","exe":"/sbin/apparmor_parser","key":"(null)","proctitle":"apparmor_parser --replace --write-cache --cache-loc=/var/cache/apparmor -O no-expr-simplify --quiet /var/lib/snapd/apparmor/prof","redactors":"","AVC_apparmor":"STATUS","AVC_operation":"profile_replace","AVC_info":"same as current profile, skipping","AVC_profile":"unconfined","AVC_name":"/snap/core/10823/usr/lib/snapd/snap-confine","AVC_pid":"14358","AVC_comm":"apparmor_parser","AVC[2]_apparmor":"STATUS","AVC[2]_operation":"profile_replace","AVC[2]_info":"same as current profile, skipping","AVC[2]_profile":"unconfined","AVC[2]_name":"/snap/core/10823/usr/lib/snapd/snap-confine//mount-namespace-capture-helper","AVC[2]_pid":"14358","AVC[2]_comm":"apparmor_parser","containerid":""}]}])event",
 };
 
 const std::vector<const char*> fluent_test_events = {
@@ -472,6 +525,7 @@ const std::vector<const char*> fluent_test_events = {
         R"event(["LINUX_AUDITD_BLOB",["TIMESTAMP",{"AuditID":"1563470055.872:7605215","Computer":"TestHostname","MessageType":"AUOMS_EVENT","ProcessFlags":"","RecordText":"","RecordType":"AUOMS_EXECVE","RecordTypeCode":"14688","SerialNumber":"7605215","Timestamp":"2019-07-18T17:14:15.872Z","a0":"ad1150","a1":"ad03d0","a2":"ad0230","a3":"fc2c9fc5","arch":"x86_64","argc":"5","audit_user":"unset","auid":"4294967295","cmdline":"iptables -w -t security --flush","comm":"iptables","containerid":"","cwd":"/var/lib/waagent","dev":"08:02","effective_group":"root","effective_user":"root","egid":"0","euid":"0","exe":"/usr/sbin/xtables-multi","exit":"0","filesystem_group":"root","filesystem_user":"root","fsgid":"0","fsuid":"0","gid":"0","group":"root","inode":"1579593","key":"auoms","key_r":"\"auoms\"","mode":"file,755","name":"/usr/sbin/iptables","nametype":"NORMAL","o_user":"root","ogid":"0","ouid":"0","owner_group":"root","path_mode":"[\"0100755\",\"0100755\"]","path_name":"[\"/usr/sbin/iptables\",\"/lib64/ld-linux-x86-64.so.2\"]","path_nametype":"[\"NORMAL\",\"NORMAL\"]","path_ogid":"[\"0\",\"0\"]","path_ouid":"[\"0\",\"0\"]","pid":"91098","ppid":"16244","rdev":"00:00","redactors":"","ses":"-1","set_group":"root","set_user":"root","sgid":"0","success":"yes","suid":"0","syscall":"execve","tty":"(none)","uid":"0","user":"root"}]])event",
         R"event(["LINUX_AUDITD_BLOB",["TIMESTAMP",{"AuditID":"1563470055.876:7605216","Computer":"TestHostname","MessageType":"AUOMS_EVENT","NETFILTER_CFG_entries":"4","NETFILTER_CFG_family":"2","NETFILTER_CFG_table":"security","ProcessFlags":"","RecordText":"","RecordType":"AUOMS_SYSCALL","RecordTypeCode":"10001","SerialNumber":"7605216","Timestamp":"2019-07-18T17:14:15.876Z","a0":"4","a1":"0","a2":"40","a3":"c31600","arch":"x86_64","audit_user":"unset","auid":"4294967295","comm":"iptables","containerid":"","effective_group":"root","effective_user":"root","egid":"0","euid":"0","exe":"/usr/sbin/xtables-multi","exit":"0","filesystem_group":"root","filesystem_user":"root","fsgid":"0","fsuid":"0","gid":"0","group":"root","key":"(null)","pid":"91098","ppid":"16244","proctitle":"/bin/sh -c \"iptables -w -t security --flush\"","redactors":"","ses":"-1","set_group":"root","set_user":"root","sgid":"0","success":"yes","suid":"0","syscall":"setsockopt","tty":"(none)","uid":"0","user":"root"}]])event",
         R"event(["LINUX_AUDITD_BLOB",["TIMESTAMP",{"AuditID":"1572298453.690:5717","Computer":"TestHostname","INTEGRITY_POLICY_RULE_unparsed_text":"IPE=ctx ( op: [execute] dmverity_verified: [false] boot_verified: [true] audit_pathname: [/usr/lib/libc-2.28.so] )  [ action = allow ] [ boot_verified = true ]","MessageType":"AUOMS_EVENT","ProcessFlags":"","RecordText":"","RecordType":"AUOMS_SYSCALL","RecordTypeCode":"10001","SerialNumber":"5717","Timestamp":"2019-10-28T21:34:13.690Z","a0":"0","a1":"16a048","a2":"5","a3":"802","arch":"aarch64","audit_user":"unset","auid":"4294967295","comm":"agetty","containerid":"","effective_group":"root","effective_user":"root","egid":"0","euid":"0","exe":"/usr/sbin/agetty","exit":"281129964019712","filesystem_group":"root","filesystem_user":"root","fsgid":"0","fsuid":"0","gid":"0","group":"root","key":"(null)","pid":"1450","ppid":"1","ses":"-1","set_group":"root","set_user":"root","sgid":"0","success":"yes","suid":"0","syscall":"mmap","tty":"(none)","uid":"0","user":"root"}]])event",
+        R"event(["LINUX_AUDITD_BLOB",["TIMESTAMP",{"AVC[2]_apparmor":"STATUS","AVC[2]_comm":"apparmor_parser","AVC[2]_info":"same as current profile, skipping","AVC[2]_name":"/snap/core/10823/usr/lib/snapd/snap-confine//mount-namespace-capture-helper","AVC[2]_operation":"profile_replace","AVC[2]_pid":"14358","AVC[2]_profile":"unconfined","AVC_apparmor":"STATUS","AVC_comm":"apparmor_parser","AVC_info":"same as current profile, skipping","AVC_name":"/snap/core/10823/usr/lib/snapd/snap-confine","AVC_operation":"profile_replace","AVC_pid":"14358","AVC_profile":"unconfined","AuditID":"1613060404.822:23533145","Computer":"TestHostname","MessageType":"AUOMS_EVENT","ProcessFlags":"","RecordText":"","RecordType":"AUOMS_SYSCALL","RecordTypeCode":"10001","SerialNumber":"23533145","Timestamp":"2021-02-11T16:20:04.822Z","a0":"6","a1":"7fa3f4e7d010","a2":"14982","a3":"0","arch":"x86_64","audit_user":"user","auid":"1000","comm":"apparmor_parser","containerid":"","effective_group":"root","effective_user":"root","egid":"0","euid":"0","exe":"/sbin/apparmor_parser","exit":"84354","filesystem_group":"root","filesystem_user":"root","fsgid":"0","fsuid":"0","gid":"0","group":"root","key":"(null)","pid":"14358","ppid":"14357","proctitle":"apparmor_parser --replace --write-cache --cache-loc=/var/cache/apparmor -O no-expr-simplify --quiet /var/lib/snapd/apparmor/prof","redactors":"","ses":"44067","set_group":"root","set_user":"root","sgid":"0","success":"yes","suid":"0","syscall":"write","tty":"pts5","uid":"0","user":"root"}]])event",
 };
 
 const std::unordered_map<std::string, std::string> TestConfigFieldNameOverrideMap = {

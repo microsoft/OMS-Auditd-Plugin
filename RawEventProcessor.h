@@ -28,7 +28,7 @@ class RawEventProcessor {
 public:
     RawEventProcessor(const std::shared_ptr<EventBuilder>& builder, const std::shared_ptr<UserDB>& user_db, const std::shared_ptr<CmdlineRedactor>& cmdline_redactor, const std::shared_ptr<ProcessTree>& processTree, const std::shared_ptr<FiltersEngine> filtersEngine, const std::shared_ptr<Metrics>& metrics):
     _builder(builder), _user_db(user_db), _cmdline_redactor(cmdline_redactor), _state_ptr(nullptr), _processTree(processTree), _filtersEngine(filtersEngine), _metrics(metrics),
-        _event_flags(0), _pid(0), _ppid(0), _uid(-1), _last_proc_event_gen(0)
+        _event_flags(0), _pid(0), _ppid(0), _uid(-1), _last_proc_event_gen(0), _other_tag(0)
     {
         _bytes_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "data", "bytes", MetricPeriod::SECOND, MetricPeriod::HOUR);
         _record_metric = _metrics->AddMetric(MetricType::METRIC_BY_ACCUMULATION, "data", "records", MetricPeriod::SECOND, MetricPeriod::HOUR);
@@ -43,7 +43,7 @@ private:
     void cancel_event();
     void process_event(const Event& event);
     bool process_syscall_event(const Event& event);
-    bool process_field(const EventRecord& record, const EventRecordField& field, bool prepend_rec_type);
+    bool process_field(const EventRecord& record, const EventRecordField& field, uint32_t rtype_index);
     bool add_int_field(const std::string_view& name, int val, field_type_t ft);
     bool add_uid_field(const std::string_view& name, int uid, field_type_t ft);
     bool add_gid_field(const std::string_view& name, int gid, field_type_t ft);
@@ -79,6 +79,8 @@ private:
     std::string _path_ogid;
     uint64_t _last_proc_event_gen;
     ExecveConverter _execve_converter;
+    uint64_t _other_tag;
+    std::unordered_map<uint32_t, std::pair<uint64_t,uint32_t>> _other_rtype_counts;
 };
 
 

@@ -50,7 +50,7 @@ private:
     std::string_view _type_name;
     std::string _type_name_str;
     EventId _event_id;
-    std::vector<std::string_view> _record_fields;
+    std::vector<std::pair<std::string_view,std::string_view>> _record_fields;
     bool _unparsable;
 };
 

@@ -90,7 +90,7 @@ void RawEventProcessor::process_event(const Event& event) {
         }
 
         for (auto& field: rec) {
-            if (!process_field(rec, field, false)) {
+            if (!process_field(rec, field, 0)) {
                 cancel_event();
                 return;
             }
@@ -433,7 +433,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                     break;
             }
             if (add_field) {
-                if (!process_field(syscall_rec, f, false)) {
+                if (!process_field(syscall_rec, f, 0)) {
                     cancel_event();
                     return false;
                 }
@@ -442,7 +442,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     }
 
     if (cwd_rec && cwd_field) {
-        if (!process_field(cwd_rec, cwd_field, false)) {
+        if (!process_field(cwd_rec, cwd_field, 0)) {
             cancel_event();
             return false;
         }
@@ -452,7 +452,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         for (auto &f : path_rec) {
             auto fname = f.FieldName();
             if (fname != SV_ITEM && fname != SV_NODE) {
-                if (!process_field(path_rec, f, false)) {
+                if (!process_field(path_rec, f, 0)) {
                     cancel_event();
                     return false;
                 }
@@ -573,7 +573,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     }
 
     if (argc_rec && argc_field) {
-        if (!process_field(argc_rec, argc_field, false)) {
+        if (!process_field(argc_rec, argc_field, 0)) {
             cancel_event();
             return false;
         }
@@ -591,7 +591,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             throw std::runtime_error("Queue closed");
         }
 
-        if (!_builder->AddField(SV_REDACTORS, _tmp_val, nullptr, field_type_t::UNESCAPED)) {
+        if (!_builder->AddField(SV_REDACTORS, _tmp_val, nullptr, field_type_t::UNCLASSIFIED)) {
             throw std::runtime_error("Queue closed");
         }
     } else {
@@ -599,14 +599,14 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     }
 
     if (sockaddr_rec && sockaddr_field) {
-        if (!process_field(sockaddr_rec, sockaddr_field, false)) {
+        if (!process_field(sockaddr_rec, sockaddr_field, 0)) {
             cancel_event();
             return false;
         }
     }
 
     if (integrity_rec && integrity_field) {
-        if (!process_field(integrity_rec, integrity_field, false)) {
+        if (!process_field(integrity_rec, integrity_field, 0)) {
             cancel_event();
             return false;
         }
@@ -621,19 +621,28 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
             throw std::runtime_error("Queue closed");
         }
 
-        if (!_builder->AddField(SV_REDACTORS, _tmp_val, nullptr, field_type_t::UNESCAPED)) {
+        if (!_builder->AddField(SV_REDACTORS, _tmp_val, nullptr, field_type_t::UNCLASSIFIED)) {
             throw std::runtime_error("Queue closed");
         }
     }
 
     if (other_recs.size() > 0) {
+        _other_tag += 1;
         for (auto& rec : other_recs) {
+            auto r = _other_rtype_counts.emplace(std::make_pair(rec.RecordType(), std::make_pair(_other_tag, 1)));
+            if (!r.second) {
+                if (r.first->second.first != _other_tag) {
+                    r.first->second.first = _other_tag;
+                    r.first->second.second = 1;
+                }
+            }
             for (auto &field: rec) {
-                if (!process_field(rec, field, true)) {
+                if (!process_field(rec, field, r.first->second.second)) {
                     cancel_event();
                     return false;
                 }
             }
+            r.first->second.second += 1;
         }
     }
 
@@ -703,7 +712,7 @@ void RawEventProcessor::cancel_event()
     }
 }
 
-bool RawEventProcessor::process_field(const EventRecord& record, const EventRecordField& field, bool prepend_rec_type)
+bool RawEventProcessor::process_field(const EventRecord& record, const EventRecordField& field, uint32_t rtype_index)
 {
     using namespace std::string_literals;
 
@@ -718,8 +727,13 @@ bool RawEventProcessor::process_field(const EventRecord& record, const EventReco
     }
 
     _field_name.resize(0);
-    if (prepend_rec_type) {
+    if (rtype_index > 0) {
         _field_name.append(record.RecordTypeName());
+        if (rtype_index > 1) {
+            _field_name.push_back('[');
+            append_uint(_field_name, rtype_index);
+            _field_name.push_back(']');
+        }
         _field_name.push_back('_');
     }
 

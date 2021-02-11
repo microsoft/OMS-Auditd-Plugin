@@ -26,8 +26,9 @@ class RecordFieldIterator {
 public:
     explicit RecordFieldIterator(std::string_view str): _str(str), _idx(0) {}
 
-    bool next() {
-        static auto SV_MSG = "msg='"sv;
+    // Advance to the next space delimited text
+    // _val is set, _key is blank
+    bool next_text() {
         static auto SV_WSP = " \n"sv;
 
         if (_idx == std::string_view::npos || _idx >= _str.size()) {
@@ -38,18 +39,66 @@ public:
             idx = _str.size();
         }
         _val = _str.substr(_idx, idx-_idx);
-        // For certain record types, the data is inside a "msg='...'" field.
-        if (_val.substr(0, 5) == SV_MSG) {
-            _idx+=5;
-            return next();
-        } else {
-            _idx = _str.find_first_not_of(SV_WSP, idx);
+        _idx = _str.find_first_not_of(SV_WSP, idx);
+        return true;
+    }
+
+    // Advance to the next key=value
+    bool next_kv() {
+        static auto SV_MSG = "msg"sv;
+        static auto SV_WSP = " \n"sv;
+        static auto SV_WSPQ = "' \n"sv;
+        static auto SV_SP = " "sv;
+        static auto SV_EQ = "="sv;
+        static auto SV_DQ = "\""sv;
+
+        if (_idx == std::string_view::npos || _idx >= _str.size()) {
+            return false;
         }
-        // The field might have been inside a "msg='...'" so ignore the "'"
-        if (_val.back() == '\'') {
-            _val = _val.substr(0, _val.size()-1);
+
+        // Find the '='
+        auto idx = _str.find_first_of(SV_EQ, _idx);
+        if (idx == std::string_view::npos) {
+            // No '=' found, assume remainder of text is unparsable
+            idx = _str.size();
+            _val = _str.substr(_idx, idx-_idx);
+            _key = std::string_view(); // Make _key empty to signal that _val has remainder of text
+            return true;
+        }
+
+        _key = _str.substr(_idx, idx-_idx);
+        idx += 1; // Skip past the '='
+        _idx = idx; // Set _idx to start of value
+
+        // For certain record types, some of the data is inside a "msg='...'" field.
+        if (_key == SV_MSG && _str[_idx] == '\'') {
+            _idx += 1; // Skip past the (') char
+            return next_kv();
+        } else {
+            if (_str[_idx] == '"') {
+                // Value is double quoted, look for end quote
+                idx = _str.find_first_of(SV_DQ, _idx+1);
+                if (idx == std::string_view::npos) {
+                    idx = _str.size();
+                } else {
+                    idx += 1; // Include end quote
+                }
+            } else {
+                // Value is not double quoted, value ends at first white space or single quote
+                idx = _str.find_first_of(SV_WSPQ, _idx);
+                if (idx == std::string_view::npos) {
+                    idx = _str.size();
+                }
+            }
+            _val = _str.substr(_idx, idx-_idx);
+            // Advance _idx to start of next kv (skip past white space and single quote
+            _idx = _str.find_first_not_of(SV_WSPQ, idx);
         }
         return true;
+    }
+
+    inline std::string_view key() {
+        return _key;
     }
 
     inline std::string_view value() {
@@ -62,6 +111,7 @@ public:
 
 private:
     std::string_view _str;
+    std::string_view _key;
     std::string_view _val;
     size_t _idx;
 };
@@ -78,7 +128,7 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
     _record_fields.resize(0);
     std::string_view str = std::string_view(_data.data(), _size);
     RecordFieldIterator itr(str);
-    if (!itr.next()) {
+    if (!itr.next_text()) {
         return false;
     }
 
@@ -92,7 +142,7 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
 
     if (starts_with(itr.value(), SV_NODE)) {
         _node = itr.value().substr(5);
-        if (!itr.next()) {
+        if (!itr.next_text()) {
             return false;
         }
     } else {
@@ -101,7 +151,7 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
 
     if (starts_with(itr.value(), SV_TYPE)) {
         _type_name = itr.value().substr(5);
-        if (!itr.next()) {
+        if (!itr.next_text()) {
             return false;
         }
     } else {
@@ -147,13 +197,13 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
 
         // The IMA code does't follow the proper audit message format so take the whole message
         if (_record_type == RecordType::INTEGRITY_POLICY_RULE) {
-            _record_fields.push_back(itr.remainder());
+            _record_fields.emplace_back(std::make_pair(std::string_view(),itr.remainder()));
             _unparsable = true;
             return true;
         }
 
-        while(itr.next()) {
-            _record_fields.push_back(itr.value());
+        while(itr.next_kv()) {
+            _record_fields.emplace_back(std::make_pair(itr.key(),itr.value()));
         }
         return true;
     }
@@ -183,19 +233,21 @@ bool RawEventRecord::AddRecord(EventBuilder& builder) {
     // If record is marked as unparsable, then the text (after the 'audit():' section is included as the only value in
     // _record_fields
     if (_unparsable) {
-        if (!builder.AddField(SV_UNPARSED_TEXT, _record_fields[0], nullptr, field_type_t::UNESCAPED)) {
+        if (!builder.AddField(SV_UNPARSED_TEXT, _record_fields[0].second, nullptr, field_type_t::UNESCAPED)) {
             return false;
         }
         return builder.EndRecord();
     }
 
-    for (auto f: _record_fields) {
-        auto idx = f.find_first_of('=');
-        bool ret;
-        if (idx == std::string_view::npos) {
-            ret = builder.AddField(f, std::string_view(), nullptr, field_type_t::UNCLASSIFIED);
+    int unknown_key = 1;
+    for (auto& f: _record_fields) {
+        int ret;
+        if (!f.first.empty()) {
+            ret = builder.AddField(f.first, f.second, nullptr, field_type_t::UNCLASSIFIED);
         } else {
-            ret = builder.AddField(f.substr(0, idx), f.substr(idx + 1), nullptr, field_type_t::UNCLASSIFIED);
+            std::string key = "unknown" + std::to_string(unknown_key);
+            ret = builder.AddField(key, f.second, nullptr, field_type_t::UNCLASSIFIED);
+            unknown_key += 1;
         }
         if (!ret) {
             return ret;
