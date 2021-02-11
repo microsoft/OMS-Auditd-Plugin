@@ -579,7 +579,7 @@ int main(int argc, char**argv) {
     auto event_queue = std::make_shared<EventQueue>(queue);
     auto builder = std::make_shared<EventBuilder>(event_queue, event_prioritizer);
 
-    auto metrics = std::make_shared<Metrics>(queue);
+    auto metrics = std::make_shared<Metrics>("auomscollect", queue);
     metrics->Start();
 
     auto proc_metrics = std::make_shared<ProcMetrics>("auomscollect", queue, metrics, rss_limit, virt_limit, rss_pct_limit, []() {
@@ -674,6 +674,7 @@ int main(int argc, char**argv) {
             sleep(stop_delay);
         }
         output.Stop();
+        metrics->FlushLogMetrics();
         queue->Close(); // Close queue, this will trigger exit of autosave thread
         autosave_thread.join(); // Wait for autosave thread to exit
     } catch (const std::exception& ex) {
