@@ -31,8 +31,9 @@ public:
 
 
     // Returns false if the compile failed
-    bool Compile() { _regex.ok(); }
+    bool CompiledOK() { return _regex.ok(); }
 
+    inline RE2::ErrorCode CompileErrorCode() const { return _regex.error_code(); }
     inline std::string CompileError() const { return _regex.error(); }
 
     inline std::string Name() { return _name; }

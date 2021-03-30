@@ -24,7 +24,7 @@ BOOST_AUTO_TEST_CASE( basic_redact_rule_test ) {
 
     CmdlineRedactionRule rule("test", R"regex(-arg (\S+))regex", '*');
 
-    if (!rule.Compile()) {
+    if (!rule.CompiledOK()) {
         BOOST_FAIL(std::string("rule.Compile() failed: ") + rule.CompileError());
     }
 
@@ -51,7 +51,7 @@ BOOST_AUTO_TEST_CASE( basic_redact_rule_test ) {
 BOOST_AUTO_TEST_CASE( basic_redact_test ) {
     CmdlineRedactionRule rule("test", R"regex(-arg (\S+))regex", '*');
 
-    if (!rule.Compile()) {
+    if (!rule.CompiledOK()) {
         BOOST_FAIL(std::string("rule.Compile() failed: ") + rule.CompileError());
     }
 

@@ -58,7 +58,7 @@ std::shared_ptr<CmdlineRedactionRule> CmdlineRedactionRule::LoadFromFile(const s
         std::string regex = config.GetString("regex");
 
         auto ret = std::make_shared<CmdlineRedactionRule>(name, regex, replacement_char[0]);
-        if (!ret->Compile()) {
+        if (!ret->CompiledOK()) {
             Logger::Error("CmdlineRedactionRule::LoadFromFile(%s): Failed to load: Invalid regex: %s", path.c_str(), ret->CompileError().c_str());
             return nullptr;
         }
@@ -127,6 +127,10 @@ void CmdlineRedactor::LoadFromDir(const std::string& dir, bool require_only_root
 
         if (ends_with(name, CONFIG_SUFFIX)) {
             auto rule = CmdlineRedactionRule::LoadFromFile(dir + "/" + name);
+            if (!rule) {
+                Logger::Warn("Excluding (%s/%s) due to errors", dir.c_str(), name.c_str());
+                continue;
+            }
 
             // Make sure rule names are unique
             auto base_name = rule->Name();
