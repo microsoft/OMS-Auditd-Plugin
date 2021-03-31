@@ -283,6 +283,18 @@ constexpr bool IsSingleRecordEvent(RecordType rtype) {
     return rtype != RecordType::EOE && (rtype < RecordType::FIRST_EVENT || rtype >= RecordType::FIRST_ANOM_MSG || rtype == RecordType::KERNEL);
 }
 
+constexpr bool RecordTypeHasSyscallField(RecordType rtype) {
+    switch (rtype) {
+        case RecordType::SYSCALL:
+        case RecordType::AUOMS_SYSCALL:
+        case RecordType::AUOMS_SYSCALL_FRAGMENT:
+        case RecordType::AUOMS_EXECVE:
+            return true;
+        default:
+            return false;
+    }
+}
+
 constexpr RecordTypeCategory RecordTypeToCategory(RecordType rtype) {
     if (rtype < RecordType::FIRST_USER_MSG) {
         return RecordTypeCategory::KERNEL;
