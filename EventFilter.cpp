@@ -48,13 +48,12 @@ bool EventFilter::IsEventFiltered(const Event& event) {
     std::string syscall;
 
     for (auto rec : event) {
-        if (rec.RecordType() != static_cast<uint32_t>(RecordType::SYSCALL)) {
-            continue;
-        }
-        auto field = rec.FieldByName(S_SYSCALL);
-        if (field) {
-            syscall = field.InterpValue();
-            break;
+        if (RecordTypeHasSyscallField(static_cast<RecordType>(rec.RecordType()))) {
+            auto field = rec.FieldByName(S_SYSCALL);
+            if (field) {
+                syscall = field.InterpValue();
+                break;
+            }
         }
     }
 
