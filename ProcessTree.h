@@ -46,6 +46,8 @@ struct Ancestor {
     std::string exe;
 };
 
+class ProcessTree;
+
 class ProcessTreeItem {
 public:
     ProcessTreeItem(enum ProcessTreeSource source, int pid, int ppid=0):
@@ -54,6 +56,34 @@ public:
         _source(source), _pid(pid), _ppid(ppid), _uid(uid), _gid(gid), _exe(exe), _cmdline(cmdline), _containerid(""),
         _flags(0), _exec_propagation(0), _exited(false) {}
 
+    inline int pid() { return _pid; }
+    inline int ppid() { return _ppid; }
+    inline int uid() { return _uid; }
+    inline int gid() { return _gid; }
+
+    inline std::string exe() {
+        std::lock_guard<std::mutex> _lock(_mutex);
+        return _exe;
+    }
+
+    inline std::string cmdline() {
+        std::lock_guard<std::mutex> _lock(_mutex);
+        return _cmdline;
+    }
+
+    inline std::string containerid() {
+        std::lock_guard<std::mutex> _lock(_mutex);
+        return _containerid;
+    }
+
+    inline std::bitset<FILTER_BITSET_SIZE> flags() {
+        std::lock_guard<std::mutex> _lock(_mutex);
+        return _flags;
+    }
+
+protected:
+    friend class ProcessTree;
+    std::mutex _mutex;
     enum ProcessTreeSource _source;
     int _pid;
     int _ppid;
@@ -70,8 +100,6 @@ public:
     bool _exited;
     std::chrono::system_clock::time_point _exit_time;
 };
-
-class ProcessTree;
 
 // Class that monitors pnotify events and writes them to ProcessTree queues
 class ProcessNotify: public RunBase {

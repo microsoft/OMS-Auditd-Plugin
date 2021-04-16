@@ -242,7 +242,7 @@ void ProcessTree::AddPid(int pid, int ppid)
             process->_ancestors.emplace_back(anc);
         }
         _processes[pid] = process;
-    } 
+    }
 }
 
 /* Process event from pnotify (exec)
@@ -276,11 +276,15 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     auto it = _processes.find(pid);
     if (it != _processes.end()) {
         process = it->second;
-        process->_source = source;
-        process->_uid = uid;
-        process->_gid = gid;
-        process->_exe = exe;
-        process->_containeridfromhostprocess = containerid;
+        {
+            std::lock_guard<std::mutex> _lock(process->_mutex);
+            process->_source = source;
+            process->_uid = uid;
+            process->_gid = gid;
+            process->_exe = exe;
+            process->_cmdline = cmdline;
+            process->_containeridfromhostprocess = containerid;
+        }
         if (ppid != process->_ppid) {
             auto it2 = _processes.find(process->_ppid);
             if (it2 != _processes.end()) {
@@ -294,10 +298,13 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
             if (it2 != _processes.end()) {
                 auto parentproc = it2->second;
                 parentproc->_children.emplace_back(pid);
-                if (!(parentproc->_containeridfromhostprocess).empty()) {
-                    process->_containerid = parentproc->_containeridfromhostprocess;
-                } else {
-                    process->_containerid = parentproc->_containerid;
+                {
+                    std::lock_guard<std::mutex> _lock(process->_mutex);
+                    if (!(parentproc->_containeridfromhostprocess).empty()) {
+                        process->_containerid = parentproc->_containeridfromhostprocess;
+                    } else {
+                        process->_containerid = parentproc->_containerid;
+                    }
                 }
                 process->_ancestors = parentproc->_ancestors;
                 struct Ancestor anc = {ppid, parentproc->_exe};
@@ -305,7 +312,6 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
             }
             process->_ppid = ppid;
         }
-        process->_cmdline = cmdline;
         if (process->_exec_propagation > 0) {
             process->_exec_propagation = process->_exec_propagation - 1;
         }
@@ -314,15 +320,18 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
             if (it2 != _processes.end()) {
                 auto p = it2->second;
                 if (p->_exec_propagation > 0) {
-                    p->_source = source;
-                    p->_exe = exe;
-                    p->_cmdline = cmdline;
-                    p->_uid = uid;
-                    p->_gid = gid;
-                    if (!(process->_containeridfromhostprocess).empty()) {
-                        p->_containerid = process->_containeridfromhostprocess;
-                    } else {
-                        p->_containerid = process->_containerid;
+                    {
+                        std::lock_guard<std::mutex> _lock(process->_mutex);
+                        p->_source = source;
+                        p->_exe = exe;
+                        p->_cmdline = cmdline;
+                        p->_uid = uid;
+                        p->_gid = gid;
+                        if (!(process->_containeridfromhostprocess).empty()) {
+                            p->_containerid = process->_containeridfromhostprocess;
+                        } else {
+                            p->_containerid = process->_containerid;
+                        }
                     }
                     p->_ancestors = process->_ancestors;
                     struct Ancestor anc = {pid, exe};
@@ -339,12 +348,15 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
         if (it2 != _processes.end()) {
             auto parentproc = it2->second;
             parentproc->_children.emplace_back(pid);
-            if (!(parentproc->_containeridfromhostprocess).empty()) {
-                process->_containerid = parentproc->_containeridfromhostprocess;
-            } else {
-                process->_containeridfromhostprocess = containerid;
-                process->_containerid = parentproc->_containerid;
-            }            
+            {
+                std::lock_guard<std::mutex> _lock(process->_mutex);
+                if (!(parentproc->_containeridfromhostprocess).empty()) {
+                    process->_containerid = parentproc->_containeridfromhostprocess;
+                } else {
+                    process->_containeridfromhostprocess = containerid;
+                    process->_containerid = parentproc->_containerid;
+                }
+            }
             process->_ancestors = parentproc->_ancestors;
             struct Ancestor anc = {ppid, parentproc->_exe};
             process->_ancestors.emplace_back(anc);
@@ -402,12 +414,12 @@ void ProcessTree::Clean()
 
 std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
 {
+    std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
     auto it = _processes.find(pid);
     if (it != _processes.end() && it->second->_source != ProcessTreeSource_pnotify) {
         return it->second;
     } else {
         // process doesn't currently exist, or we only have rudimentary information for it, so add it
-        std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
         auto process = ReadProcEntry(pid);
         if (process != nullptr) {
             auto it2 = _processes.find(process->_ppid);
