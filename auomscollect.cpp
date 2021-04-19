@@ -109,7 +109,16 @@ void DoStdinCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& bytes_
                 return Signals::IsExit();
             });
             if (nr > 0) {
-                raw_queue.Commit(nr+sizeof(RecordType));
+                // Some versions of auditd will append interpreted data to the record line
+                // The interpreted data is separated from the record data by a \x1d char.
+                auto str_size = nr;
+                auto str = std::string_view(reinterpret_cast<char*>(ptr+sizeof(RecordType)), nr);
+                // Look for the \x1d char and exclude it and any data that follows
+                auto idx = str.find_first_of('\x1d');
+                if (idx != std::string_view::npos) {
+                    str_size = idx;
+                }
+                raw_queue.Commit(str_size+sizeof(RecordType));
                 bytes_metric->Update(nr);
                 records_metric->Update(1.0);
             } else if (nr == StdinReader::TIMEOUT) {
