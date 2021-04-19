@@ -670,7 +670,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
 
     std::string containerid = "";
     if (p) {
-        containerid = p->_containerid;
+        containerid = p->containerid();
     }
 
     if (!_builder->AddField(SV_CONTAINERID, containerid, nullptr, field_type_t::UNCLASSIFIED)) {

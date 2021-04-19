@@ -125,55 +125,59 @@ bool FiltersEngine::ProcessMatchFilter(const std::shared_ptr<ProcessTreeItem>& p
     }
 
     if (pfs._match_mask & PFS_MATCH_UID) {
-        if (pfs._uid != process->_uid) {
+        if (pfs._uid != process->uid()) {
             return false;
         }
     }
 
     if (pfs._match_mask & PFS_MATCH_GID) {
-        if (pfs._gid != process->_gid) {
+        if (pfs._gid != process->gid()) {
             return false;
         }
     }
 
+    auto exe = process->exe();
+
     if (pfs._match_mask & PFS_MATCH_EXE_EQUALS) {
-        if (pfs._exeMatchValue != process->_exe) {
+        if (pfs._exeMatchValue != exe) {
             return false;
         }
     }
 
     if (pfs._match_mask & PFS_MATCH_EXE_STARTSWITH) {
-        if (!starts_with(process->_exe, pfs._exeMatchValue)) {
+        if (!starts_with(exe, pfs._exeMatchValue)) {
             return false;
         }
     }
 
     if (pfs._match_mask & PFS_MATCH_EXE_CONTAINS) {
-        if (process->_exe.find(pfs._exeMatchValue) == std::string::npos) {
+        if (exe.find(pfs._exeMatchValue) == std::string::npos) {
             return false;
         }
     }
     if (pfs._match_mask & PFS_MATCH_EXE_REGEX) {
-        if (!re2::RE2::PartialMatch(process->_exe, *pfs._exeRegex)) {
+        if (!re2::RE2::PartialMatch(exe, *pfs._exeRegex)) {
             return false;
         }
     }
 
+    auto cmdline = process->cmdline();
+
     for (auto cf : pfs._cmdlineFilters) {
         if (cf._matchType == MatchEquals) {
-            if (cf._matchValue != process->_cmdline) {
+            if (cf._matchValue != cmdline) {
                 return false;
             }
         } else if (cf._matchType == MatchStartsWith) {
-            if (!starts_with(process->_cmdline, cf._matchValue)) {
+            if (!starts_with(cmdline, cf._matchValue)) {
                 return false;
             }
         } else if (cf._matchType == MatchContains) {
-            if (process->_cmdline.find(cf._matchValue) == std::string::npos) {
+            if (cmdline.find(cf._matchValue) == std::string::npos) {
                 return false;
             }
         } else if (cf._matchType == MatchRegex) {
-            if (!re2::RE2::PartialMatch(process->_cmdline, *cf._matchRegex)) {
+            if (!re2::RE2::PartialMatch(cmdline, *cf._matchRegex)) {
                 return false;
             }
         }
@@ -238,7 +242,7 @@ bool FiltersEngine::IsEventFiltered(const std::string& syscall, const std::share
     }
 
     // Check if this process is filtered
-    std::bitset<FILTER_BITSET_SIZE> matched_flags = p->_flags & filterFlagsMask;
+    std::bitset<FILTER_BITSET_SIZE> matched_flags = p->flags() & filterFlagsMask;
 
     // Find syscalls filtered for process
     for (unsigned int i=0; i<_nextBitPosition; i++) {
