@@ -167,6 +167,7 @@ bool is_set_intersect(T a, T b) {
 }
 
 bool AuditRulesMonitor::check_kernel_rules() {
+    _op_status->SetDesiredAuditRules(_desired_rules);
     if (_desired_rules.empty()) {
         return true;
     }
@@ -179,7 +180,10 @@ bool AuditRulesMonitor::check_kernel_rules() {
     if (ret != 0) {
         Logger::Error("AuditRulesMonitor: Unable to fetch audit rules from kernel: %s", std::strerror(-ret));
         _op_status->SetErrorCondition(ErrorCategory::AUDIT_RULES_KERNEL, std::string("Unable to fetch audit rules from kernel: ") + std::strerror(-ret));
+        _op_status->SetLoadedAuditRules({{}});
         return false;
+    } else {
+        _op_status->SetLoadedAuditRules(rules);
     }
 
     auto merged_rules = MergeRules(rules);

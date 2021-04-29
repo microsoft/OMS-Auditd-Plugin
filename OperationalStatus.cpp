@@ -103,6 +103,61 @@ void OperationalStatus::ClearErrorCondition(ErrorCategory category) {
     _error_conditions.erase(category);
 }
 
+void OperationalStatus::SetDesiredAuditRules(const std::vector<AuditRule>& rules) {
+    std::unique_lock<std::mutex> lock(_run_mutex);
+
+    std::vector<std::string> lines;
+    for (auto& rule :rules ) {
+        lines.emplace_back(rule.CanonicalText());
+    }
+
+    _desired_audit_rules = join(lines, "\n");
+}
+
+void OperationalStatus::SetLoadedAuditRules(const std::vector<AuditRule>& rules) {
+    std::unique_lock<std::mutex> lock(_run_mutex);
+
+    std::vector<std::string> lines;
+    for (auto& rule :rules ) {
+        lines.emplace_back(rule.CanonicalText());
+    }
+
+    _loaded_audit_rules = join(lines, "\n");
+}
+
+void OperationalStatus::SetRedactionRules(const std::vector<std::shared_ptr<const CmdlineRedactionRule>>& rules) {
+    if (rules.empty()) {
+        _redaction_rules = "";
+    }
+
+    rapidjson::StringBuffer buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer;
+
+    buffer.Clear();
+    writer.Reset(buffer);
+
+    writer.StartArray();
+
+    for (auto& rule : rules) {
+        writer.StartObject();
+        writer.Key("file_name");
+        writer.String(rule->FileName().data(), rule->FileName().size(), true);
+        writer.Key("name");
+        writer.String(rule->Name().data(), rule->Name().size(), true);
+        writer.Key("regex");
+        writer.String(rule->Regex().data(), rule->Regex().size(), true);
+        std::string rchar;
+        rchar.push_back(rule->ReplacementChar());
+        writer.Key("replacement_char");
+        writer.String(rchar.data(), rchar.size(), true);
+        writer.EndObject();
+    }
+
+    writer.EndArray();
+
+    _redaction_rules = std::string(buffer.GetString(), buffer.GetSize());
+}
+
 void OperationalStatus::on_stopping() {
     std::unique_lock<std::mutex> lock(_run_mutex);
 
@@ -177,6 +232,9 @@ std::string OperationalStatus::get_json_status() {
             case ErrorCategory::AUDIT_RULES_FILE:
                 key = "AUDIT_RULES_FILE";
                 break;
+            case ErrorCategory ::MISSING_REDACTION_RULES:
+                key = "MISSING_REDACTION_RULES";
+                break;
             default:
                 key = "UNKNOWN[" + std::to_string(static_cast<int>(error.first)) + "]";
                 break;
@@ -198,21 +256,36 @@ bool OperationalStatus::send_status() {
     uint64_t sec = static_cast<uint64_t>(tv.tv_sec);
     uint32_t msec = static_cast<uint32_t>(tv.tv_usec)/1000;
 
-    int num_fields = 1;
+    int num_fields = 4;
     auto errors = get_json_status();
     if (!errors.empty()) {
-        num_fields = 2;
+        num_fields += 1;
     }
 
-    if (!_builder.BeginEvent(sec, msec, 0, 1)) {
+    if (!_builder.BeginEvent(sec, msec, 0, num_fields)) {
         return false;
     }
+
     if (!_builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_STATUS), RecordTypeToName(RecordType::AUOMS_STATUS), "", num_fields)) {
         return false;
     }
+
     if (!_builder.AddField("version", AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED)) {
         return false;
     }
+
+    if (!_builder.AddField("desired_audit_rules", _desired_audit_rules, nullptr, field_type_t::UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!_builder.AddField("loaded_audit_rules", _loaded_audit_rules, nullptr, field_type_t::UNCLASSIFIED)) {
+        return false;
+    }
+
+    if (!_builder.AddField("redaction_rules", _redaction_rules, nullptr, field_type_t::UNCLASSIFIED)) {
+        return false;
+    }
+
     if (!errors.empty()) {
         if (!_builder.AddField("errors", errors, nullptr, field_type_t::UNCLASSIFIED)) {
             return false;

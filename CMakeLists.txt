@@ -513,6 +513,14 @@ add_executable(OutputInputTests
         TranslateRecordType.cpp
         Signals.cpp
         FileUtils.cpp
+        AuditRules.cpp
+        KernelInfo.cpp
+        TranslateArch.cpp
+        TranslateErrno.cpp
+        TranslateField.cpp
+        TranslateSyscall.cpp
+        UserDB.cpp
+        Version.cpp
 )
 
 target_link_libraries(OutputInputTests ${Boost_LIBRARIES}
@@ -529,6 +537,7 @@ add_executable(CmdlineRedactorTests
         Logger.cpp
         FileUtils.cpp
         StringUtils.cpp
+        TempDir.cpp
 )
 
 target_link_libraries(CmdlineRedactorTests

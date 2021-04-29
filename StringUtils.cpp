@@ -423,3 +423,15 @@ std::vector<std::string> split(const std::string& str, const std::string& sep) {
 
     return parts;
 }
+
+std::string join(const std::vector<std::string>& vec, const std::string& sep) {
+    std::string str;
+
+    for (auto& part : vec) {
+        if (!str.empty()) {
+            str.append(sep);
+        }
+        str.append(part);
+    }
+    return str;
+}

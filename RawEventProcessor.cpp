@@ -931,6 +931,11 @@ void RawEventProcessor::DoProcessInventory() {
         return;
     }
 
+    if (!_cmdline_redactor->GetMissingRules().empty()) {
+        Logger::Warn("Skipping process inventory due to missing redaction rules");
+        return;
+    }
+
     auto pinfo = ProcessInfo::Open(64*1024);
     if (!pinfo) {
         Logger::Error("Failed to open '/proc': %s", strerror(errno));

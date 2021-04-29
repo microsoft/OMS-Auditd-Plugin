@@ -90,4 +90,6 @@ inline std::vector<std::string> split(const std::string& str, char sep) {
     return split(str, std::string(&sep, 1));
 }
 
+std::string join(const std::vector<std::string>& vec, const std::string& sep);
+
 #endif //AUOMS_STRINGUTILS_H

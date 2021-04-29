@@ -26,9 +26,8 @@ class CmdlineRedactionRule {
 public:
     static std::shared_ptr<CmdlineRedactionRule> LoadFromFile(const std::string& path);
 
-    CmdlineRedactionRule(const std::string& name, const std::string& regex, char replacement_char):
-            _name(name), _regex(regex), _replacement_char(replacement_char) {}
-
+    CmdlineRedactionRule(const std::string& file_name, const std::string& name, const std::string& regex, char replacement_char):
+            _name(name), _regex_str(regex), _regex(regex), _replacement_char(replacement_char) {}
 
     // Returns false if the compile failed
     bool CompiledOK() { return _regex.ok(); }
@@ -36,31 +35,45 @@ public:
     inline RE2::ErrorCode CompileErrorCode() const { return _regex.error_code(); }
     inline std::string CompileError() const { return _regex.error(); }
 
-    inline std::string Name() { return _name; }
+    inline std::string FileName() const { return _file_name; }
+    inline std::string Name() const { return _name; }
     inline void SetName(const std::string& name) { _name = name; }
+    inline std::string Regex() const { return _regex_str; }
+    inline char ReplacementChar() const { return _replacement_char; }
 
     // Return true if redaction applied
     bool Apply(std::string& cmdline) const;
 
 private:
+    std::string _file_name;
     std::string _name;
+    std::string _regex_str;
     re2::RE2 _regex;
     char _replacement_char;
 };
 
 class CmdlineRedactor {
 public:
-    CmdlineRedactor() {}
+    static const std::string REDACT_RULE_MISSING_NAME;
+    static const std::string REDACT_RULE_MISSING_TEXT;
 
-    void AddRule(const std::shared_ptr<CmdlineRedactionRule>& rule);
+    CmdlineRedactor() = default;
 
-    void LoadFromDir(const std::string& dir, bool require_only_root);
+    // Return true only if no errors where encountered and all required rules are loaded
+    bool LoadFromDir(const std::string& dir, bool require_only_root);
 
-    bool ApplyRules(std::string& cmdline, std::string& rule_names) const;
+    std::vector<std::string> GetMissingRules();
+
+    std::vector<std::shared_ptr<const CmdlineRedactionRule>> GetRules();
+
+    bool ApplyRules(std::string& cmdline, std::string& rule_names);
 
 private:
+    std::mutex _mutex;
     std::unordered_set<std::string> _rule_names;
-    std::vector<std::shared_ptr<CmdlineRedactionRule>> _rules;
+    std::unordered_set<std::string> _required_rule_files;
+    std::unordered_set<std::string> _missing_rule_files;
+    std::vector<std::shared_ptr<const CmdlineRedactionRule>> _rules;
 };
 
 
