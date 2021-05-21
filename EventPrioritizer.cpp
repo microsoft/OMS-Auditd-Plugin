@@ -134,12 +134,20 @@ bool EventPrioritizer::LoadFromConfig(Config& config) {
 }
 
 uint16_t EventPrioritizer::Prioritize(const Event& event) {
+    static std::string S_EXECVE = "execve";
     static std::string S_STAR = "*";
 
     auto rec1 = event.begin();
 
     if (static_cast<RecordType>(rec1.RecordType()) == RecordType::AUOMS_EXECVE) {
-
+        auto itr = _syscall_priorities.find(S_EXECVE);
+        if (itr != _syscall_priorities.end()) {
+            return itr->second;
+        }
+        itr = _syscall_priorities.find(S_STAR);
+        if (itr != _syscall_priorities.end()) {
+            return itr->second;
+        }
     } else if (static_cast<RecordType>(rec1.RecordType()) == RecordType::SYSCALL ||
         static_cast<RecordType>(rec1.RecordType()) == RecordType::AUOMS_SYSCALL) {
         _syscall_name.resize(0);

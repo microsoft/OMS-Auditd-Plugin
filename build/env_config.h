@@ -30,7 +30,7 @@
 #endif
 
 #ifndef AUOMS_REDACT_DIR
-#define AUOMS_REDACT_DIR "/etc/opt/microsoft/auoms/redact.d"
+#define AUOMS_REDACT_DIR "/etc/auoms/redact.d"
 #endif
 
 #ifndef AUOMS_OUTCONF_DIR

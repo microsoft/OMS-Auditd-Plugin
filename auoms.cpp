@@ -51,6 +51,7 @@
 
 #include "env_config.h"
 #include "LockFile.h"
+#include "StringUtils.h"
 
 void usage()
 {
@@ -371,9 +372,6 @@ int main(int argc, char**argv) {
         }
     }
 
-    auto cmdline_redactor = std::make_shared<CmdlineRedactor>();
-    cmdline_redactor->LoadFromDir(redact_dir, true);
-
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
     Signals::Init();
@@ -391,6 +389,33 @@ int main(int argc, char**argv) {
         exit(1);
     }
     operational_status->Start();
+
+    auto cmdline_redactor = std::make_shared<CmdlineRedactor>();
+    cmdline_redactor->LoadFromDir(redact_dir, true);
+
+    std::thread rule_thread([&redact_dir, &cmdline_redactor, &operational_status]() {
+        Signals::InitThread();
+        int sleep_time = 1;
+        // Loop forever until required rules are successfully loaded.
+        while (!Signals::IsExit()) {
+            if (cmdline_redactor->LoadFromDir(redact_dir, true)) {
+                operational_status->ClearErrorCondition(ErrorCategory::MISSING_REDACTION_RULES);
+                operational_status->SetRedactionRules(cmdline_redactor->GetRules());
+                return;
+            }
+
+            auto missing_rules = join(cmdline_redactor->GetMissingRules(), ", ");
+            operational_status->SetErrorCondition(ErrorCategory::MISSING_REDACTION_RULES, "Missing redaction rules: " + missing_rules);
+            operational_status->SetRedactionRules(cmdline_redactor->GetRules());
+
+            sleep(sleep_time);
+            sleep_time /= 2;
+            if (sleep_time > 60) {
+                sleep_time = 60;
+            }
+        }
+    });
+    rule_thread.detach();
 
     auto metrics = std::make_shared<Metrics>("auoms", queue);
     metrics->Start();

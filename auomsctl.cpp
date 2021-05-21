@@ -1866,7 +1866,7 @@ int main(int argc, char**argv) {
         }
         return spam_netlink(argv[2], argv[3]);
     } else if (strcmp(argv[1], "test_redaction") == 0) {
-        if (argc < 2) {
+        if (argc < 3) {
             usage();
             exit(1);
         }

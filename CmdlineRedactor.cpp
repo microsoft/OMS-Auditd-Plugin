@@ -22,6 +22,7 @@
 #include "StringUtils.h"
 
 #define CONFIG_SUFFIX ".conf"
+#define REQUIRES_SUFFIX ".requires"
 
 std::shared_ptr<CmdlineRedactionRule> CmdlineRedactionRule::LoadFromFile(const std::string& path) {
     using namespace std::string_literals;
@@ -33,6 +34,7 @@ std::shared_ptr<CmdlineRedactionRule> CmdlineRedactionRule::LoadFromFile(const s
         config.Load(path);
 
         std::string name = Basename(path, CONFIG_SUFFIX);
+        std::string file_name = name + CONFIG_SUFFIX;
         if (config.HasKey("name")) {
             name = config.GetString("name");
         }
@@ -57,7 +59,7 @@ std::shared_ptr<CmdlineRedactionRule> CmdlineRedactionRule::LoadFromFile(const s
         }
         std::string regex = config.GetString("regex");
 
-        auto ret = std::make_shared<CmdlineRedactionRule>(name, regex, replacement_char[0]);
+        auto ret = std::make_shared<CmdlineRedactionRule>(file_name, name, regex, replacement_char[0]);
         if (!ret->CompiledOK()) {
             Logger::Error("CmdlineRedactionRule::LoadFromFile(%s): Failed to load: Invalid regex: %s", path.c_str(), ret->CompileError().c_str());
             return nullptr;
@@ -96,18 +98,19 @@ bool CmdlineRedactionRule::Apply(std::string& cmdline) const {
     return res;
 }
 
-void CmdlineRedactor::AddRule(const std::shared_ptr<CmdlineRedactionRule>& rule) {
-    _rules.emplace_back(rule);
-}
+bool CmdlineRedactor::LoadFromDir(const std::string& dir, bool require_only_root) {
+    std::unordered_set<std::string> new_rule_names;
+    std::unordered_set<std::string> new_required_rule_files;
+    std::unordered_set<std::string> new_missing_rule_files;
+    std::vector<std::shared_ptr<const CmdlineRedactionRule>> new_rules;
 
-void CmdlineRedactor::LoadFromDir(const std::string& dir, bool require_only_root) {
     if (!PathExists(dir)) {
-        return;
+        return false;
     }
 
     if (require_only_root && !IsOnlyRootWritable(dir)) {
         Logger::Error("CmdlineRedactor::LoadFromDir(%s): Dir is not secure, it is writable by non-root users. Redaction rules will not be loaded.", dir.c_str());
-        return;
+        return false;
     }
 
     std::vector<std::string> files;
@@ -115,8 +118,11 @@ void CmdlineRedactor::LoadFromDir(const std::string& dir, bool require_only_root
         files = GetDirList(dir);
     } catch (std::exception& ex) {
         Logger::Error("CmdlineRedactor::LoadFromDir(%s): Failed to read dir: %s", dir.c_str(), ex.what());
-        return;
+        return false;
     }
+
+    std::unordered_set<std::string> loaded_rule_files;
+
     std::sort(files.begin(), files.end());
     for (auto& name: files) {
         std::string path = dir + "/" + name;
@@ -135,20 +141,79 @@ void CmdlineRedactor::LoadFromDir(const std::string& dir, bool require_only_root
             // Make sure rule names are unique
             auto base_name = rule->Name();
             int rnum = 1;
-            while (_rule_names.count(rule->Name())) {
+            while (new_rule_names.count(rule->Name())) {
                 rule->SetName(base_name+std::to_string(rnum));
                 rnum += 1;
             }
 
             if (rule) {
-                _rules.emplace_back(rule);
+                new_rules.emplace_back(rule);
+            }
+            loaded_rule_files.emplace(name);
+        } else if (ends_with(name, REQUIRES_SUFFIX)) {
+            std::vector<std::string> lines;
+            try {
+                lines = ReadFile(dir+"/"+name);
+            } catch (std::exception& ex) {
+                Logger::Error("Encountered error while trying to read %s/%s: %s", dir.c_str(), name.c_str(), ex.what());
+            }
+            for (auto& line : lines) {
+                auto name = trim_whitespace(line);
+                if (!starts_with(line, "#")) {
+                    if (!ends_with(name, CONFIG_SUFFIX)) {
+                        name = name + CONFIG_SUFFIX;
+                    }
+                    new_required_rule_files.emplace(name);
+                }
             }
         }
     }
+
+    for (auto& name : new_required_rule_files) {
+        if (loaded_rule_files.count(name) == 0) {
+            new_missing_rule_files.emplace(name);
+            Logger::Error("Required redaction rule file %s is missing", name.c_str());
+        }
+    }
+
+    std::lock_guard<std::mutex> _lock(_mutex);
+    _rule_names = new_rule_names;
+    _required_rule_files = new_required_rule_files;
+    _missing_rule_files = new_missing_rule_files;
+    _rules = new_rules;
+
+    return _missing_rule_files.empty();
 }
 
-bool CmdlineRedactor::ApplyRules(std::string& cmdline, std::string& rule_names) const {
+std::vector<std::string> CmdlineRedactor::GetMissingRules() {
+    std::lock_guard<std::mutex> _lock(_mutex);
+
+    std::vector<std::string> missing;
+    for (auto& name : _missing_rule_files) {
+        missing.emplace_back(name);
+    }
+    std::sort(missing.begin(), missing.end());
+    return missing;
+}
+
+std::vector<std::shared_ptr<const CmdlineRedactionRule>> CmdlineRedactor::GetRules() {
+    std::lock_guard<std::mutex> _lock(_mutex);
+    return _rules;
+}
+
+const std::string CmdlineRedactor::REDACT_RULE_MISSING_NAME = "*Missing Required*";
+const std::string CmdlineRedactor::REDACT_RULE_MISSING_TEXT = "**** Entire cmdline redacted due to missing required redaction rules ****";
+
+bool CmdlineRedactor::ApplyRules(std::string& cmdline, std::string& rule_names) {
+    std::lock_guard<std::mutex> _lock(_mutex);
+
     rule_names.resize(0);
+
+    if (!_missing_rule_files.empty()) {
+        cmdline = REDACT_RULE_MISSING_TEXT;
+        rule_names = REDACT_RULE_MISSING_NAME;
+        return true;
+    }
 
     auto res = false;
     for (auto& rule: _rules) {

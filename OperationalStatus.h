@@ -21,7 +21,11 @@
 #include "RunBase.h"
 #include "EventQueue.h"
 #include "PriorityQueue.h"
+#include "CmdlineRedactor.h"
+#include "AuditRules.h"
 
+#include <string>
+#include <vector>
 #include <functional>
 
 /*
@@ -41,6 +45,7 @@ enum class ErrorCategory {
     DESIRED_RULES,
     AUDIT_RULES_KERNEL,
     AUDIT_RULES_FILE,
+    MISSING_REDACTION_RULES,
 };
 
 class OperationalStatusListener: public RunBase {
@@ -73,6 +78,10 @@ public:
     void SetErrorCondition(ErrorCategory category, const std::string& error_msg);
     void ClearErrorCondition(ErrorCategory category);
 
+    void SetDesiredAuditRules(const std::vector<AuditRule>& rules);
+    void SetLoadedAuditRules(const std::vector<AuditRule>& rules);
+    void SetRedactionRules(const std::vector<std::shared_ptr<const CmdlineRedactionRule>>& rules);
+
 protected:
     void on_stopping() override;
     void run() override;
@@ -85,6 +94,9 @@ private:
     OperationalStatusListener _listener;
     std::unordered_map<ErrorCategory, std::string> _error_conditions;
     EventBuilder _builder;
+    std::string _desired_audit_rules;
+    std::string _loaded_audit_rules;
+    std::string _redaction_rules;
 };
 
 
