@@ -262,7 +262,7 @@ bool OperationalStatus::send_status() {
         num_fields += 1;
     }
 
-    if (!_builder.BeginEvent(sec, msec, 0, num_fields)) {
+    if (!_builder.BeginEvent(sec, msec, 0, 1)) {
         return false;
     }
 
