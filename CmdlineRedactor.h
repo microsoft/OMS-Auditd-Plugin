@@ -59,6 +59,9 @@ public:
 
     CmdlineRedactor() = default;
 
+    // Used only for tests
+    void AddRule(std::shared_ptr<const CmdlineRedactionRule>& rule);
+
     // Return true only if no errors where encountered and all required rules are loaded
     bool LoadFromDir(const std::string& dir, bool require_only_root);
 

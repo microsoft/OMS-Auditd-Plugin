@@ -486,9 +486,13 @@ add_executable(FluentEventWriterTests
         StringUtils.cpp
         TestEventData.cpp
         ExecveConverter.cpp
+        CmdlineRedactor.cpp
+        FileUtils.cpp
+        Config.cpp
 )
 
 target_link_libraries(FluentEventWriterTests ${Boost_LIBRARIES}
+        libre2.a
         pthread
 )
 

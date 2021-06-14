@@ -137,6 +137,11 @@ bool RawEventAccumulator::AddRecord(std::unique_ptr<RawEventRecord> record) {
         return false;
     }
 
+    // Drop all USER_TTY records, these contain raw user tty and we don't want that data.
+    if (record->GetRecordType() == RecordType::USER_TTY) {
+        return false;
+    }
+
     auto event_id = record->GetEventId();
     auto found = _events.on(event_id, [this,&record](size_t entry_count, const std::chrono::steady_clock::time_point& last_touched, std::shared_ptr<RawEvent>& event) {
         if (event->AddRecord(std::move(record))) {

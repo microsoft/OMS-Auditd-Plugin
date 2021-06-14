@@ -17,6 +17,7 @@
 #include "TestEventData.h"
 #include "RecordType.h"
 #include "TextEventWriterConfig.h"
+#include "CmdlineRedactor.h"
 
 const std::string passwd_file_text = R"passwd(
 root:x:0:0:root:/root:/bin/bash
@@ -32,6 +33,10 @@ _chrony:x:132:
 nogroup:x:65534:
 user:x:1000:
 )group";
+
+const std::string test_redaction_rule_filename = "test.conf";
+const std::string test_redaction_rule_name = "test";
+const std::string test_redaction_rule_regex = "--redactme (\\S+)";
 
 std::vector<const char*> raw_test_events = {
         // Test normal EXECVE transform
@@ -85,7 +90,11 @@ type=INTEGRITY_POLICY_RULE audit(1572298453.690:5717): IPE=ctx ( op: [execute] d
 type=AVC msg=audit(1613060404.822:23533145): apparmor="STATUS" operation="profile_replace" info="same as current profile, skipping" profile="unconfined" name="/snap/core/10823/usr/lib/snapd/snap-confine//mount-namespace-capture-helper" pid=14358 comm="apparmor_parser"
 type=SYSCALL msg=audit(1613060404.822:23533145): arch=c000003e syscall=1 success=yes exit=84354 a0=6 a1=7fa3f4e7d010 a2=14982 a3=0 items=0 ppid=14357 pid=14358 auid=1000 uid=0 gid=0 euid=0 suid=0 fsuid=0 egid=0 sgid=0 fsgid=0 tty=pts5 ses=44067 comm="apparmor_parser" exe="/sbin/apparmor_parser" key=(null)
 type=PROCTITLE msg=audit(1613060404.822:23533145): proctitle=61707061726D6F725F706172736572002D2D7265706C616365002D2D77726974652D6361636865002D2D63616368652D6C6F633D2F7661722F63616368652F61707061726D6F72002D4F006E6F2D657870722D73696D706C696679002D2D7175696574002F7661722F6C69622F736E6170642F61707061726D6F722F70726F66
-)event"
+)event",
+        R"event(type=USER_CMD msg=audit(1623701789.269:26455408): pid=24552 uid=1000 auid=1000 ses=18162 msg='cwd="/home/user" cmd=6563686F207465737420757365725F636D64202D2D7265646163746D65207374756666 terminal=pts/2 res=success'
+)event",
+        R"event(type=USER_CMD msg=audit(1623702130.309:26459490): pid=28364 uid=1000 auid=1000 ses=18162 msg='cwd="/home/user" cmd=6563686F207465737420757365725F636D64202D2D7265646163746D65207374756666202D2D6E6F6E7474792005 terminal=pts/2 res=success'
+)event",
 };
 
 const std::vector<bool> raw_events_do_flush {
@@ -97,6 +106,8 @@ const std::vector<bool> raw_events_do_flush {
     false,
     false,
     false,
+    true,
+    true,
     true,
     true,
     true,
@@ -495,15 +506,34 @@ const std::vector<TestEvent> test_events {
                 {"containerid", "", nullptr, field_type_t::UNCLASSIFIED},
             }}}
         },
+        {1623701789, 269, 26455408, 0, 24552, {
+            {1123, "USER_CMD", "", {
+                {"pid", "24552", nullptr, field_type_t::UNCLASSIFIED},
+                {"uid", "1000", "user", field_type_t::UID},
+                {"auid", "1000", "user", field_type_t::UID},
+                {"ses", "18162", nullptr, field_type_t::SESSION},
+                {"cwd", "\"/home/user\"", nullptr, field_type_t::ESCAPED},
+                {"cmd", "echo test user_cmd --redactme *****", nullptr, field_type_t::UNESCAPED},
+                {"redactors", "test", nullptr, field_type_t::UNCLASSIFIED},
+                {"terminal", "pts/2", nullptr, field_type_t::UNCLASSIFIED},
+                {"res", "success", nullptr, field_type_t::SUCCESS},
+            }}}
+        },
+        {1623702130, 309, 26459490, 0, 28364, {
+            {1123, "USER_CMD", "", {
+                {"pid", "28364", nullptr, field_type_t::UNCLASSIFIED},
+                {"uid", "1000", "user", field_type_t::UID},
+                {"auid", "1000", "user", field_type_t::UID},
+                {"ses", "18162", nullptr, field_type_t::SESSION},
+                {"cwd", "\"/home/user\"", nullptr, field_type_t::ESCAPED},
+                {"cmd", "echo test user_cmd --redactme ***** --nontty \u0005", nullptr, field_type_t::UNESCAPED},
+                {"redactors", "test", nullptr, field_type_t::UNCLASSIFIED},
+                {"terminal", "pts/2", nullptr, field_type_t::UNCLASSIFIED},
+                {"res", "success", nullptr, field_type_t::SUCCESS},
+            }}}
+        },
 };
-/*
-const std::vector<const char*> oms_test_events = {
-        R"event([1521757638.392,{"MessageType":"AUOMS_EVENT","Timestamp":"1521757638.392","SerialNumber":262332,"ProcessFlags":0,"records":[{"RecordTypeCode":14688,"RecordType":"AUOMS_EXECVE","arch":"x86_64","syscall":"execve","success":"yes","exit":"0","ppid":"26595","pid":"26918","audit_user":"root","auid":"0","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"842","comm":"logger","exe":"/usr/bin/logger","key":"auoms,execve","key_r":"61756F6D7301657865637665","cwd":"/","name":"/usr/bin/logger","inode":"312545","dev":"00:13","mode":"file,755","o_user":"root","ouid":"0","owner_group":"root","ogid":"0","rdev":"00:00","nametype":"NORMAL","argc":"6","cmdline":"logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \""}]}])event",
-        R"event([1521757638.392,{"MessageType":"AUOMS_EVENT","Timestamp":"1521757638.392","SerialNumber":262333,"ProcessFlags":0,"records":[{"RecordTypeCode":14688,"RecordType":"AUOMS_EXECVE","arch":"x86_64","syscall":"execve","success":"yes","exit":"0","ppid":"26595","pid":"26918","audit_user":"root","auid":"0","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"842","comm":"logger","exe":"/usr/bin/logger","key":"(null)","key_r":"(null)","argc":"6","cmdline":"logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \""}]}])event",
-        R"event([1521757638.392,{"MessageType":"AUOMS_EVENT","Timestamp":"1521757638.392","SerialNumber":262334,"ProcessFlags":0,"records":[{"RecordTypeCode":10002,"RecordType":"AUOMS_SYSCALL_FRAGMENT","cwd":"/","name":"/usr/bin/logger","inode":"312545","dev":"00:13","mode":"file,755","o_user":"root","ouid":"0","owner_group":"root","ogid":"0","rdev":"00:00","nametype":"NORMAL","argc":"6","cmdline":"logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \""}]}])event",
-        R"event([1562867403.686,{"MessageType":"AUDIT_EVENT","Timestamp":"1562867403.686","SerialNumber":4179743,"ProcessFlags":0,"records":[{"RecordTypeCode":1112,"RecordType":"USER_LOGIN","pid":"26475","user":"root","uid":"0","audit_user":"user","auid":"1000","ses":"91158","op":"login","id":"user","id_r":"1000","exe":"/usr/sbin/sshd","hostname":"131.107.147.6","addr":"131.107.147.6","terminal":"/dev/pts/0","res":"success"}]}])event",
-};
-*/
+
 const std::vector<const char*> oms_test_events = {
         R"event([1521757638.392,{"MessageType":"AUOMS_EVENT","Timestamp":"1521757638.392","SerialNumber":262332,"ProcessFlags":0,"records":[{"RecordTypeCode":14688,"RecordType":"AUOMS_EXECVE","node":"test","arch":"x86_64","syscall":"execve","success":"yes","exit":"0","a0":"55d782c96198","a1":"55d782c96120","a2":"55d782c96158","a3":"1","ppid":"26595","pid":"26918","audit_user":"root","auid":"0","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"842","comm":"logger","exe":"/usr/bin/logger","key":"auoms,execve","key_r":"61756F6D7301657865637665","cwd":"/","name":"/usr/bin/logger","inode":"312545","dev":"00:13","mode":"file,755","o_user":"root","ouid":"0","owner_group":"root","ogid":"0","rdev":"00:00","nametype":"NORMAL","path_name":"[\"/usr/bin/logger\",\"/lib64/ld-linux-x86-64.so.2\"]","path_nametype":"[\"NORMAL\",\"NORMAL\"]","path_mode":"[\"0100755\",\"0100755\"]","path_ouid":"[\"0\",\"0\"]","path_ogid":"[\"0\",\"0\"]","argc":"6","cmdline":"logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \"","redactors":"","containerid":""}]}])event",
         R"event([1521757638.392,{"MessageType":"AUOMS_EVENT","Timestamp":"1521757638.392","SerialNumber":262334,"ProcessFlags":0,"records":[{"RecordTypeCode":10002,"RecordType":"AUOMS_SYSCALL_FRAGMENT","cwd":"/","name":"/usr/bin/logger","inode":"312545","dev":"00:13","mode":"file,755","o_user":"root","ouid":"0","owner_group":"root","ogid":"0","rdev":"00:00","nametype":"NORMAL","path_name":"[\"/usr/bin/logger\",\"/lib64/ld-linux-x86-64.so.2\"]","path_nametype":"[\"NORMAL\",\"NORMAL\"]","path_mode":"[\"0100755\",\"0100755\"]","path_ouid":"[\"0\",\"0\"]","path_ogid":"[\"0\",\"0\"]","argc":"6","cmdline":"logger -t zfs-backup -p daemon.err \"zfs incremental backup of rpool/lxd failed: \"","redactors":"","containerid":""}]}])event",
@@ -514,6 +544,8 @@ const std::vector<const char*> oms_test_events = {
         R"event([1563470055.876,{"MessageType":"AUOMS_EVENT","Timestamp":"1563470055.876","SerialNumber":7605216,"ProcessFlags":0,"records":[{"RecordTypeCode":10001,"RecordType":"AUOMS_SYSCALL","arch":"x86_64","syscall":"setsockopt","success":"yes","exit":"0","a0":"4","a1":"0","a2":"40","a3":"c31600","ppid":"16244","pid":"91098","audit_user":"unset","auid":"4294967295","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"-1","comm":"iptables","exe":"/usr/sbin/xtables-multi","key":"(null)","proctitle":"/bin/sh -c \"iptables -w -t security --flush\"","redactors":"","NETFILTER_CFG_table":"security","NETFILTER_CFG_family":"2","NETFILTER_CFG_entries":"4","containerid":""}]}])event",
         R"event([1572298453.69,{"MessageType":"AUOMS_EVENT","Timestamp":"1572298453.690","SerialNumber":5717,"ProcessFlags":0,"records":[{"RecordTypeCode":10001,"RecordType":"AUOMS_SYSCALL","arch":"aarch64","syscall":"mmap","success":"yes","exit":"281129964019712","a0":"0","a1":"16a048","a2":"5","a3":"802","ppid":"1","pid":"1450","audit_user":"unset","auid":"4294967295","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"(none)","ses":"-1","comm":"agetty","exe":"/usr/sbin/agetty","key":"(null)","INTEGRITY_POLICY_RULE_unparsed_text":"IPE=ctx ( op: [execute] dmverity_verified: [false] boot_verified: [true] audit_pathname: [/usr/lib/libc-2.28.so] )  [ action = allow ] [ boot_verified = true ]","containerid":""}]}])event",
         R"event([1613060404.822,{"MessageType":"AUOMS_EVENT","Timestamp":"1613060404.822","SerialNumber":23533145,"ProcessFlags":0,"records":[{"RecordTypeCode":10001,"RecordType":"AUOMS_SYSCALL","arch":"x86_64","syscall":"write","success":"yes","exit":"84354","a0":"6","a1":"7fa3f4e7d010","a2":"14982","a3":"0","ppid":"14357","pid":"14358","audit_user":"user","auid":"1000","user":"root","uid":"0","group":"root","gid":"0","effective_user":"root","euid":"0","set_user":"root","suid":"0","filesystem_user":"root","fsuid":"0","effective_group":"root","egid":"0","set_group":"root","sgid":"0","filesystem_group":"root","fsgid":"0","tty":"pts5","ses":"44067","comm":"apparmor_parser","exe":"/sbin/apparmor_parser","key":"(null)","proctitle":"apparmor_parser --replace --write-cache --cache-loc=/var/cache/apparmor -O no-expr-simplify --quiet /var/lib/snapd/apparmor/prof","redactors":"","AVC_apparmor":"STATUS","AVC_operation":"profile_replace","AVC_info":"same as current profile, skipping","AVC_profile":"unconfined","AVC_name":"/snap/core/10823/usr/lib/snapd/snap-confine","AVC_pid":"14358","AVC_comm":"apparmor_parser","AVC[2]_apparmor":"STATUS","AVC[2]_operation":"profile_replace","AVC[2]_info":"same as current profile, skipping","AVC[2]_profile":"unconfined","AVC[2]_name":"/snap/core/10823/usr/lib/snapd/snap-confine//mount-namespace-capture-helper","AVC[2]_pid":"14358","AVC[2]_comm":"apparmor_parser","containerid":""}]}])event",
+        R"event([1623701789.269,{"MessageType":"AUDIT_EVENT","Timestamp":"1623701789.269","SerialNumber":26455408,"ProcessFlags":0,"records":[{"RecordTypeCode":1123,"RecordType":"USER_CMD","pid":"24552","user":"user","uid":"1000","audit_user":"user","auid":"1000","ses":"18162","cwd":"/home/user","cmd":"echo test user_cmd --redactme *****","redactors":"test","terminal":"pts/2","res":"success"}]}])event",
+        R"event([1623702130.309,{"MessageType":"AUDIT_EVENT","Timestamp":"1623702130.309","SerialNumber":26459490,"ProcessFlags":0,"records":[{"RecordTypeCode":1123,"RecordType":"USER_CMD","pid":"28364","user":"user","uid":"1000","audit_user":"user","auid":"1000","ses":"18162","cwd":"/home/user","cmd":"echo test user_cmd --redactme ***** --nontty \\x05","redactors":"test","terminal":"pts/2","res":"success"}]}])event",
 };
 
 const std::vector<const char*> fluent_test_events = {
@@ -526,6 +558,8 @@ const std::vector<const char*> fluent_test_events = {
         R"event(["LINUX_AUDITD_BLOB",["TIMESTAMP",{"AuditID":"1563470055.876:7605216","Computer":"TestHostname","MessageType":"AUOMS_EVENT","NETFILTER_CFG_entries":"4","NETFILTER_CFG_family":"2","NETFILTER_CFG_table":"security","ProcessFlags":"","RecordText":"","RecordType":"AUOMS_SYSCALL","RecordTypeCode":"10001","SerialNumber":"7605216","Timestamp":"2019-07-18T17:14:15.876Z","a0":"4","a1":"0","a2":"40","a3":"c31600","arch":"x86_64","audit_user":"unset","auid":"4294967295","comm":"iptables","containerid":"","effective_group":"root","effective_user":"root","egid":"0","euid":"0","exe":"/usr/sbin/xtables-multi","exit":"0","filesystem_group":"root","filesystem_user":"root","fsgid":"0","fsuid":"0","gid":"0","group":"root","key":"(null)","pid":"91098","ppid":"16244","proctitle":"/bin/sh -c \"iptables -w -t security --flush\"","redactors":"","ses":"-1","set_group":"root","set_user":"root","sgid":"0","success":"yes","suid":"0","syscall":"setsockopt","tty":"(none)","uid":"0","user":"root"}]])event",
         R"event(["LINUX_AUDITD_BLOB",["TIMESTAMP",{"AuditID":"1572298453.690:5717","Computer":"TestHostname","INTEGRITY_POLICY_RULE_unparsed_text":"IPE=ctx ( op: [execute] dmverity_verified: [false] boot_verified: [true] audit_pathname: [/usr/lib/libc-2.28.so] )  [ action = allow ] [ boot_verified = true ]","MessageType":"AUOMS_EVENT","ProcessFlags":"","RecordText":"","RecordType":"AUOMS_SYSCALL","RecordTypeCode":"10001","SerialNumber":"5717","Timestamp":"2019-10-28T21:34:13.690Z","a0":"0","a1":"16a048","a2":"5","a3":"802","arch":"aarch64","audit_user":"unset","auid":"4294967295","comm":"agetty","containerid":"","effective_group":"root","effective_user":"root","egid":"0","euid":"0","exe":"/usr/sbin/agetty","exit":"281129964019712","filesystem_group":"root","filesystem_user":"root","fsgid":"0","fsuid":"0","gid":"0","group":"root","key":"(null)","pid":"1450","ppid":"1","ses":"-1","set_group":"root","set_user":"root","sgid":"0","success":"yes","suid":"0","syscall":"mmap","tty":"(none)","uid":"0","user":"root"}]])event",
         R"event(["LINUX_AUDITD_BLOB",["TIMESTAMP",{"AVC[2]_apparmor":"STATUS","AVC[2]_comm":"apparmor_parser","AVC[2]_info":"same as current profile, skipping","AVC[2]_name":"/snap/core/10823/usr/lib/snapd/snap-confine//mount-namespace-capture-helper","AVC[2]_operation":"profile_replace","AVC[2]_pid":"14358","AVC[2]_profile":"unconfined","AVC_apparmor":"STATUS","AVC_comm":"apparmor_parser","AVC_info":"same as current profile, skipping","AVC_name":"/snap/core/10823/usr/lib/snapd/snap-confine","AVC_operation":"profile_replace","AVC_pid":"14358","AVC_profile":"unconfined","AuditID":"1613060404.822:23533145","Computer":"TestHostname","MessageType":"AUOMS_EVENT","ProcessFlags":"","RecordText":"","RecordType":"AUOMS_SYSCALL","RecordTypeCode":"10001","SerialNumber":"23533145","Timestamp":"2021-02-11T16:20:04.822Z","a0":"6","a1":"7fa3f4e7d010","a2":"14982","a3":"0","arch":"x86_64","audit_user":"user","auid":"1000","comm":"apparmor_parser","containerid":"","effective_group":"root","effective_user":"root","egid":"0","euid":"0","exe":"/sbin/apparmor_parser","exit":"84354","filesystem_group":"root","filesystem_user":"root","fsgid":"0","fsuid":"0","gid":"0","group":"root","key":"(null)","pid":"14358","ppid":"14357","proctitle":"apparmor_parser --replace --write-cache --cache-loc=/var/cache/apparmor -O no-expr-simplify --quiet /var/lib/snapd/apparmor/prof","redactors":"","ses":"44067","set_group":"root","set_user":"root","sgid":"0","success":"yes","suid":"0","syscall":"write","tty":"pts5","uid":"0","user":"root"}]])event",
+        R"event(["LINUX_AUDITD_BLOB",["TIMESTAMP",{"AuditID":"1623701789.269:26455408","Computer":"TestHostname","MessageType":"AUDIT_EVENT","ProcessFlags":"","RecordText":"","RecordType":"USER_CMD","RecordTypeCode":"1123","SerialNumber":"26455408","Timestamp":"2021-06-14T20:16:29.269Z","audit_user":"user","auid":"1000","cmd":"echo test user_cmd --redactme *****","cwd":"/home/user","pid":"24552","redactors":"test","res":"success","ses":"18162","terminal":"pts/2","uid":"1000","user":"user"}]])event",
+        R"event(["LINUX_AUDITD_BLOB",["TIMESTAMP",{"AuditID":"1623702130.309:26459490","Computer":"TestHostname","MessageType":"AUDIT_EVENT","ProcessFlags":"","RecordText":"","RecordType":"USER_CMD","RecordTypeCode":"1123","SerialNumber":"26459490","Timestamp":"2021-06-14T20:22:10.309Z","audit_user":"user","auid":"1000","cmd":"echo test user_cmd --redactme ***** --nontty \\x05","cwd":"/home/user","pid":"28364","redactors":"test","res":"success","ses":"18162","terminal":"pts/2","uid":"1000","user":"user"}]])event",
 };
 
 const std::unordered_map<std::string, std::string> TestConfigFieldNameOverrideMap = {
@@ -563,7 +597,6 @@ const std::unordered_set<std::string> TestConfigFilterRecordTypeSet = {
     "LOGIN",
     "PROCTITLE",
     "USER_ACCT",
-    "USER_CMD",
     "USER_END",
     "USER_LOGOUT",
     "USER_START",
