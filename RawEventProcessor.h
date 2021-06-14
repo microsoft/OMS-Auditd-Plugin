@@ -43,6 +43,7 @@ private:
     void cancel_event();
     void process_event(const Event& event);
     bool process_syscall_event(const Event& event);
+    void process_user_cmd_record(const Event& event, const EventRecord& record);
     bool process_field(const EventRecord& record, const EventRecordField& field, uint32_t rtype_index);
     bool add_int_field(const std::string_view& name, int val, field_type_t ft);
     bool add_uid_field(const std::string_view& name, int uid, field_type_t ft);

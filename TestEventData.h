@@ -94,6 +94,9 @@ struct TestEvent {
 extern const std::string passwd_file_text;
 extern const std::string group_file_text;
 
+extern const std::string test_redaction_rule_filename;
+extern const std::string test_redaction_rule_name;
+extern const std::string test_redaction_rule_regex;
 extern std::vector<const char*> raw_test_events;
 extern const std::vector<bool> raw_events_do_flush;
 extern const std::string oversized_event_text;

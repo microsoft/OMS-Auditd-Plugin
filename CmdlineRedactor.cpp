@@ -98,6 +98,13 @@ bool CmdlineRedactionRule::Apply(std::string& cmdline) const {
     return res;
 }
 
+void CmdlineRedactor::AddRule(std::shared_ptr<const CmdlineRedactionRule>& rule) {
+    std::lock_guard<std::mutex> _lock(_mutex);
+
+    _rule_names.emplace(rule->Name());
+    _rules.emplace_back(rule);
+}
+
 bool CmdlineRedactor::LoadFromDir(const std::string& dir, bool require_only_root) {
     std::unordered_set<std::string> new_rule_names;
     std::unordered_set<std::string> new_required_rule_files;

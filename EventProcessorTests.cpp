@@ -262,6 +262,8 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     auto metrics = std::make_shared<Metrics>("test", metrics_builder);
 
     auto cmdline_redactor = std::make_shared<CmdlineRedactor>();
+    auto test_rule = std::make_shared<const CmdlineRedactionRule>(test_redaction_rule_filename, test_redaction_rule_name, test_redaction_rule_regex, '*');
+    cmdline_redactor->AddRule(test_rule);
 
     auto raw_proc = std::make_shared<RawEventProcessor>(actual_builder, user_db, cmdline_redactor, processTree, filtersEngine, metrics);
 

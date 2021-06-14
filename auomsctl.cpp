@@ -966,7 +966,9 @@ int disable_auoms() {
 
         auto dret = delete_rules(AUOMS_RULE_KEY);
         auto fret = remove_rules_from_audit_files();
-        if (dret != 0 || fret != 0) {
+        // If delete_rules returns 2, then that means "-e 2" is set and rules cannot be changed.
+        // Treat dret == 2 as a non-error
+        if ((dret != 0 && dret != 2) || fret != 0) {
             return 1;
         }
     } catch (std::exception& ex) {

@@ -75,29 +75,34 @@ void RawEventProcessor::process_event(const Event& event) {
             Logger::Warn("Encountered event record with NumFields == 0: type=%s msg=audit(%ld.%03d:%ld)", rec.RecordTypeNamePtr(), event.Seconds(), event.Milliseconds(), event.Serial());
             return;
         }
-        if (!_builder->BeginRecord(rec.RecordType(), rec.RecordTypeName(), rec.RecordText(), rec.NumFields())) {
-            throw std::runtime_error("Queue closed");
-        }
 
-        auto pid_field = rec.FieldByName(S_PID);
-        if (pid_field) {
-            _pid = atoi(pid_field.RawValuePtr());
-            _builder->SetEventPid(_pid);
-        }
-        auto ppid_field = rec.FieldByName(S_PPID);
-        if (ppid_field) {
-            _ppid = atoi(ppid_field.RawValuePtr());
-        }
-
-        for (auto& field: rec) {
-            if (!process_field(rec, field, 0)) {
-                cancel_event();
-                return;
+        if (static_cast<RecordType>(rec.RecordType()) == RecordType::USER_CMD) {
+            process_user_cmd_record(event, rec);
+        } else {
+            if (!_builder->BeginRecord(rec.RecordType(), rec.RecordTypeName(), rec.RecordText(), rec.NumFields())) {
+                throw std::runtime_error("Queue closed");
             }
-        }
 
-        if (!_builder->EndRecord()) {
-            throw std::runtime_error("Queue closed");
+            auto pid_field = rec.FieldByName(S_PID);
+            if (pid_field) {
+                _pid = atoi(pid_field.RawValuePtr());
+                _builder->SetEventPid(_pid);
+            }
+            auto ppid_field = rec.FieldByName(S_PPID);
+            if (ppid_field) {
+                _ppid = atoi(ppid_field.RawValuePtr());
+            }
+
+            for (auto &field: rec) {
+                if (!process_field(rec, field, 0)) {
+                    cancel_event();
+                    return;
+                }
+            }
+
+            if (!_builder->EndRecord()) {
+                throw std::runtime_error("Queue closed");
+            }
         }
     }
 
@@ -709,6 +714,64 @@ void RawEventProcessor::cancel_event()
     _event_flags = 0;
     if (!_builder->CancelEvent()) {
         throw std::runtime_error("Queue Closed");
+    }
+}
+
+void RawEventProcessor::process_user_cmd_record(const Event& event, const EventRecord& rec)
+{
+    using namespace std::string_literals;
+    using namespace std::string_view_literals;
+
+    static auto S_PID = "pid"s;
+    static auto S_PPID = "ppid"s;
+    static auto SV_CMD = "cmd"sv;
+    static auto SV_REDACTORS = "redactors"sv;
+
+    int num_fields = rec.NumFields();
+
+    if (rec.FieldByName(SV_CMD)) {
+        num_fields += 1;
+    }
+
+    if (!_builder->BeginRecord(rec.RecordType(), rec.RecordTypeName(), nullptr, num_fields)) {
+        throw std::runtime_error("Queue closed");
+    }
+
+    auto pid_field = rec.FieldByName(S_PID);
+    if (pid_field) {
+        _pid = atoi(pid_field.RawValuePtr());
+        _builder->SetEventPid(_pid);
+    }
+    auto ppid_field = rec.FieldByName(S_PPID);
+    if (ppid_field) {
+        _ppid = atoi(ppid_field.RawValuePtr());
+    }
+
+    for (auto &field: rec) {
+        if (field.FieldName() == SV_CMD) {
+            _tmp_val.resize(0);
+            unescape_raw_field(_unescaped_val, field.RawValuePtr(), field.RawValueSize());
+
+            _cmdline_redactor->ApplyRules(_unescaped_val, _tmp_val);
+
+            if (!_builder->AddField(SV_CMD, _unescaped_val, nullptr, field_type_t::UNESCAPED)) {
+                throw std::runtime_error("Queue closed");
+            }
+
+            if (!_builder->AddField(SV_REDACTORS, _tmp_val, nullptr, field_type_t::UNCLASSIFIED)) {
+                throw std::runtime_error("Queue closed");
+            }
+
+        } else {
+            if (!process_field(rec, field, 0)) {
+                cancel_event();
+                return;
+            }
+        }
+    }
+
+    if (!_builder->EndRecord()) {
+        throw std::runtime_error("Queue closed");
     }
 }
 
