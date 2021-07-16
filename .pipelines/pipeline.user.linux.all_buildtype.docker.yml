@@ -1,3 +1,6 @@
+workspace_options:
+  enable_shared_acr: true
+
 package:
   commands:
     - !!dockerbuildcommand
