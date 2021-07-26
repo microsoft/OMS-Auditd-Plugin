@@ -24,10 +24,17 @@
 
 class UserDB {
 public:
-    UserDB(): _dir("/etc"), _stop(true), _inotify_fd(-1), _need_update(true) {}
+    UserDB() : UserDB("/etc") {}
 
     // This constructor exists solely to enable testing.
-    UserDB(const std::string& dir): _dir(dir), _stop(true), _inotify_fd(-1), _need_update(true) {}
+    UserDB(const std::string& dir)
+        : _dir(dir)
+        , _passwd_filename(_dir + "/passwd")
+        , _group_filename(_dir + "/group")
+        , _stop(true)
+        , _need_update(true)
+        , _inotify_fd(-1)
+    {}
 
     std::string GetUserName(int uid);
     std::string GetGroupName(int gid);
@@ -49,6 +56,8 @@ private:
     std::condition_variable _cond;
 
     std::string _dir;
+    std::string _passwd_filename;
+    std::string _group_filename;
     bool _stop;
 
     std::unordered_map<int, std::string> _users;

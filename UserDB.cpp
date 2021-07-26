@@ -120,10 +120,17 @@ void UserDB::inotify_task()
     }
 
     int wd;
-    wd = inotify_add_watch(fd, _dir.c_str(), IN_MODIFY|IN_MOVED_TO);
+    wd = inotify_add_watch(fd, _passwd_filename.c_str(), IN_MODIFY|IN_MOVED_TO);
     if (wd == -1) {
         close(fd);
-        Logger::Error("UserDB: Failed add watch for '%s': %s", _dir.c_str(), std::strerror(errno));
+        Logger::Error("UserDB: Failed add watch for '%s': %s", _passwd_filename.c_str(), std::strerror(errno));
+        return;
+    }
+
+    wd = inotify_add_watch(fd, _group_filename.c_str(), IN_MODIFY|IN_MOVED_TO);
+    if (wd == -1) {
+        close(fd);
+        Logger::Error("UserDB: Failed add watch for '%s': %s", _group_filename.c_str(), std::strerror(errno));
         return;
     }
 
@@ -134,30 +141,20 @@ void UserDB::inotify_task()
 
     char buf[4096]
             __attribute__ ((aligned(__alignof__(struct inotify_event))));
-    const struct inotify_event *event;
-    ssize_t nr;
-    char *ptr;
 
     for (;;) {
-        nr = _read(fd, buf, sizeof buf);
+        ssize_t nr = _read(fd, buf, sizeof buf);
         if (nr == -1) {
             close(fd);
             Logger::Warn("UserDB: failed to read from inotify socket: %s", std::strerror(errno));
             return;
         } else if (nr == 0) {
             return;
-        }
-
-        /* Loop over all events in the buffer */
-        for (ptr = buf; ptr < buf + nr; ptr += sizeof(struct inotify_event) + event->len) {
-            event = (const struct inotify_event *) ptr;
-
-            if (event->mask & (IN_MODIFY|IN_MOVED_TO) && (strcmp(event->name, "passwd") == 0 || strcmp(event->name, "group") == 0)) {
-                std::lock_guard<std::mutex> lock(_lock);
-                _need_update = true;
-                _need_update_ts = std::chrono::steady_clock::now();
-                _cond.notify_all();
-            }
+        } else {
+            std::lock_guard<std::mutex> lock(_lock);
+            _need_update = true;
+            _need_update_ts = std::chrono::steady_clock::now();
+            _cond.notify_all();
         }
     }
 
@@ -244,13 +241,13 @@ void UserDB::update()
     std::unordered_map<int, std::string> groups;
 
     try {
-        for (auto& e : parse_file(_dir + "/passwd")) {
+        for (auto& e : parse_file(_passwd_filename)) {
             // Just in case there are multiple entries, only the first id->name is used
             if (users.count(e.first) == 0) {
                 users.emplace(e);
             }
         }
-        for (auto& e : parse_file(_dir + "/group")) {
+        for (auto& e : parse_file(_group_filename)) {
             // Just in case there are multiple entries, only the first id->name is used
             if (groups.count(e.first) == 0) {
                 groups.emplace(e);
