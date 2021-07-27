@@ -409,7 +409,7 @@ int main(int argc, char**argv) {
             operational_status->SetRedactionRules(cmdline_redactor->GetRules());
 
             sleep(sleep_time);
-            sleep_time /= 2;
+            sleep_time *= 2;
             if (sleep_time > 60) {
                 sleep_time = 60;
             }
