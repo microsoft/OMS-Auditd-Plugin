@@ -576,7 +576,7 @@ std::string ProcessTree::ExtractContainerId(const std::string& exe, const std::s
                 containerid = argvalue.substr(containerididx+1, 12);
             }
         }
-    } else if (starts_with(cmdline, "/usr/bin/containerd-shim-runc-v2 -namespace moby")) {
+    } else if (ends_with(exe, "/containerd-shim-runc-v1") || ends_with(exe, "/containerd-shim-runc-v2")) {
         std::string idarg = "-id ";
         auto idx = cmdline.find(idarg);
         if (idx != std::string::npos) {
