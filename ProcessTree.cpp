@@ -557,20 +557,16 @@ std::string ProcessTree::ExtractContainerId(const std::string& exe, const std::s
     // /usr/bin/containerd-shim-runc-v2 -namespace moby -id 6d8e2e01f3bb36fe420e0515066e1b6e0e44f7198e3fbc563a46396f75939b5e -address /run/containerd/containerd.sock
 
     std::string containerid = "";   
-    if (ends_with(exe, "/containerd-shim") && starts_with(cmdline, "containerd-shim -namespace moby")) {
+    if (ends_with(exe, "/containerd-shim") || ends_with(exe, "/docker-containerd-shim")) {
         std::string workdirarg = " -workdir ";
         auto idx = cmdline.find(workdirarg);
         if (idx != std::string::npos) {
-            auto argstart = idx + workdirarg.length() + 1;
-            //skip initial spaces, if any
-            while (cmdline[argstart] == ' ' && argstart < cmdline.length()) {
-                argstart++;
-            }
-            auto argend = cmdline.find(' ', argstart);
+            auto argstart = cmdline.find_first_not_of(' ', idx + workdirarg.length());
+            auto argend = cmdline.find_first_of(' ', argstart);
             if (argend == std::string::npos) {
                 argend = cmdline.length() - 1;
-            }            
-            std::string argvalue = trim_whitespace(cmdline.substr(argstart, (argend - argstart)));
+            }
+            std::string argvalue = cmdline.substr(argstart, (argend - argstart));
             auto containerididx = argvalue.find_last_of("/");
             if (containerididx != std::string::npos && containerididx+13 < argvalue.length()) {
                 containerid = argvalue.substr(containerididx+1, 12);
@@ -580,16 +576,10 @@ std::string ProcessTree::ExtractContainerId(const std::string& exe, const std::s
         std::string idarg = "-id ";
         auto idx = cmdline.find(idarg);
         if (idx != std::string::npos) {
-            auto argstart = idx + idarg.length() + 1;
-            //skip initial spaces, if any
-            while (cmdline[argstart] == ' ' && argstart < cmdline.length()) {
-                argstart++;
+            auto containerididx = cmdline.find_first_not_of(' ', idx + idarg.length());
+            if (containerididx != std::string::npos && containerididx + 13 < cmdline.length()) {
+                containerid = cmdline.substr(containerididx, 12);
             }
-            auto argend = cmdline.find(' ', argstart);
-            if (argend == std::string::npos) {
-                argend = cmdline.length() - 1;
-            }       
-            containerid = trim_whitespace(cmdline.substr(argstart, (argend - argstart)));
         }
     }
     return containerid;
