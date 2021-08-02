@@ -144,7 +144,7 @@ public:
     void UpdateFlags();
     void ShowTree();
     void ShowProcess(std::shared_ptr<ProcessTreeItem> p);
-    std::string ExtractContainerId(const std::string& exe, const std::string& cmdline);
+    static std::string ExtractContainerId(const std::string& exe, const std::string& cmdline);
 
 
 protected:

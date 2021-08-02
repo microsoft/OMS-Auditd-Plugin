@@ -23,6 +23,7 @@
 #include "RawEventAccumulator.h"
 #include "StringUtils.h"
 #include "EventPrioritizer.h"
+#include <vector>
 
 #include <iostream>
 
@@ -32,18 +33,28 @@ extern "C" {
 #include <stdlib.h>
 };
 
+struct testCase {
+    std::string exe;
+    std::string cmdline;
+};
+
+
+// containershim, docker container, v1, v2, change workdir arg
+// Make ExtractContainerId static
 BOOST_AUTO_TEST_CASE( basic_test ) {
+
+    std::vector<testCase> testCases {
+        {"/containerd-shim", "containerdshim -namespace moby -workdir /var/lib/containerd/io.containerd.runtime.v1.linux/moby/ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1 -address /run/containerd/containerd.sock -containerd-binary /usr/bin/containerd -runtime-root /var/run/docker/runtime-runc"},
+        {"/containerd-shim", "containerdshim -namespace moby -workdir /usr/var/lib/containerd/something/io.containerd.runtime.v1.linux/moby/ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1    -address /run/containerd/containerd.sock -containerd-binary /usr/bin/containerd -runtime-root /var/run/docker/runtime-runc"},
+        {"/containerd-shim-runc-v2", "/usr/bin/containerd-shim-runc-v2 -namespace moby -id    ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1    -address /run/containerd/containerd.sock"},
+        {"/containerd-shim-runc-v1", "/usr/bin/containerd-shim-runc-v2 -namespace moby -id ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1 -address /run/containerd/containerd.sock"},
+        {"/docker-containerd-shim", "docker-containerd-shim -namespace moby -workdir /usr/var/lib/containerd/something/io.containerd.runtime.v1.linux/moby/ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1    -address /run/containerd/containerd.sock -containerd-binary /usr/bin/containerd -runtime-root /var/run/docker/runtime-runc"},
+    };
     std::shared_ptr<ProcessTree> _processTree;
     const std::string containerid = "ebe83cd204c5";
 
-    const std::string exe1 = "/containerd-shim";
-    const std::string exe2 = "/containerd-shim-runc-v2";
-
-    const std::string cmdline1 = "containerdshim -namespace moby -workdir /var/lib/containerd/io.containerd.runtime.v1.linux/moby/ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1 -address /run/containerd/containerd.sock -containerd-binary /usr/bin/containerd -runtime-root /var/run/docker/runtime-runc";
-    const std::string cmdline2 = "/usr/bin/containerd-shim-runc-v2 -namespace moby -id    ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1    -address /run/containerd/containerd.sock";
-
-    auto res = _processTree->ExtractContainerId(exe1, cmdline1);
-    BOOST_REQUIRE_EQUAL(res, containerid);
-    res = _processTree->ExtractContainerId(exe2, cmdline2);
-    BOOST_REQUIRE_EQUAL(res, containerid);
+    for (int i = 0; i < testCases.size(); i++) {
+        auto res = ProcessTree::ExtractContainerId(testCases[i].exe, testCases[i].cmdline);
+        BOOST_REQUIRE_EQUAL(res, containerid);
+    }
 }
