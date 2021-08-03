@@ -256,8 +256,8 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
     auto metrics_builder = std::make_shared<EventBuilder>(metrics_allocator, prioritizer);
 
     auto proc_filter = std::make_shared<ProcFilter>(user_db);
-    auto filtersEngine = std::make_shared<FiltersEngine>();
-    auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
+    std::shared_ptr<FiltersEngine> filtersEngine; // Intentionally left unassigned
+    std::shared_ptr<ProcessTree> processTree; // Intentionally left unassigned
 
     auto metrics = std::make_shared<Metrics>("test", metrics_builder);
 

@@ -137,13 +137,6 @@ public:
     virtual std::shared_ptr<IEventFilter> CreateEventFilter(const std::string& name, const Config& config) = 0;
 };
 
-class AllPAssEventFilterFactory: public IEventFilterFactory {
-public:
-    AllPAssEventFilterFactory() {}
-
-    virtual std::shared_ptr<IEventFilter> CreateEventFilter(const std::string& name, const Config& config) override;
-};
-
 /****************************************************************************
  *
  ****************************************************************************/

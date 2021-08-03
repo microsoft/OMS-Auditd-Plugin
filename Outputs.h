@@ -56,6 +56,13 @@ public:
         _filter_factory = std::shared_ptr<IEventFilterFactory>(static_cast<IEventFilterFactory*>(new OutputsEventFilterFactory(user_db, filtersEngine, processTree)));
     }
 
+    Outputs(std::shared_ptr<PriorityQueue>& queue, const std::string& conf_dir, const std::vector<std::string>& allowed_socket_dirs, const std::shared_ptr<IEventFilterFactory>& filter_factory):
+            _queue(queue), _conf_dir(conf_dir), _allowed_socket_dirs(allowed_socket_dirs),
+            _writer_factory(std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new OutputsEventWriterFactory()))),
+            _filter_factory(filter_factory),
+            _do_reload(false) {
+    }
+
     void Reload(const std::vector<std::string>& allowed_socket_dirs);
 
 protected:
@@ -69,7 +76,6 @@ private:
 
     std::shared_ptr<PriorityQueue> _queue;
     std::string _conf_dir;
-    std::string _cursor_dir;
     std::vector<std::string> _allowed_socket_dirs;
     std::shared_ptr<IEventWriterFactory> _writer_factory;
     std::shared_ptr<IEventFilterFactory> _filter_factory;

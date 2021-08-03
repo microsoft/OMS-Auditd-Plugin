@@ -664,18 +664,21 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     std::shared_ptr<ProcessTreeItem> p;
     std::string cmdline;
 
-    if (!_syscall.empty() && starts_with(_syscall, "execve")) {
-        if (!exe.empty() && exe.front() == '"' && exe.back() == '"') {
-            exe = exe.substr(1, exe.length() - 2);
-        }
-        p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, _cmdline);
-    } else if (!_syscall.empty()) {
-        p = _processTree->GetInfoForPid(_pid);
-    }
+    std::string containerid;
 
-    std::string containerid = "";
-    if (p) {
-        containerid = p->containerid();
+    if (_processTree) {
+        if (!_syscall.empty() && starts_with(_syscall, "execve")) {
+            if (!exe.empty() && exe.front() == '"' && exe.back() == '"') {
+                exe = exe.substr(1, exe.length() - 2);
+            }
+            p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, _cmdline);
+        } else if (!_syscall.empty()) {
+            p = _processTree->GetInfoForPid(_pid);
+        }
+
+        if (p) {
+            containerid = p->containerid();
+        }
     }
 
     if (!_builder->AddField(SV_CONTAINERID, containerid, nullptr, field_type_t::UNCLASSIFIED)) {
@@ -687,7 +690,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     }
 
     bool filtered = false;
-    if (_filtersEngine->IsEventFiltered(_syscall, p, _filtersEngine->GetCommonFlagsMask())) {
+    if (_filtersEngine && p && _filtersEngine->IsEventFiltered(_syscall, p, _filtersEngine->GetCommonFlagsMask())) {
         filtered = true;
     }
 
