@@ -22,8 +22,6 @@
 #include "StringUtils.h"
 #include <vector>
 
-#include <iostream>
-
 struct testCase {
     std::string exe;
     std::string cmdline;
