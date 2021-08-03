@@ -19,19 +19,10 @@
 
 #include "ProcessTree.h"
 #include "Logger.h"
-#include "TestEventData.h"
-#include "RawEventAccumulator.h"
 #include "StringUtils.h"
-#include "EventPrioritizer.h"
 #include <vector>
 
 #include <iostream>
-
-extern "C" {
-#include <sys/types.h>
-#include <unistd.h>
-#include <stdlib.h>
-};
 
 struct testCase {
     std::string exe;
@@ -50,7 +41,6 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
         {"/containerd-shim-runc-v1", "/usr/bin/containerd-shim-runc-v2 -namespace moby -id ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1 -address /run/containerd/containerd.sock"},
         {"/docker-containerd-shim", "docker-containerd-shim -namespace moby -workdir /usr/var/lib/containerd/something/io.containerd.runtime.v1.linux/moby/ebe83cd204c57dc745ce21b595e6aaabf805dc4046024e8eacb84633d2461ec1    -address /run/containerd/containerd.sock -containerd-binary /usr/bin/containerd -runtime-root /var/run/docker/runtime-runc"},
     };
-    std::shared_ptr<ProcessTree> _processTree;
     const std::string containerid = "ebe83cd204c5";
 
     for (int i = 0; i < testCases.size(); i++) {

@@ -436,10 +436,6 @@ add_executable(ProcessTreeTests
         auoms_version.h
         ProcessTreeTests.cpp
         Event.cpp
-        TextEventWriter.cpp
-        RawEventProcessor.cpp
-        RawEventAccumulator.cpp
-        RawEventRecord.cpp
         Signals.cpp
         Logger.cpp
         Config.cpp
@@ -450,19 +446,7 @@ add_executable(ProcessTreeTests
         ProcessTree.cpp
         FiltersEngine.cpp
         StringUtils.cpp
-        TempDir.cpp
-        TestEventData.cpp
-        TranslateRecordType.cpp
-        TranslateSyscall.cpp
-        TranslateFieldType.cpp
-        TranslateField.cpp
-        TranslateArch.cpp
-        Interpret.cpp
         ExecveConverter.cpp
-        Metrics.cpp
-        Cache.h
-        CmdlineRedactor.cpp
-        FileUtils.cpp
 )
 
 target_link_libraries(ProcessTreeTests ${Boost_LIBRARIES}
