@@ -299,6 +299,11 @@ int main(int argc, char**argv) {
         config.SetString(CPU_HARD_LIMIT_NAME, "25");
     }
 
+    bool disable_event_filtering = false;
+    if (config.HasKey("disable_event_filtering")) {
+        disable_event_filtering = config.GetBool("disable_event_filtering");
+    }
+
     // Set EventPrioritizer defaults
     if (!config.HasKey("event_priority_by_syscall")) {
         config.SetString("event_priority_by_syscall", R"json({"execve":2,"execveat":2,"*":3})json");
@@ -455,12 +460,20 @@ int main(int argc, char**argv) {
         exit(1);
     }
 
-    auto filtersEngine = std::make_shared<FiltersEngine>();
+    std::shared_ptr<FiltersEngine> filtersEngine;
+    std::shared_ptr<ProcessTree> processTree;
+    std::shared_ptr<IEventFilterFactory> outputsFilterFactory;
 
-    auto processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
-    processTree->PopulateTree(); // Pre-populate tree
+    if (!disable_event_filtering) {
+        filtersEngine = std::make_shared<FiltersEngine>();
 
-    Outputs outputs(queue, outconf_dir, allowed_socket_dirs, user_db, filtersEngine, processTree);
+        processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
+        processTree->PopulateTree(); // Pre-populate tree
+
+        outputsFilterFactory = std::shared_ptr<IEventFilterFactory>(static_cast<IEventFilterFactory*>(new OutputsEventFilterFactory(user_db, filtersEngine, processTree)));
+    }
+
+    Outputs outputs(queue, outconf_dir, allowed_socket_dirs, outputsFilterFactory);
 
     std::thread autosave_thread([&]() {
         Signals::InitThread();
@@ -509,9 +522,12 @@ int main(int argc, char**argv) {
     // Start signal handling thread
     Signals::Start();
 
-    processTree->Start();
-    auto processNotify = std::make_shared<ProcessNotify>(processTree);
-    processNotify->Start();
+    std::shared_ptr<ProcessNotify> processNotify;
+    if (!disable_event_filtering) {
+        processTree->Start();
+        processNotify = std::make_shared<ProcessNotify>(processTree);
+        processNotify->Start();
+    }
 
     auto event_queue = std::make_shared<EventQueue>(queue);
     auto builder = std::make_shared<EventBuilder>(event_queue, event_prioritizer);
