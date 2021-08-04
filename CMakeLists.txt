@@ -432,6 +432,32 @@ target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
 
 add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=EventProcessorTests.log --report_sink=EventProcessorTests.report)
 
+add_executable(ProcessTreeTests
+        auoms_version.h
+        ProcessTreeTests.cpp
+        Event.cpp
+        Signals.cpp
+        Logger.cpp
+        Config.cpp
+        UserDB.cpp
+        RunBase.cpp
+        ProcessInfo.cpp
+        ProcFilter.cpp
+        ProcessTree.cpp
+        FiltersEngine.cpp
+        StringUtils.cpp
+        ExecveConverter.cpp
+)
+
+target_link_libraries(ProcessTreeTests ${Boost_LIBRARIES}
+        libre2.a
+        dl
+        pthread
+        rt
+)
+
+add_test(EventProcessor ${CMAKE_BINARY_DIR}/ProcessTreeTests --log_sink=ProcessTreeTests.log --report_sink=ProcessTreeTests.report)
+
 add_executable(ExecveConverterTests
         ExecveConverterTests.cpp
         ExecveConverter.cpp

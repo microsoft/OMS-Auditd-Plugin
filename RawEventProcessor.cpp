@@ -25,6 +25,8 @@
 #include <climits>
 #include <algorithm>
 #include <iterator>
+#include <string_view>
+#include <typeinfo>
 
 // Character that separates key in AUDIT_FILTERKEY field in rules
 // This value mirrors what is defined for AUDIT_KEY_SEPARATOR in libaudit.h
@@ -79,14 +81,23 @@ void RawEventProcessor::process_event(const Event& event) {
         if (static_cast<RecordType>(rec.RecordType()) == RecordType::USER_CMD) {
             process_user_cmd_record(event, rec);
         } else {
-            if (!_builder->BeginRecord(rec.RecordType(), rec.RecordTypeName(), rec.RecordText(), rec.NumFields())) {
+            auto pid_field = rec.FieldByName(S_PID);
+            int num_fields = rec.NumFields();
+            if (pid_field) {
+                num_fields++;
+            }
+            if (!_builder->BeginRecord(rec.RecordType(), rec.RecordTypeName(), rec.RecordText(), num_fields)) {
                 throw std::runtime_error("Queue closed");
             }
 
-            auto pid_field = rec.FieldByName(S_PID);
+            std::string containerId = "";
             if (pid_field) {
                 _pid = atoi(pid_field.RawValuePtr());
                 _builder->SetEventPid(_pid);
+                auto p = _processTree->GetInfoForPid(_pid);
+                if (p) {
+                    containerId = p->containerid();
+                }
             }
             auto ppid_field = rec.FieldByName(S_PPID);
             if (ppid_field) {
@@ -97,6 +108,11 @@ void RawEventProcessor::process_event(const Event& event) {
                 if (!process_field(rec, field, 0)) {
                     cancel_event();
                     return;
+                }
+            }
+            if (pid_field) {
+                if (!_builder->AddField("containerid", containerId, nullptr, field_type_t::UNCLASSIFIED)) {
+                    throw std::runtime_error("Queue closed");
                 }
             }
 

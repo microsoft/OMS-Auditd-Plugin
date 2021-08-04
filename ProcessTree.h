@@ -144,6 +144,8 @@ public:
     void UpdateFlags();
     void ShowTree();
     void ShowProcess(std::shared_ptr<ProcessTreeItem> p);
+    static std::string ExtractContainerId(const std::string& exe, const std::string& cmdline);
+
 
 protected:
     void on_stopping() override;
@@ -156,7 +158,6 @@ private:
     std::shared_ptr<ProcessTreeItem> ReadProcEntry(int pid);
     void ApplyFlags(const std::shared_ptr<ProcessTreeItem>& process);
     void SetContainerId(const std::shared_ptr<ProcessTreeItem>& p, const std::string& containerid);
-    std::string ExtractContainerId(const std::string& exe, const std::string& cmdline);
 
     std::shared_ptr<UserDB> _user_db;
     std::shared_ptr<FiltersEngine> _filtersEngine;
