@@ -30,6 +30,18 @@ static std::string _tolower(const std::string& in)
 typedef bool (*config_set_func_t)(const std::string& name, TextEventWriterConfig& et_config, const Config& config);
 
 static std::unordered_map<std::string, config_set_func_t> _configSetters = {
+        {"schema_version_field_name", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                et_config.SchemaVersionFieldName = config.GetString(name);
+            }
+            return true;
+        }},
+        {"schema_version", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                et_config.SchemaVersion = config.GetString(name);
+            }
+            return true;
+        }},
         {"timestamp_field_name", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.TimestampFieldName = config.GetString(name);
@@ -140,6 +152,12 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
+        {"record_filter_inclusive_mode", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                et_config.RecordFilterInclusiveMode = config.GetBool(name);
+            }
+            return true;
+        }},
         { "filter_field_names", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool {
             if (config.HasKey(name)) {
                 auto doc = config.GetJSON(name);
@@ -149,6 +167,12 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
                 for (auto it = doc.Begin(); it != doc.End(); ++it) {
                     et_config.FilterFieldNameSet.emplace(std::string(it->GetString(), it->GetStringLength()));
                 }
+            }
+            return true;
+        }},
+        {"field_filter_inclusive_mode", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                et_config.FieldFilterInclusiveMode = config.GetBool(name);
             }
             return true;
         }},

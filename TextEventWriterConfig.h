@@ -24,6 +24,8 @@ class TextEventWriterConfig {
 public:
     explicit TextEventWriterConfig()
     {
+        SchemaVersionFieldName = "SchemaVersion";
+        SchemaVersion = "1";
         TimestampFieldName = "Timestamp";
         SerialFieldName = "SerialNumber";
         MsgTypeFieldName = "MessageType";
@@ -39,10 +41,30 @@ public:
         char hostname[HOST_NAME_MAX];
         gethostname(hostname, HOST_NAME_MAX);
         HostnameValue = hostname;
+        RecordFilterInclusiveMode = false;
+        FieldFilterInclusiveMode = false;
     }
 
     void LoadFromConfig(std::string name, const Config& config);
 
+    inline bool IsRecordFiltered(const std::string& name) {
+        if (FilterRecordTypeSet.count(name) != 0) {
+            return !RecordFilterInclusiveMode;
+        } else {
+            return RecordFilterInclusiveMode;
+        }
+    }
+
+    inline bool IsFieldFiltered(const std::string& name) {
+        if (FilterFieldNameSet.count(name) != 0) {
+            return !FieldFilterInclusiveMode;
+        } else {
+            return FieldFilterInclusiveMode;
+        }
+    }
+
+    std::string SchemaVersionFieldName;
+    std::string SchemaVersion;
     std::string TimestampFieldName;
     std::string SerialFieldName;
     std::string MsgTypeFieldName;
@@ -54,6 +76,9 @@ public:
     std::string AuditIDFieldName;
     std::string RecordTextFieldName;
     std::string HostnameValue;
+
+    bool FieldFilterInclusiveMode;
+    bool RecordFilterInclusiveMode;
 
     std::string FieldSuffix; // The suffix to add to the interpreted field name
 

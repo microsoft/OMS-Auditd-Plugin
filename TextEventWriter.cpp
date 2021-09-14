@@ -123,13 +123,15 @@ bool TextEventWriter::write_record(const EventRecord& record)
 	}
 
 	// apply record type filters
-	if (_config.FilterRecordTypeSet.count(record_type_name) != 0) {
+	if (_config.IsRecordFiltered(record_type_name)) {
 		return false;
 	}
 
 	if (!begin_record(record, record_type_name)) {
 		return false;
 	}
+
+	write_string_field(_config.SchemaVersionFieldName, _config.SchemaVersion);
 
 	for (auto field : record) {
 		write_field(field);
@@ -179,7 +181,7 @@ bool TextEventWriter::write_field(const EventRecordField& field)
 
 	if (field.FieldType() == field_type_t::ESCAPED || field.FieldType() == field_type_t::PROCTITLE) {
 		// If the field type is FIELD_TYPE_ESCAPED, then there is no interp value in the event.
-		if (_config.FilterFieldNameSet.count(interp_name) == 0) {
+		if (!_config.IsFieldFiltered(interp_name)) {
 			switch (unescape_raw_field(interp_value, field.RawValuePtr(), field.RawValueSize())) {
 				case -1: // _interp_value is identical to _raw_value
 				case 0: // _raw_value was "(null)"
@@ -199,7 +201,7 @@ bool TextEventWriter::write_field(const EventRecordField& field)
 		}
 	} else {
         if (field.InterpValueSize() > 0) {
-			if (_config.FilterFieldNameSet.count(interp_name) == 0) {
+            if (!_config.IsFieldFiltered(interp_name)) {
 				switch (field.FieldType()) {
 					case field_type_t::SESSION:
 						// Since the interpreted value for SES is also (normally) an int
@@ -217,11 +219,11 @@ bool TextEventWriter::write_field(const EventRecordField& field)
                 ret = true;
 			}
 			// write additional raw field
-			if (_config.FilterFieldNameSet.count(raw_name) == 0) {
+			if (!_config.IsFieldFiltered(raw_name)) {
 				write_raw_field(raw_name, field.RawValuePtr(), field.RawValueSize());
                 ret = true;
 			}
-		} else if (_config.FilterFieldNameSet.count(interp_name) == 0) {
+        } else if (!_config.IsFieldFiltered(interp_name)) {
             if (field.FieldType() == field_type_t::UNESCAPED) {
                 // fields we have created that potentially need escaping
                 tty_escape_string(escaped_value, field.RawValuePtr(), field.RawValueSize());

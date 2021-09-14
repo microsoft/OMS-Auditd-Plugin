@@ -21,6 +21,7 @@
 #include "Translate.h"
 #include "Interpret.h"
 #include "StringUtils.h"
+#include "auoms_version.h"
 
 #include <climits>
 #include <algorithm>
@@ -63,10 +64,14 @@ void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
 
 void RawEventProcessor::process_event(const Event& event) {
 
-    using namespace std::string_literals;
+    using namespace std::string_view_literals;
 
-    static auto S_PID = "pid"s;
-    static auto S_PPID = "ppid"s;
+    static auto SV_PID = "pid"sv;
+    static auto SV_PPID = "ppid"sv;
+    static auto SV_CONTAINERID = "containerid"sv;
+    static auto SV_AUOMSVERSION_NAME = "auoms_version"sv;
+    static std::string S_AUOMS_VERSION = AUOMS_VERSION;
+    static std::string_view SV_AUOMS_VERSION = S_AUOMS_VERSION;
 
     if (!_builder->BeginEvent(event.Seconds(), event.Milliseconds(), event.Serial(), event.NumRecords())) {
         throw std::runtime_error("Queue closed");
@@ -81,8 +86,8 @@ void RawEventProcessor::process_event(const Event& event) {
         if (static_cast<RecordType>(rec.RecordType()) == RecordType::USER_CMD) {
             process_user_cmd_record(event, rec);
         } else {
-            auto pid_field = rec.FieldByName(S_PID);
-            int num_fields = rec.NumFields();
+            auto pid_field = rec.FieldByName(SV_PID);
+            int num_fields = rec.NumFields() + 1;
             if (pid_field) {
                 num_fields++;
             }
@@ -90,16 +95,22 @@ void RawEventProcessor::process_event(const Event& event) {
                 throw std::runtime_error("Queue closed");
             }
 
+            if (!_builder->AddField(SV_AUOMSVERSION_NAME, SV_AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED)) {
+                throw std::runtime_error("Queue closed");
+            }
+
             std::string containerId = "";
             if (pid_field) {
                 _pid = atoi(pid_field.RawValuePtr());
                 _builder->SetEventPid(_pid);
-                auto p = _processTree->GetInfoForPid(_pid);
-                if (p) {
-                    containerId = p->containerid();
+                if (_processTree) {
+                    auto p = _processTree->GetInfoForPid(_pid);
+                    if (p) {
+                        containerId = p->containerid();
+                    }
                 }
             }
-            auto ppid_field = rec.FieldByName(S_PPID);
+            auto ppid_field = rec.FieldByName(SV_PPID);
             if (ppid_field) {
                 _ppid = atoi(ppid_field.RawValuePtr());
             }
@@ -111,7 +122,7 @@ void RawEventProcessor::process_event(const Event& event) {
                 }
             }
             if (pid_field) {
-                if (!_builder->AddField("containerid", containerId, nullptr, field_type_t::UNCLASSIFIED)) {
+                if (!_builder->AddField(SV_CONTAINERID, containerId, nullptr, field_type_t::UNCLASSIFIED)) {
                     throw std::runtime_error("Queue closed");
                 }
             }
@@ -165,6 +176,9 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     static auto auoms_syscall_name = RecordTypeToName(RecordType::AUOMS_SYSCALL);
     static auto auoms_syscall_fragment_name = RecordTypeToName(RecordType::AUOMS_SYSCALL_FRAGMENT);
     static auto auoms_execve_name = RecordTypeToName(RecordType::AUOMS_EXECVE);
+    static auto SV_AUOMSVERSION_NAME = "auoms_version"sv;
+    static std::string S_AUOMS_VERSION = AUOMS_VERSION;
+    static std::string_view SV_AUOMS_VERSION = S_AUOMS_VERSION;
 
     int num_fields = 0;
     int num_path = 0;
@@ -392,8 +406,8 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         return false;
     }
 
-    // For containerid
-    num_fields += 1;
+    // For containerid and auoms_version
+    num_fields += 2;
 
     if (!_builder->BeginEvent(event.Seconds(), event.Milliseconds(), event.Serial(), 1)) {
         throw std::runtime_error("Queue closed");
@@ -401,6 +415,10 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     _event_flags = EVENT_FLAG_IS_AUOMS_EVENT;
 
     if (!_builder->BeginRecord(static_cast<uint32_t>(rec_type), rec_type_name, SV_EMPTY, num_fields)) {
+        throw std::runtime_error("Queue closed");
+    }
+
+    if (!_builder->AddField(SV_AUOMSVERSION_NAME, SV_AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED)) {
         throw std::runtime_error("Queue closed");
     }
 
@@ -745,6 +763,9 @@ void RawEventProcessor::process_user_cmd_record(const Event& event, const EventR
     static auto S_PPID = "ppid"s;
     static auto SV_CMD = "cmd"sv;
     static auto SV_REDACTORS = "redactors"sv;
+    static auto SV_AUOMSVERSION_NAME = "auoms_version"sv;
+    static std::string S_AUOMS_VERSION = AUOMS_VERSION;
+    static std::string_view SV_AUOMS_VERSION = S_AUOMS_VERSION;
 
     int num_fields = rec.NumFields();
 
@@ -752,7 +773,13 @@ void RawEventProcessor::process_user_cmd_record(const Event& event, const EventR
         num_fields += 1;
     }
 
+    num_fields += 1; // for auoms_version
+
     if (!_builder->BeginRecord(rec.RecordType(), rec.RecordTypeName(), nullptr, num_fields)) {
+        throw std::runtime_error("Queue closed");
+    }
+
+    if (!_builder->AddField(SV_AUOMSVERSION_NAME, SV_AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED)) {
         throw std::runtime_error("Queue closed");
     }
 
