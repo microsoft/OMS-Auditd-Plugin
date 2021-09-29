@@ -24,19 +24,19 @@
 #include <sstream>
 #include <iomanip>
 
-void OMSEventWriter::write_int32_field(const std::string& name, int32_t value)
+void OMSEventWriter::format_int32_field(const std::string& name, int32_t value)
 {
     _writer.Key(name.data(), name.length(), true);
     _writer.Int(value);
 }
 
-void OMSEventWriter::write_int64_field(const std::string& name, int64_t value)
+void OMSEventWriter::format_int64_field(const std::string& name, int64_t value)
 {
     _writer.Key(name.data(), name.length(), true);
     _writer.Int64(value);
 }
 
-void OMSEventWriter::write_raw_field(const std::string& name, const char* value_data, size_t value_size)
+void OMSEventWriter::format_raw_field(const std::string& name, const char* value_data, size_t value_size)
 {
     _writer.Key(name.data(), name.length(), true);
     _writer.String(value_data, value_size, true);
@@ -56,19 +56,12 @@ bool OMSEventWriter::begin_event(const Event& event)
     _writer.Double(time);
     _writer.StartObject();
 
-    if ((event.Flags() & EVENT_FLAG_IS_AUOMS_EVENT) != 0) {
-        write_string_field(_config.MsgTypeFieldName, "AUOMS_EVENT");
-    } else {
-        write_string_field(_config.MsgTypeFieldName, "AUDIT_EVENT");
-    }
-
     timestamp_str << event.Seconds() << "."
                  << std::setw(3) << std::setfill('0')
                  << event.Milliseconds();
 
-    TextEventWriter::write_string_field(_config.TimestampFieldName, timestamp_str.str());
-    write_int64_field(_config.SerialFieldName, event.Serial());
-    write_int32_field(_config.ProcessFlagsFieldName, event.Flags()>>16);
+    AbstractEventWriter::format_string_field(_config.TimestampFieldName, timestamp_str.str());
+    format_int64_field(_config.SerialFieldName, event.Serial());
     _writer.String(_config.RecordsFieldName.data(), _config.RecordsFieldName.length(), true);
 
     _writer.StartArray();
@@ -82,32 +75,49 @@ void OMSEventWriter::end_event(const Event& event)
     _writer.EndArray();
 }
 
-ssize_t OMSEventWriter::WriteEvent(const Event& event, IWriter* writer)
+// ACK format: Sec:Msec:Serial\n all in fixed size HEX
+ssize_t OMSEventWriter::ReadAck(EventId& event_id, IReader* reader) {
+    std::array<char, ((8+8+4)*2)+3> data;
+    auto ret = reader->ReadAll(data.data(), data.size());
+    if (ret != IO::OK) {
+        return ret;
+    }
+
+    if (data[8*2] != ':' || data[(12*2)+1] != ':' || data[data.size()-1] != '\n') {
+        return IO::FAILED;
+    }
+
+    data[8*2] = 0;
+    data[(12*2)+1] = 0;
+    data[data.size()-1] = 0;
+
+    uint64_t sec;
+    uint32_t msec;
+    uint64_t serial;
+
+    sec = strtoull(data.data(), nullptr, 16);
+    msec = static_cast<uint32_t>(strtoul(&data[(8*2)+1], nullptr, 16));
+    serial = strtoull(&data[(12*2)+2], nullptr, 16);
+
+    if (sec == 0 || sec == ULLONG_MAX || msec == ULONG_MAX || serial == ULLONG_MAX) {
+        return IO::FAILED;
+    }
+
+    event_id = EventId(sec, msec, serial);
+
+    return IO::OK;
+}
+
+ssize_t OMSEventWriter::write_event(IWriter* writer)
 {
-    try {
-        if (write_event(event)) {
-            return writer->WriteAll(_buffer.GetString(), _buffer.GetSize());
-        } else {
-            return IEventWriter::NOOP;
-        }
-    }
-    catch (const std::exception& ex) {
-        Logger::Warn("Unexpected exception while processing event: %s", ex.what());
-        return IWriter::FAILED;
-    }
+    return writer->WriteAll(_buffer.GetString(), _buffer.GetSize());
 }
 
 bool OMSEventWriter::begin_record(const EventRecord& record, const std::string& record_type_name)
 {
     _writer.StartObject();
-    write_int32_field(_config.RecordTypeFieldName, static_cast<int32_t>(record.RecordType()));
-    write_string_field(_config.RecordTypeNameFieldName, record_type_name);
-
-/*
-    for (auto field : record) {
-        TextEventWriter::write_field(field);
-    }
-*/
+    format_int32_field(_config.RecordTypeFieldName, static_cast<int32_t>(record.RecordType()));
+    format_string_field(_config.RecordTypeNameFieldName, record_type_name);
 
     return true;
 }

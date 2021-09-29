@@ -15,25 +15,25 @@
 */
 #include "FluentEventWriter.h"
 
-void FluentEventWriter::write_int32_field(const std::string& name, int32_t value)
+void FluentEventWriter::format_int32_field(const std::string& name, int32_t value)
 {
-    _recordFields[name] = std::to_string(value);
+    _currentMessage->add_field(name, std::move(std::to_string(value)));
 }
 
-void FluentEventWriter::write_int64_field(const std::string& name, int64_t value)
+void FluentEventWriter::format_int64_field(const std::string& name, int64_t value)
 {
-    _recordFields[name] = std::to_string(value);
+    _currentMessage->add_field(name, std::move(std::to_string(value)));
 }
 
-void FluentEventWriter::write_raw_field(const std::string& name, const char* value_data, size_t value_size)
+void FluentEventWriter::format_raw_field(const std::string& name, const char* value_data, size_t value_size)
 {
-    _recordFields[name] = std::string(value_data, value_size);
+    _currentMessage->add_field(name, std::move(std::string(value_data, value_size)));
 }
 
 
 bool FluentEventWriter::begin_event(const Event& event)
 {
-    _fluentEvent = new FluentEvent(_tag);
+    _fluentEvent = std::make_unique<FluentEvent>(_tag);
     _eventCommonFields.clear();
 
     std::stringstream str;
@@ -50,44 +50,30 @@ bool FluentEventWriter::begin_event(const Event& event)
     _eventCommonFields[_config.AuditIDFieldName] = timestamp_str.str() + ":" + std::to_string(event.Serial());
     _eventCommonFields[_config.ComputerFieldName] = _config.HostnameValue;
     _eventCommonFields[_config.SerialFieldName] = std::to_string(event.Serial());
-    _eventCommonFields[_config.ProcessFlagsFieldName] = event.Flags()>>16;
-
-    if ((event.Flags() & EVENT_FLAG_IS_AUOMS_EVENT) != 0) {
-        _eventCommonFields[_config.MsgTypeFieldName] = "AUOMS_EVENT";
-    } else {
-        _eventCommonFields[_config.MsgTypeFieldName] = "AUDIT_EVENT";
-    }
 
     return true;
 }
 
-ssize_t FluentEventWriter::WriteEvent(const Event& event, IWriter* writer)
+ssize_t FluentEventWriter::write_event(IWriter* writer)
 {
-    try {
-        if (write_event(event)) {
-            msgpack::sbuffer sbuf;
-            msgpack::pack(sbuf, *_fluentEvent);
+    msgpack::sbuffer sbuf;
+    msgpack::pack(sbuf, *_fluentEvent);
 
-            return writer->WriteAll(sbuf.data(), sbuf.size());
-        } else {
-            return IEventWriter::NOOP;
-        }
-    }
-    catch (const std::exception& ex) {
-        Logger::Warn("Unexpected exception while processing event: %s", ex.what());
-        return IWriter::FAILED;
-    }
+    return writer->WriteAll(sbuf.data(), sbuf.size());
 }
 
 bool FluentEventWriter::begin_record(const EventRecord& record, const std::string& record_type_name)
 {
-    _recordFields.clear();
-    write_int32_field(_config.RecordTypeFieldName, static_cast<int32_t>(record.RecordType()));
-    write_string_field(_config.RecordTypeNameFieldName, record_type_name);
+    _currentMessage = std::make_unique<FluentMessage>();
+    format_int32_field(_config.RecordTypeFieldName, static_cast<int32_t>(record.RecordType()));
+    format_string_field(_config.RecordTypeNameFieldName, record_type_name);
 
-    _recordFields[_config.RecordTextFieldName] = std::string(record.RecordTextPtr(), record.RecordTextSize());
+    if (_config.IncludeRecordTextField) {
+        format_raw_field(_config.RecordTextFieldName, record.RecordTextPtr(), record.RecordTextSize());
+    }
+
     for (auto itr = _eventCommonFields.begin(); itr != _eventCommonFields.end(); ++itr) {
-        _recordFields[itr->first] = itr->second;
+        format_string_field(itr->first, itr->second);
     }
 
     return true;
@@ -95,20 +81,6 @@ bool FluentEventWriter::begin_record(const EventRecord& record, const std::strin
 
 void FluentEventWriter::end_record(const EventRecord& record)
 {
-    FluentMessage fluentMsg(_recordFields);
-    _fluentEvent->Add(fluentMsg);
-}
-
-ssize_t FluentEventWriter::ReadAck(EventId &event_id, IReader *reader)
-{
-    std::array<uint8_t, 8 + 4 + 8> data;
-    auto ret = reader->ReadAll(data.data(), data.size());
-    if (ret != IO::OK)
-    {
-        return ret;
-    }
-    event_id = EventId(*reinterpret_cast<uint64_t *>(data.data()),
-                       *reinterpret_cast<uint32_t *>(data.data() + 8),
-                       *reinterpret_cast<uint64_t *>(data.data() + 12));
-    return IO::OK;
+    _fluentEvent->Add(std::move(*_currentMessage));
+    _currentMessage.reset();
 }

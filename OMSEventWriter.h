@@ -16,7 +16,7 @@
 #ifndef AUOMS_OMSEVENTTRANSFORMER_H
 #define AUOMS_OMSEVENTTRANSFORMER_H
 
-#include "TextEventWriter.h"
+#include "AbstractEventWriter.h"
 
 #include <string>
 #include <memory>
@@ -25,24 +25,28 @@
 #include <rapidjson/writer.h>
 
 
-class OMSEventWriter: public TextEventWriter {
+class OMSEventWriter: public AbstractEventWriter {
 public:
-    OMSEventWriter(TextEventWriterConfig config): TextEventWriter(config),
+    explicit OMSEventWriter(EventWriterConfig config): AbstractEventWriter(std::move(config)),
     _buffer(0, 1024*1024), _writer(_buffer)
     {}
 
-    ssize_t WriteEvent(const Event& event, IWriter* writer);
+    bool SupportsAckMode() override { return true; }
+    ssize_t ReadAck(EventId& event_id, IReader* reader) override;
 
 protected:
-    void write_int32_field(const std::string& name, int32_t value);
-    void write_int64_field(const std::string& name, int64_t value);
-    void write_raw_field(const std::string& name, const char* value_data, size_t value_size);
 
-    bool begin_event(const Event& event);
-    void end_event(const Event& event);
+    ssize_t write_event(IWriter* writer) override;
 
-    bool begin_record(const EventRecord& record, const std::string& record_type_name);
-    void end_record(const EventRecord& record);
+    bool begin_event(const Event& event) override;
+    void end_event(const Event& event) override;
+
+    bool begin_record(const EventRecord& record, const std::string& record_type_name) override;
+    void end_record(const EventRecord& record) override;
+
+    void format_int32_field(const std::string& name, int32_t value) override;
+    void format_int64_field(const std::string& name, int64_t value) override;
+    void format_raw_field(const std::string& name, const char* value_data, size_t value_size) override;
 
 private:
     rapidjson::StringBuffer _buffer;

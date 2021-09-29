@@ -16,16 +16,16 @@
 #ifndef AUOMS_SYSLOGEVENTWRITER_H
 #define AUOMS_SYSLOGEVENTWRITER_H
 
-#include "TextEventWriter.h"
+#include "AbstractEventWriter.h"
 
 #include <string>
 #include <sstream>
 #include <memory>
 #include <syslog.h>
 
-class SyslogEventWriter: public TextEventWriter {
+class SyslogEventWriter: public AbstractEventWriter {
 public:
-    SyslogEventWriter(TextEventWriterConfig config) : TextEventWriter(config)
+    explicit SyslogEventWriter(EventWriterConfig config) : AbstractEventWriter(std::move(config))
     {
 	   openlog("auoms", LOG_NOWAIT, LOG_USER);
     }
@@ -36,13 +36,17 @@ public:
     }
 
 private:
-    void write_string_field(const std::string& name, const std::string& value);
-    void write_raw_field(const std::string& name, const char* value_data, size_t value_size);
+    ssize_t write_event(IWriter* writer) override { return IO::OK; };
 
-    bool begin_event(const Event& event);
+    void format_int32_field(const std::string& name, int32_t value) override;
+    void format_int64_field(const std::string& name, int64_t value) override;
+    void format_string_field(const std::string& name, const std::string& value) override;
+    void format_raw_field(const std::string& name, const char* value_data, size_t value_size) override;
 
-    bool begin_record(const EventRecord& record, const std::string& record_type_name);
-    void end_record(const EventRecord& record);
+    bool begin_event(const Event& event) override;
+
+    bool begin_record(const EventRecord& record, const std::string& record_type_name) override;
+    void end_record(const EventRecord& record) override;
 
     const Event* _event;
     std::ostringstream _buffer;

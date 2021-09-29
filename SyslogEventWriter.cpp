@@ -23,12 +23,26 @@
 #include <sstream>
 #include <iomanip>
 
-void SyslogEventWriter::write_string_field(const std::string& name, const std::string& value)
+void SyslogEventWriter::format_int32_field(const std::string& name, int32_t value)
+{
+    char buf[32];
+    int len = snprintf(buf, sizeof(buf) - 1, "%d", value);
+    format_raw_field(name, buf, len);
+}
+
+void SyslogEventWriter::format_int64_field(const std::string& name, int64_t value)
+{
+    char buf[32];
+    int len = snprintf(buf, sizeof(buf) - 1, "%ld", value);
+    format_raw_field(name, buf, len);
+}
+
+void SyslogEventWriter::format_string_field(const std::string& name, const std::string& value)
 {
     _buffer << ' ' << name << '=' << '"' << value << '"';
 }
 
-void SyslogEventWriter::write_raw_field(const std::string& name, const char* value_data, size_t value_size)
+void SyslogEventWriter::format_raw_field(const std::string& name, const char* value_data, size_t value_size)
 {
     _buffer << ' ' << name << '=';
     _buffer.write(value_data, value_size);

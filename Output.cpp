@@ -19,8 +19,7 @@
 #include "UnixDomainWriter.h"
 
 #include "OMSEventWriter.h"
-#include "JSONEventWriter.h"
-#include "MsgPackEventWriter.h"
+#include "FluentEventWriter.h"
 #include "RawEventWriter.h"
 #include "SyslogEventWriter.h"
 
@@ -251,6 +250,11 @@ bool Output::Load(std::unique_ptr<Config>& config) {
         } catch (std::exception) {
             Logger::Error("Output(%s): Invalid enable_ack_mode parameter value", _name.c_str());
             return false;
+        }
+
+        if (_ack_mode && !_event_writer->SupportsAckMode()) {
+            Logger::Warn("Output(%s): Specified output_format does not support ACK Mode, ignoring 'enable_ack_mode=true'", format.c_str());
+            _ack_mode = false;
         }
     }
 

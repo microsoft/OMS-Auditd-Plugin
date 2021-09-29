@@ -17,7 +17,7 @@
 #ifndef AUOMS_FLUENTEVENTWRITER_H
 #define AUOMS_FLUENTEVENTWRITER_H
 
-#include "TextEventWriter.h"
+#include "AbstractEventWriter.h"
 #include "Logger.h"
 #include <chrono>
 #include <msgpack.hpp>
@@ -40,6 +40,11 @@ public:
         timestamp = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     }
 
+    inline void add_field(const std::string& name, std::string value)
+    {
+        message_dict.emplace(name, std::move(value));
+    }
+
     MSGPACK_DEFINE(timestamp, message_dict)
 };
 
@@ -56,37 +61,36 @@ public:
         messages = std::make_unique<std::vector<FluentMessage>>();
     }
 
-    void Add(FluentMessage m)
+    void Add(FluentMessage&& m)
     {
-        messages->push_back(m);
+        messages->emplace_back(std::move(m));
     }
 
     MSGPACK_DEFINE(tag, messages)
 };
 
-class FluentEventWriter : public TextEventWriter
+class FluentEventWriter : public AbstractEventWriter
 {
 public:
-    FluentEventWriter(TextEventWriterConfig config, const std::string &tag) : TextEventWriter(config), _tag(tag) {}
-    virtual ssize_t WriteEvent(const Event &event, IWriter *writer);
-    virtual ssize_t ReadAck(EventId &event_id, IReader *reader);
+    FluentEventWriter(EventWriterConfig config, const std::string &tag) : AbstractEventWriter(std::move(config)), _tag(tag), _fluentEvent(nullptr) {}
 
 protected:
-    void write_int32_field(const std::string &name, int32_t value);
-    void write_int64_field(const std::string &name, int64_t value);
-    void write_raw_field(const std::string &name, const char *value_data, size_t value_size);
+    ssize_t write_event(IWriter *writer) override;
 
-    bool begin_event(const Event &event);
-    void end_event(const Event &event) {}
+    void format_int32_field(const std::string &name, int32_t value) override;
+    void format_int64_field(const std::string &name, int64_t value) override;
+    void format_raw_field(const std::string &name, const char *value_data, size_t value_size) override;
 
-    bool begin_record(const EventRecord &record, const std::string &record_type_name);
-    void end_record(const EventRecord &record);
+    bool begin_event(const Event &event) override;
+
+    bool begin_record(const EventRecord &record, const std::string &record_type_name) override;
+    void end_record(const EventRecord &record) override;
 
 private:
     std::string _tag;
-    FluentEvent* _fluentEvent;
+    std::unique_ptr<FluentEvent> _fluentEvent;
+    std::unique_ptr<FluentMessage> _currentMessage;
     std::unordered_map<std::string, std::string> _eventCommonFields;
-    std::unordered_map<std::string, std::string> _recordFields;
 };
 
 #endif //AUOMS_FLUENTEVENTWRITER_H
