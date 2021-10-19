@@ -25,6 +25,7 @@ class IEventWriter {
 public:
     static constexpr ssize_t NOOP = -4;
 
+    virtual bool SupportsAckMode() = 0;
     virtual ssize_t WriteEvent(const Event& event, IWriter* writer) = 0;
     virtual ssize_t ReadAck(EventId& event_id, IReader* reader) = 0;
 };

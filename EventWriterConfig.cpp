@@ -13,7 +13,7 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#include "TextEventWriterConfig.h"
+#include "EventWriterConfig.h"
 
 #include "Logger.h"
 #include "ProcFilter.h"
@@ -27,64 +27,76 @@ static std::string _tolower(const std::string& in)
     return out;
 }
 
-typedef bool (*config_set_func_t)(const std::string& name, TextEventWriterConfig& et_config, const Config& config);
+typedef bool (*config_set_func_t)(const std::string& name, EventWriterConfig& et_config, const Config& config);
 
 static std::unordered_map<std::string, config_set_func_t> _configSetters = {
-        {"schema_version_field_name", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"schema_version_field_name", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.SchemaVersionFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"schema_version", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"schema_version", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.SchemaVersion = config.GetString(name);
             }
             return true;
         }},
-        {"timestamp_field_name", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"timestamp_field_name", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.TimestampFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"serial_field_name", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"serial_field_name", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.SerialFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"record_type_field_name", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"record_type_field_name", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.RecordTypeFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"record_type_name_field_name", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"record_type_name_field_name", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.RecordTypeNameFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"records_field_name", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"records_field_name", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.RecordsFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"process_flags_field_name", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"process_flags_field_name", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.ProcessFlagsFieldName = config.GetString(name);
             }
             return true;
         }},
-        {"field_suffix", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"record_text_field_name", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                et_config.RecordTextFieldName = config.GetString(name);
+            }
+            return true;
+        }},
+        {"include_record_text_field", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                et_config.IncludeRecordTextField = config.GetBool(name);
+            }
+            return true;
+        }},
+        {"field_suffix", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.FieldSuffix = config.GetString(name);
             }
             return true;
         }},
-        {"record_type_name_overrides", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"record_type_name_overrides", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 auto doc = config.GetJSON(name);
                 if (!doc.IsObject()) {
@@ -110,7 +122,7 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
-        {"field_name_overrides", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"field_name_overrides", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 auto doc = config.GetJSON(name);
                 if (!doc.IsObject()) {
@@ -125,7 +137,7 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
-        {"interpreted_field_names", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"interpreted_field_names", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 auto doc = config.GetJSON(name);
                 if (!doc.IsObject()) {
@@ -140,7 +152,7 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
-        { "filter_record_types", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool {
+        { "filter_record_types", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool {
             if (config.HasKey(name)) {
                 auto doc = config.GetJSON(name);
                 if (!doc.IsArray()) {
@@ -152,13 +164,25 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
-        {"record_filter_inclusive_mode", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"record_filter_inclusive_mode", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.RecordFilterInclusiveMode = config.GetBool(name);
             }
             return true;
         }},
-        { "filter_field_names", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool {
+        { "always_filter_field_names", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool {
+            if (config.HasKey(name)) {
+                auto doc = config.GetJSON(name);
+                if (!doc.IsArray()) {
+                    return false;
+                }
+                for (auto it = doc.Begin(); it != doc.End(); ++it) {
+                    et_config.AlwaysFilterFieldNameSet.emplace(std::string(it->GetString(), it->GetStringLength()));
+                }
+            }
+            return true;
+        }},
+        { "filter_field_names", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool {
             if (config.HasKey(name)) {
                 auto doc = config.GetJSON(name);
                 if (!doc.IsArray()) {
@@ -170,15 +194,42 @@ static std::unordered_map<std::string, config_set_func_t> _configSetters = {
             }
             return true;
         }},
-        {"field_filter_inclusive_mode", [](const std::string& name, TextEventWriterConfig& et_config, const Config& config)->bool{
+        {"field_filter_inclusive_mode", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
             if (config.HasKey(name)) {
                 et_config.FieldFilterInclusiveMode = config.GetBool(name);
             }
             return true;
         }},
+        {"other_fields_field_name", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                et_config.OtherFieldsFieldName = config.GetString(name);
+            }
+            return true;
+        }},
+        {"other_fields_mode", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                et_config.OtherFieldsMode = config.GetBool(name);
+            }
+            return true;
+        }},
+        {"additional_fields", [](const std::string& name, EventWriterConfig& et_config, const Config& config)->bool{
+            if (config.HasKey(name)) {
+                auto doc = config.GetJSON(name);
+                if (!doc.IsObject()) {
+                    return false;
+                }
+                for (auto it = doc.MemberBegin(); it != doc.MemberEnd(); ++it) {
+                    et_config.AdditionalFieldsMap.emplace(std::make_pair(
+                            std::string(it->name.GetString(), it->name.GetStringLength()),
+                            std::string(it->value.GetString(), it->value.GetStringLength())
+                            ));
+                }
+            }
+            return true;
+        }},
 };
 
-void TextEventWriterConfig::LoadFromConfig(std::string name, const Config& config)
+void EventWriterConfig::LoadFromConfig(std::string name, const Config& config)
 {
     for (auto cs : _configSetters) {
         try {

@@ -122,13 +122,11 @@ add_executable(auoms
         IO.cpp
         Event.cpp
         EventPrioritizer.cpp
-        TextEventWriterConfig.cpp
+        EventWriterConfig.cpp
+        AbstractEventWriter.cpp
         OMSEventWriter.cpp
-        JSONEventWriter.cpp
-        MsgPackEventWriter.cpp
         FluentEventWriter.cpp
         SyslogEventWriter.cpp
-        TextEventWriter.cpp
         RawEventProcessor.cpp
         Signals.cpp
         UnixDomainWriter.cpp
@@ -394,7 +392,6 @@ add_executable(EventProcessorTests
         auoms_version.h
         EventProcessorTests.cpp
         Event.cpp
-        TextEventWriter.cpp
         RawEventProcessor.cpp
         RawEventAccumulator.cpp
         RawEventRecord.cpp
@@ -482,9 +479,9 @@ add_test(ExecveConverter ${CMAKE_BINARY_DIR}/ExecveConverterTests --log_sink=Exe
 add_executable(OMSEventWriterTests
         OMSEventWriterTests.cpp
         OMSEventWriter.cpp
-        TextEventWriterConfig.cpp
+        EventWriterConfig.cpp
         Event.cpp
-        TextEventWriter.cpp
+        AbstractEventWriter.cpp
         Logger.cpp
         Config.cpp
         StringUtils.cpp
@@ -507,7 +504,7 @@ add_executable(FluentEventWriterTests
         FluentEventWriterTests.cpp
         FluentEventWriter.cpp
         Event.cpp
-        TextEventWriter.cpp
+        AbstractEventWriter.cpp
         Logger.cpp
         StringUtils.cpp
         TestEventData.cpp

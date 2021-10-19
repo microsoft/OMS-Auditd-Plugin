@@ -21,11 +21,13 @@
 
 class RawEventWriter: public IEventWriter {
 public:
-    virtual ssize_t WriteEvent(const Event& event, IWriter* writer) {
+    bool SupportsAckMode() override { return true; }
+
+    ssize_t WriteEvent(const Event& event, IWriter* writer) override {
         return writer->WriteAll(event.Data(), event.Size());
     }
 
-    virtual ssize_t ReadAck(EventId& event_id, IReader* reader) {
+    ssize_t ReadAck(EventId& event_id, IReader* reader) override {
         std::array<uint8_t, 8+4+8> data;
         auto ret = reader->ReadAll(data.data(), data.size());
         if (ret != IO::OK) {

@@ -45,7 +45,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
         e.Write(builder);
     }
 
-    TextEventWriterConfig config;
+    EventWriterConfig config;
     config.FieldNameOverrideMap = TestConfigFieldNameOverrideMap;
     config.InterpFieldNameMap = TestConfigInterpFieldNameMap;
     config.FilterRecordTypeSet = TestConfigFilterRecordTypeSet;

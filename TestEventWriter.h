@@ -17,7 +17,7 @@
 #ifndef AUOMS_TESTEVENTWRITER_H
 #define AUOMS_TESTEVENTWRITER_H
 
-#include "TextEventWriter.h"
+#include "IEventWriter.h"
 
 class TestEventWriter: public IWriter {
 public:

@@ -13,36 +13,37 @@
 
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
-#ifndef AUOMS_OMSEVENTWRITERCONFIG_H
-#define AUOMS_OMSEVENTWRITERCONFIG_H
+#ifndef AUOMS_EVENTWRITERCONFIG_H
+#define AUOMS_EVENTWRITERCONFIG_H
 
 #include "Config.h"
 #include "ProcFilter.h"
 #include "FiltersEngine.h"
 
-class TextEventWriterConfig {
+class EventWriterConfig {
 public:
-    explicit TextEventWriterConfig()
+    explicit EventWriterConfig()
     {
         SchemaVersionFieldName = "SchemaVersion";
         SchemaVersion = "1";
         TimestampFieldName = "Timestamp";
         SerialFieldName = "SerialNumber";
-        MsgTypeFieldName = "MessageType";
         RecordTypeFieldName = "RecordTypeCode";
         RecordTypeNameFieldName = "RecordType";
         RecordsFieldName = "records";
         FieldSuffix = "_r";
-        ProcessFlagsFieldName = "ProcessFlags";
         ComputerFieldName = "Computer";
         AuditIDFieldName = "AuditID";
         RecordTextFieldName = "RecordText";
+        OtherFieldsFieldName = "OtherFields";
 
         char hostname[HOST_NAME_MAX];
         gethostname(hostname, HOST_NAME_MAX);
         HostnameValue = hostname;
+        IncludeRecordTextField = false;
         RecordFilterInclusiveMode = false;
         FieldFilterInclusiveMode = false;
+        OtherFieldsMode = false;
     }
 
     void LoadFromConfig(std::string name, const Config& config);
@@ -63,6 +64,10 @@ public:
         }
     }
 
+    inline bool IsFieldAlwaysFiltered(const std::string& name) {
+        return (AlwaysFilterFieldNameSet.count(name) != 0);
+    }
+
     std::string SchemaVersionFieldName;
     std::string SchemaVersion;
     std::string TimestampFieldName;
@@ -76,9 +81,12 @@ public:
     std::string AuditIDFieldName;
     std::string RecordTextFieldName;
     std::string HostnameValue;
+    std::string OtherFieldsFieldName;
 
+    bool IncludeRecordTextField;
     bool FieldFilterInclusiveMode;
     bool RecordFilterInclusiveMode;
+    bool OtherFieldsMode;
 
     std::string FieldSuffix; // The suffix to add to the interpreted field name
 
@@ -87,7 +95,9 @@ public:
     std::unordered_map<std::string, std::string> InterpFieldNameMap;
     std::unordered_set<std::string> FilterRecordTypeSet;
     std::unordered_set<std::string> FilterFieldNameSet;
+    std::unordered_set<std::string> AlwaysFilterFieldNameSet;
+    std::unordered_map<std::string, std::string> AdditionalFieldsMap;
 };
 
 
-#endif //AUOMS_OMSEVENTWRITERCONFIG_H
+#endif //AUOMS_EVENTWRITERCONFIG_H

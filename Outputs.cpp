@@ -18,8 +18,6 @@
 
 #include "Logger.h"
 #include "OMSEventWriter.h"
-#include "JSONEventWriter.h"
-#include "MsgPackEventWriter.h"
 #include "FluentEventWriter.h"
 #include "RawEventWriter.h"
 #include "SyslogEventWriter.h"
@@ -33,7 +31,7 @@ extern "C" {
 }
 
 std::shared_ptr<IEventWriter> OutputsEventWriterFactory::CreateEventWriter(const std::string& name, const Config& config) {
-    TextEventWriterConfig writer_config;
+    EventWriterConfig writer_config;
     writer_config.LoadFromConfig(name, config);
 
     std::string format = "oms";
@@ -44,10 +42,6 @@ std::shared_ptr<IEventWriter> OutputsEventWriterFactory::CreateEventWriter(const
 
     if (format == "oms") {
         return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new OMSEventWriter(writer_config)));
-    } else if (format == "json") {
-        return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new JSONEventWriter(writer_config)));
-    } else if (format == "msgpack") {
-        return std::shared_ptr<IEventWriter>(static_cast<IEventWriter*>(new MsgPackEventWriter()));
     } else if (format == "fluent") {
         std::string fluentTag = "LINUX_AUDITD_BLOB";
         if (config.HasKey("fluent_message_tag")) {

@@ -18,7 +18,7 @@
 #define AUOMS_TESTEVENTDATA_H
 
 #include "TestEventQueue.h"
-#include "TextEventWriterConfig.h"
+#include "EventWriterConfig.h"
 
 struct TestEventField {
     TestEventField(const char* name, const char* raw, const char* interp, field_type_t field_type) {
@@ -103,10 +103,13 @@ extern const std::string oversized_event_text;
 extern const std::vector<TestEvent> test_events;
 extern const std::vector<const char*> oms_test_events;
 extern const std::vector<const char*> fluent_test_events;
+extern const std::vector<const char*> fluent_other_field_test_events;
 extern const std::unordered_map<std::string, std::string> TestConfigFieldNameOverrideMap;
 extern const std::unordered_map<std::string, std::string> TestConfigInterpFieldNameMap;
 extern const std::unordered_set<std::string> TestConfigFilterRecordTypeSet;
 extern const std::unordered_set<std::string> TestConfigFilterFieldNameSet;
+extern const std::unordered_set<std::string> TestConfigInclusiveFieldNameSet;
+extern const std::unordered_map<std::string, std::string> TestConfigAdditionalFieldsMap;
 extern const std::string TestConfigHostnameValue;
 
 #endif //AUOMS_TESTEVENTDATA_H
