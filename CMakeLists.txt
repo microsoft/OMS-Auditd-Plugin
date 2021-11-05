@@ -54,6 +54,7 @@ add_custom_command(
 
 add_executable(auomscollect
         env_config.h
+        auoms_version.h
         auomscollect.cpp
         IO.cpp
         Event.cpp
@@ -456,6 +457,7 @@ target_link_libraries(ProcessTreeTests ${Boost_LIBRARIES}
 add_test(EventProcessor ${CMAKE_BINARY_DIR}/ProcessTreeTests --log_sink=ProcessTreeTests.log --report_sink=ProcessTreeTests.report)
 
 add_executable(ExecveConverterTests
+        auoms_version.h
         ExecveConverterTests.cpp
         ExecveConverter.cpp
         Event.cpp
@@ -477,6 +479,7 @@ target_link_libraries(ExecveConverterTests ${Boost_LIBRARIES}
 add_test(ExecveConverter ${CMAKE_BINARY_DIR}/ExecveConverterTests --log_sink=ExecveConverterTests.log --report_sink=ExecveConverterTests.report)
 
 add_executable(OMSEventWriterTests
+        auoms_version.h
         OMSEventWriterTests.cpp
         OMSEventWriter.cpp
         EventWriterConfig.cpp
@@ -501,6 +504,7 @@ target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}
 add_test(OMSEventWriter ${CMAKE_BINARY_DIR}/OMSEventWriterTests --log_sink=OMSEventWriterTests.log --report_sink=OMSEventWriterTests.report)
 
 add_executable(FluentEventWriterTests
+        auoms_version.h
         FluentEventWriterTests.cpp
         FluentEventWriter.cpp
         Event.cpp
@@ -522,6 +526,7 @@ target_link_libraries(FluentEventWriterTests ${Boost_LIBRARIES}
 add_test(FluentEventWriter ${CMAKE_BINARY_DIR}/FluentEventWriterTests --log_sink=FluentEventWriterTests.log --report_sink=FluentEventWriterTests.report)
 
 add_executable(OutputInputTests
+        auoms_version.h
         OutputInputTests.cpp
         TempDir.cpp
         Event.cpp
