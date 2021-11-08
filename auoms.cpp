@@ -178,16 +178,6 @@ int main(int argc, char**argv) {
         collector_config_path = config.GetString("collector_config_path");
     }
 
-    std::vector<std::string> allowed_socket_dirs;
-    if (!config.HasKey("allowed_output_socket_dirs")) {
-        Logger::Error("Required config parameter missing: allowed_output_socket_dirs");
-        exit(1);
-    } else {
-        if (!parsePath(allowed_socket_dirs, config.GetString("allowed_output_socket_dirs"))) {
-            exit(1);
-        }
-    }
-
     if (config.HasKey("backlog_limit")) {
         backlog_limit = static_cast<uint32_t>(config.GetUint64("backlog_limit"));
     }
@@ -473,7 +463,7 @@ int main(int argc, char**argv) {
         outputsFilterFactory = std::shared_ptr<IEventFilterFactory>(static_cast<IEventFilterFactory*>(new OutputsEventFilterFactory(user_db, filtersEngine, processTree)));
     }
 
-    Outputs outputs(queue, outconf_dir, allowed_socket_dirs, outputsFilterFactory);
+    Outputs outputs(queue, outconf_dir, outputsFilterFactory);
 
     std::thread autosave_thread([&]() {
         Signals::InitThread();
