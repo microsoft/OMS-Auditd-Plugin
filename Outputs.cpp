@@ -65,7 +65,6 @@ std::shared_ptr<IEventFilter> OutputsEventFilterFactory::CreateEventFilter(const
 void Outputs::Reload(const std::vector<std::string>& allowed_socket_dirs) {
     Logger::Info("Reload requested");
     std::unique_lock<std::mutex> lock(_run_mutex);
-    _allowed_socket_dirs = allowed_socket_dirs;
     _do_reload = true;
     _run_cond.notify_all();
 }
@@ -127,22 +126,8 @@ std::unique_ptr<Config> Outputs::read_and_validate_config(const std::string& nam
             Logger::Error("Output(%s): Missing required parameter: output_socket", name.c_str());
             return nullptr;
         }
-    
 
         auto socket_path = config->GetString("output_socket");
-        bool socket_path_valid = false;
-        for (auto dir: _allowed_socket_dirs) {
-            if (socket_path.length() > dir.length() && socket_path.substr(0, dir.length()) == dir) {
-                socket_path_valid = true;
-                break;
-            }
-        }
-    
-
-        if (!socket_path_valid) {
-            Logger::Error("Output(%s): Invalid output_socket parameter value: '%s'", name.c_str(), socket_path.c_str());
-            return nullptr;
-        }
     }
     
     if (format != "oms" && format != "json" && format != "msgpack" && format != "raw" && format != "syslog" && format != "fluent") {

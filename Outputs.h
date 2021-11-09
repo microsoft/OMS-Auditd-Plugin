@@ -50,14 +50,14 @@ private:
 
 class Outputs: public RunBase {
 public:
-    Outputs(std::shared_ptr<PriorityQueue>& queue, const std::string& conf_dir, const std::vector<std::string>& allowed_socket_dirs, std::shared_ptr<UserDB>& user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree):
-            _queue(queue), _conf_dir(conf_dir), _allowed_socket_dirs(allowed_socket_dirs), _do_reload(false) {
+    Outputs(std::shared_ptr<PriorityQueue>& queue, const std::string& conf_dir, std::shared_ptr<UserDB>& user_db, std::shared_ptr<FiltersEngine> filtersEngine, std::shared_ptr<ProcessTree> processTree):
+            _queue(queue), _conf_dir(conf_dir), _do_reload(false) {
         _writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new OutputsEventWriterFactory()));
         _filter_factory = std::shared_ptr<IEventFilterFactory>(static_cast<IEventFilterFactory*>(new OutputsEventFilterFactory(user_db, filtersEngine, processTree)));
     }
 
-    Outputs(std::shared_ptr<PriorityQueue>& queue, const std::string& conf_dir, const std::vector<std::string>& allowed_socket_dirs, const std::shared_ptr<IEventFilterFactory>& filter_factory):
-            _queue(queue), _conf_dir(conf_dir), _allowed_socket_dirs(allowed_socket_dirs),
+    Outputs(std::shared_ptr<PriorityQueue>& queue, const std::string& conf_dir, const std::shared_ptr<IEventFilterFactory>& filter_factory):
+            _queue(queue), _conf_dir(conf_dir),
             _writer_factory(std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new OutputsEventWriterFactory()))),
             _filter_factory(filter_factory),
             _do_reload(false) {
@@ -76,7 +76,6 @@ private:
 
     std::shared_ptr<PriorityQueue> _queue;
     std::string _conf_dir;
-    std::vector<std::string> _allowed_socket_dirs;
     std::shared_ptr<IEventWriterFactory> _writer_factory;
     std::shared_ptr<IEventFilterFactory> _filter_factory;
     bool _do_reload;
