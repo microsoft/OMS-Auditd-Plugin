@@ -61,7 +61,7 @@ int GetEventSeq(const Event& event) {
 BOOST_AUTO_TEST_CASE( basic_test ) {
     TempDir dir("/tmp/OutputInputTests");
 
-    std::string socket_path = dir.Path() + "/input.socket";
+    std::string socket_path = "@input.socket@@@@";
     std::string status_socket_path = dir.Path() + "/status.socket";
 
     std::mutex log_mutex;
@@ -160,7 +160,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
 BOOST_AUTO_TEST_CASE( same_event_id_test ) {
     TempDir dir("/tmp/OutputInputTests");
 
-    std::string socket_path = dir.Path() + "/input.socket";
+    std::string socket_path = "@input.socket@@@@@@";
     std::string status_socket_path = dir.Path() + "/status.socket";
 
     std::mutex log_mutex;
@@ -260,7 +260,7 @@ BOOST_AUTO_TEST_CASE( same_event_id_test ) {
 BOOST_AUTO_TEST_CASE( dropped_acks_test ) {
     TempDir dir("/tmp/OutputInputTests");
 
-    std::string socket_path = dir.Path() + "/input.socket";
+    std::string socket_path = "@input.socket@@@@@@";
     std::string status_socket_path = dir.Path() + "/status.socket";
 
     std::mutex log_mutex;

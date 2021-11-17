@@ -46,7 +46,19 @@ bool UnixDomainListener::Open() {
     addr.sun_family = AF_UNIX;
     _socket_path.copy(addr.sun_path, sizeof(addr.sun_path));
 
-    unlink(_socket_path.c_str());
+    // If the first character is a '@', then this is an abstract socket address
+    // Replace all '@' bytes with null bytes.
+    if (addr.sun_path[0] == '@') {
+        for (int i = 0; i < sizeof(addr.sun_path); i++) {
+            if (addr.sun_path[i] == '@') {
+                addr.sun_path[i] = 0;
+            }
+        }
+    }
+
+    if (addr.sun_path[0] != 0) {
+        unlink(_socket_path.c_str());
+    }
 
     if (bind(lfd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
     {
@@ -55,11 +67,13 @@ bool UnixDomainListener::Open() {
         return false;
     }
 
-    // Only allow process uid access to the socket file
-    if (chmod(_socket_path.c_str(), _socket_file_mode) < 0) {
-        close(lfd);
-        Logger::Error("Inputs: chmod('%s', 0%03o) failed: %s", _socket_path.c_str(), _socket_file_mode, std::strerror(errno));
-        return false;
+    if (addr.sun_path[0] != 0) {
+        // Only allow process uid access to the socket file
+        if (chmod(_socket_path.c_str(), _socket_file_mode) < 0) {
+            close(lfd);
+            Logger::Error("Inputs: chmod('%s', 0%03o) failed: %s", _socket_path.c_str(), _socket_file_mode, std::strerror(errno));
+            return false;
+        }
     }
 
     if (listen(lfd, 5) != 0) {

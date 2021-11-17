@@ -36,6 +36,16 @@ bool UnixDomainWriter::Open()
     unaddr.sun_family = AF_UNIX;
     _addr.copy(unaddr.sun_path, sizeof(unaddr.sun_path));
 
+    // If the first character is a '@', then this is an abstract socket address
+    // Replace all '@' bytes with null bytes.
+    if (unaddr.sun_path[0] == '@') {
+        for (int i = 0; i < sizeof(unaddr.sun_path); i++) {
+            if (unaddr.sun_path[i] == '@') {
+                unaddr.sun_path[i] = 0;
+            }
+        }
+    }
+
     int fd = socket(AF_UNIX, SOCK_STREAM|SOCK_CLOEXEC, 0);
     if (-1 == fd) {
         throw std::system_error(errno, std::system_category(), "socket() failed");
