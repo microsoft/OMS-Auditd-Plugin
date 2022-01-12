@@ -444,7 +444,7 @@ std::unique_ptr<ProcessInfo> ProcessInfo::Open(int cmdline_size_limit) {
     return std::unique_ptr<ProcessInfo>(new ProcessInfo(dp, cmdline_size_limit));
 }
 
-std::unique_ptr<ProcessInfo> ProcessInfo::Open(int pid, int cmdline_size_limit) {
+std::unique_ptr<ProcessInfo> ProcessInfo::OpenPid(int pid, int cmdline_size_limit) {
     auto proc = std::unique_ptr<ProcessInfo>(new ProcessInfo(nullptr, cmdline_size_limit));
     if (proc->read(pid)) {
         return proc;
