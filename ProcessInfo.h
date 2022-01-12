@@ -28,7 +28,7 @@ public:
     ~ProcessInfo();
 
     static std::unique_ptr<ProcessInfo> Open(int cmdline_size_limit);
-    static std::unique_ptr<ProcessInfo> Open(int pid, int cmdline_size_limit);
+    static std::unique_ptr<ProcessInfo> OpenPid(int pid, int cmdline_size_limit);
 
     bool next();
 

@@ -589,7 +589,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
 {
     std::shared_ptr<ProcessTreeItem> process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_procfs, pid);
 
-    auto pinfo = ProcessInfo::Open(pid, CMDLINE_SIZE_LIMIT);
+    auto pinfo = ProcessInfo::OpenPid(pid, CMDLINE_SIZE_LIMIT);
     if (!pinfo) {
         return nullptr;
     }

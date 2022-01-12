@@ -98,7 +98,7 @@ void CollectionMonitor::run() {
             }
         }
 
-        if (IsStopping()) {
+        if (!IsStopping()) {
             if (audit_pid != _audit_pid || now - _last_audit_pid_report > std::chrono::seconds(3600)) {
                 _last_audit_pid_report = now;
                 _audit_pid = audit_pid;
@@ -200,7 +200,7 @@ bool CollectionMonitor::is_collector_alive() {
 }
 
 void CollectionMonitor::send_audit_pid_report(int pid) {
-    auto pinfo = ProcessInfo::Open(pid);
+    auto pinfo = ProcessInfo::OpenPid(pid, 0);
     std::string exe;
     int ppid = -1;
     if (pinfo) {
