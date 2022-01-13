@@ -63,7 +63,7 @@ public:
             _do_reload(false) {
     }
 
-    void Reload(const std::vector<std::string>& allowed_socket_dirs);
+    void Reload();
 
 protected:
     virtual void on_stop();

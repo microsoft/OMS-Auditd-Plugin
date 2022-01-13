@@ -496,17 +496,7 @@ int main(int argc, char**argv) {
                 return;
             }
         }
-        std::vector<std::string> allowed_socket_dirs;
-        if (!config.HasKey("allowed_output_socket_dirs")) {
-            Logger::Error("Config error during reload: Required config parameter missing: allowed_output_socket_dirs");
-            return;
-        } else {
-            if (!parsePath(allowed_socket_dirs, config.GetString("allowed_output_socket_dirs"))) {
-                Logger::Error("Config error during reload: Invalid config parameter: allowed_output_socket_dirs");
-                return;
-            }
-        }
-        outputs.Reload(allowed_socket_dirs);
+        outputs.Reload();
     });
 
     // Start signal handling thread
