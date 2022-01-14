@@ -62,7 +62,7 @@ std::shared_ptr<IEventFilter> OutputsEventFilterFactory::CreateEventFilter(const
     return EventFilter::NewEventFilter(name, config, _user_db, _filtersEngine, _processTree);
 }
 
-void Outputs::Reload(const std::vector<std::string>& allowed_socket_dirs) {
+void Outputs::Reload() {
     Logger::Info("Reload requested");
     std::unique_lock<std::mutex> lock(_run_mutex);
     _do_reload = true;
