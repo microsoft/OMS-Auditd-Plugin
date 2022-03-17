@@ -544,8 +544,10 @@ int main(int argc, char**argv) {
 
     try {
         collection_monitor.Stop();
-        processNotify->Stop();
-        processTree->Stop();
+        if (!disable_event_filtering) {
+            processNotify->Stop();
+            processTree->Stop();
+        }
         proc_metrics->Stop();
         system_metrics->Stop();
         syscall_metrics->Stop();
