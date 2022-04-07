@@ -4,7 +4,7 @@ AUOMSCOLLECT_BIN:        '/opt/microsoft/auoms/bin/auomscollect'
 AUOMS_BIN:               '/opt/microsoft/auoms/bin/auoms'
 AUOMSCTL_BIN:            '/opt/microsoft/auoms/bin/auomsctl'
 
-SHORT_NAME:              'auoms.debug'
+SHORT_NAME:              'auoms-dbg'
 SHORT_NAME_PREFIX:       'MSFT'
 LONG_NAME:               'Debug Symbols for auoms'
 GROUP:                   'Applications/System'
@@ -19,9 +19,9 @@ MAINTAINER:              'Microsoft Corporation'
 %Links
 
 %Files
-${{AUOMSCOLLECT_BIN}}.debug;   ${{TARGET_DIR}}/builddir/release/bin/auomscollect.debug; 755; root; root
-${{AUOMS_BIN}}.debug;          ${{TARGET_DIR}}/builddir/release/bin/auoms.debug;        755; root; root
-${{AUOMSCTL_BIN}}.debug;       ${{TARGET_DIR}}/builddir/release/bin/auomsctl.debug;     755; root; root
+${{AUOMSCOLLECT_BIN}}.dbg;   ${{TARGET_DIR}}/bin/auomscollect.dbg; 755; root; root
+${{AUOMS_BIN}}.dbg;          ${{TARGET_DIR}}/bin/auoms.dbg;        755; root; root
+${{AUOMSCTL_BIN}}.dbg;       ${{TARGET_DIR}}/bin/auomsctl.dbg;     755; root; root
 
 %Directories
 /opt;                          755; root; root; sysdir

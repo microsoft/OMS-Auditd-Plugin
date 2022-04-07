@@ -23,7 +23,7 @@
 # We expect this script to run from the BUILD directory (i.e. auoms/build).
 # Directory paths are hard-coded for this location.
 
-SOURCE_DIR=`(cd ../installer/bundle; pwd -P)`
+SOURCE_DIR=$(cd $(dirname $0) && pwd)
 BUNDLE_FILE=bundle_skel.sh
 
 # Exit on error
@@ -37,7 +37,7 @@ usage()
     echo "usage: $0 target-dir intermediate-dir tar-file install-type"
     echo "  where"
     echo "    target-dir is directory path to create shell bundle file (target directory)"
-    echo "    intermediate-dir is dir path to intermediate dir (where installer_tmp lives)"
+    echo "    intermediate-dir is dir path to intermediate dir (where tar-file lives)"
     echo "    tar-file is the name of the tar file that contains the .deb/.rpm files"
     echo "    install-type has the value \"RPM\" for rpm bundle, \"DPKG\" for deb bundle,"
     echo "      empty for the all-inclusive bundle"
@@ -79,11 +79,6 @@ if [ ! -d "$INTERMEDIATE" ]; then
     exit 1
 fi
 
-if [ ! -d "$INTERMEDIATE/installer_tmp" ]; then
-    echo "Directory \"$INTERMEDIATE/installer_tmp\" does not exist" >&2
-    exit 1
-fi
-
 if [ -z "$TAR_FILE" ]; then
     echo "Missing parameter: tar-file" >&2
     echo ""
@@ -114,30 +109,6 @@ cd $INTERMEDIATE_DIR
 
 # Fetch the bundle skeleton file
 cp $SOURCE_DIR/$BUNDLE_FILE .
-
-# See if we can resolve git references for output
-# (See if we can find the master project)
-TEMP_FILE=/tmp/create_bundle.$$
-
-# Get the git reference hashes in a file
-(
-cd $SOURCE_DIR/../..
-echo "Entering 'OMS-Auditd-Plugin'" > $TEMP_FILE
-git rev-parse HEAD >> $TEMP_FILE
-cd ../pal
-echo "Entering 'pal'" >> $TEMP_FILE
-git rev-parse HEAD >> $TEMP_FILE
-)
-
-# Change lines like: "Entering 'pal'\n<refhash>" to "pal: <refhash>"
-perl -i -pe "s/Entering '([^\n]*)'\n/\$1: /" $TEMP_FILE
-
-# Grab the reference hashes in a variable
-SOURCE_REFS=`cat $TEMP_FILE`
-rm $TEMP_FILE
-
-# Update the bundle file w/the ref hash (much easier with perl since multi-line)
-perl -i -pe "s/-- Source code references --/${SOURCE_REFS}/" $BUNDLE_FILE
 
 # Edit the bundle file for hard-coded values
 sed -i "s/TAR_FILE=<TAR_FILE>/TAR_FILE=$TAR_FILE/" $BUNDLE_FILE

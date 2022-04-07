@@ -16,7 +16,7 @@
 
 
 #include "Queue.h"
-#define BOOST_TEST_DYN_LINK
+//#define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE "QueueTests"
 #include <boost/test/unit_test.hpp>
 

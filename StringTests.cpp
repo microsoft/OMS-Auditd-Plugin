@@ -17,7 +17,7 @@
 
 #include "StringUtils.h"
 
-#define BOOST_TEST_DYN_LINK
+//#define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE "StringTests"
 #include <boost/test/unit_test.hpp>
 
