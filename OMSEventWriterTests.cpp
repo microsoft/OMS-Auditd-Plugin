@@ -15,7 +15,7 @@
 */
 
 #include "OMSEventWriter.h"
-#define BOOST_TEST_DYN_LINK
+//#define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE "OMSEventWriterTests"
 #include <boost/test/unit_test.hpp>
 

@@ -27,12 +27,18 @@ if(DEFINED DO_STATIC_LINK)
     # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
     # and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
     # for why it is safe to use -static-libgcc -static-libstdc++
-    set(CMAKE_EXE_LINKER_FLAGS "-L ${CMAKE_BINARY_DIR}/../ext_lib ${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 else()
-    set(CMAKE_EXE_LINKER_FLAGS "-L ${CMAKE_BINARY_DIR}/../ext_lib ${CMAKE_EXE_LINKER_FLAGS}")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
 endif()
 
-include_directories(BEFORE ${CMAKE_BINARY_DIR}/../ext_include)
+if (DEFINED DEPS_INCLUDE)
+    include_directories(BEFORE ${DEPS_INCLUDE})
+endif()
+
+if (DEFINED DEPS_LIB)
+    link_directories(BEFORE ${DEPS_LIB})
+endif()
 
 if (NOT DEFINED ENV_CONFIG_PATH)
     set(ENV_CONFIG_PATH ${CMAKE_SOURCE_DIR}/build/env_config.h)
@@ -103,11 +109,11 @@ target_link_libraries(auomscollect
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
     ADD_CUSTOM_COMMAND(TARGET auomscollect POST_BUILD
-            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug $<TARGET_FILE:auomscollect> ${CMAKE_BINARY_DIR}/auomscollect.debug
+            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug $<TARGET_FILE:auomscollect> ${CMAKE_BINARY_DIR}/auomscollect.dbg
             COMMAND ${CMAKE_STRIP} -g $<TARGET_FILE:auomscollect>
-            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=auomscollect.debug $<TARGET_FILE:auomscollect>
+            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=auomscollect.dbg $<TARGET_FILE:auomscollect>
     )
-    install(FILES ${CMAKE_BINARY_DIR}/auomscollect.debug DESTINATION ${CMAKE_BINARY_DIR}/release/bin)
+    install(FILES ${CMAKE_BINARY_DIR}/auomscollect.dbg DESTINATION ${CMAKE_BINARY_DIR}/release/bin)
 endif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
 
 install(TARGETS
@@ -193,11 +199,11 @@ target_link_libraries(auoms
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
     ADD_CUSTOM_COMMAND(TARGET auoms POST_BUILD
-            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug $<TARGET_FILE:auoms> ${CMAKE_BINARY_DIR}/auoms.debug
+            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug $<TARGET_FILE:auoms> ${CMAKE_BINARY_DIR}/auoms.dbg
             COMMAND ${CMAKE_STRIP} -g $<TARGET_FILE:auoms>
-            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=auoms.debug $<TARGET_FILE:auoms>
+            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=auoms.dbg $<TARGET_FILE:auoms>
     )
-    install(FILES ${CMAKE_BINARY_DIR}/auoms.debug DESTINATION ${CMAKE_BINARY_DIR}/release/bin)
+    install(FILES ${CMAKE_BINARY_DIR}/auoms.dbg DESTINATION ${CMAKE_BINARY_DIR}/release/bin)
 endif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
 
 install(TARGETS
@@ -251,11 +257,11 @@ target_link_libraries(auomsctl
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
     ADD_CUSTOM_COMMAND(TARGET auomsctl POST_BUILD
-            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug $<TARGET_FILE:auomsctl> ${CMAKE_BINARY_DIR}/auomsctl.debug
+            COMMAND ${CMAKE_OBJCOPY} --only-keep-debug $<TARGET_FILE:auomsctl> ${CMAKE_BINARY_DIR}/auomsctl.dbg
             COMMAND ${CMAKE_STRIP} -g $<TARGET_FILE:auomsctl>
-            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=auomsctl.debug $<TARGET_FILE:auomsctl>
+            COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=auomsctl.dbg $<TARGET_FILE:auomsctl>
     )
-    install(FILES ${CMAKE_BINARY_DIR}/auomsctl.debug DESTINATION ${CMAKE_BINARY_DIR}/release/bin)
+    install(FILES ${CMAKE_BINARY_DIR}/auomsctl.dbg DESTINATION ${CMAKE_BINARY_DIR}/release/bin)
 endif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
 
 install(TARGETS
@@ -307,6 +313,7 @@ install(TARGETS
 enable_testing()
 
 #Prep ourselves for compiling boost
+set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost 1.48 COMPONENTS unit_test_framework REQUIRED)
 include_directories (${Boost_INCLUDE_DIRS})
 

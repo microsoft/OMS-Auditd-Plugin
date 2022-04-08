@@ -15,7 +15,7 @@
 */
 
 #include "SPSCDataQueue.h"
-#define BOOST_TEST_DYN_LINK
+//#define BOOST_TEST_DYN_LINK
 #define BOOST_TEST_MODULE "SPSCDataQueueTests"
 #include <boost/test/unit_test.hpp>
 

@@ -61,20 +61,12 @@ usage()
     echo "  --purge                    Uninstall the package and remove all related data."
     echo "  --remove                   Uninstall the package from the system."
     echo "  --restart-deps             Reconfigure and restart dependent service(s)."
-    echo "  --source-references        Show source code reference hashes."
     echo "  --upgrade                  Upgrade the package in the system."
     echo "  --version                  Version of this shell bundle."
     echo "  --version-check            Check versions already installed to see if upgradable."
     echo "  --debug                    use shell debug mode."
     echo
     echo "  -? | -h | --help           shows this usage text."
-}
-
-source_references()
-{
-    cat <<EOF
--- Source code references --
-EOF
 }
 
 cleanup_and_exit()
@@ -165,7 +157,7 @@ getVersionNumber()
         cleanup_and_exit 1
     fi
 
-    echo $1 | sed -e "s/$2//" -e 's/\.universal\..*//' -e 's/\.x64.*//' -e 's/\.x86.*//' -e 's/-/./'
+    echo $1 | sed 's/$2\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*-[0-9][0-9]*\).*/\1/'
 }
 
 verifyNoInstallationOption()
@@ -278,11 +270,20 @@ pkg_upd() {
 
 get_arch()
 {
-    if [ $(uname -m) = 'x86_64' ]; then
-        echo "x64"
-    else
-        echo "x86"
-    fi
+    case $(uname -m) in
+        x86_64)
+          echo "x64"
+          ;;
+        arm64)
+          echo "arm64"
+          ;;
+        aarch64)
+          echo "arm64"
+          ;;
+        *)
+          echo "x86"
+          ;;
+    esac
 }
 
 compare_arch()
@@ -414,13 +415,8 @@ do
             shift 2
             ;;
 
-        --source-references)
-            source_references
-            cleanup_and_exit 0
-            ;;
-
         --version)
-            echo "Version: `getVersionNumber $AUOMS_PKG omsagent-`"
+            echo "Version: `getVersionNumber $AUOMS_PKG auoms-`"
             exit 0
             ;;
 
@@ -429,7 +425,7 @@ do
 
             # OMS agent itself
             versionInstalled=`getInstalledVersion auoms`
-            versionAvailable=`getVersionNumber $AUOMS_PKG omsagent-`
+            versionAvailable=`getVersionNumber $AUOMS_PKG auoms-`
             if shouldInstall_auoms; then shouldInstall="Yes"; else shouldInstall="No"; fi
             printf '%-15s%-15s%-15s%-15s\n' auom $versionInstalled $versionAvailable $shouldInstall
 

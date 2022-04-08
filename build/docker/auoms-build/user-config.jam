@@ -1,0 +1,2 @@
+using gcc : x86_64 : /opt/x-tools/x86_64-msft-linux-gnu/bin/x86_64-msft-linux-gnu-g++ ;
+using gcc : aarch64 : /opt/x-tools/aarch64-msft-linux-gnu/bin/aarch64-msft-linux-gnu-g++ ;
