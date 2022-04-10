@@ -105,7 +105,7 @@ tmpdir=$(mktemp -d)
 
 unzip -q -d $tmpdir ${ArchiveDir}/re2-2020-11-01.zip
 pushd $tmpdir/re2-2020-11-01
-if [ -n $Toolset ]; then
+if [ -n "$Toolset" ]; then
   CC=${Toolset}-gcc CXX=${Toolset}-g++ make static
 else
   make static

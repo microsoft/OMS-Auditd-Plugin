@@ -23,7 +23,7 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -ggdb -Wl,
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -ggdb")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "${CMAKE_C_FLAGS_RELWITHDEBINFO} -ggdb -Wl,-z,relro -Wl,-z,now -fstack-protector-strong -D_FORTIFY_SOURCE=2")
 
-if(DEFINED DO_STATIC_LINK)
+if(DO_STATIC_LINK)
     # See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
     # and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
     # for why it is safe to use -static-libgcc -static-libstdc++
@@ -32,16 +32,20 @@ else()
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
 endif()
 
-if (DEFINED DEPS_INCLUDE)
+if (DEPS_INCLUDE)
     include_directories(BEFORE ${DEPS_INCLUDE})
 endif()
 
-if (DEFINED DEPS_LIB)
+if (DEPS_LIB)
     link_directories(BEFORE ${DEPS_LIB})
 endif()
 
-if (NOT DEFINED ENV_CONFIG_PATH)
+if (NOT ENV_CONFIG_PATH)
     set(ENV_CONFIG_PATH ${CMAKE_SOURCE_DIR}/build/env_config.h)
+endif()
+
+if (NO_EXTRA_INTERP_PROTO)
+    add_compile_definitions(NO_INTERP_EXTRA_PROTO)
 endif()
 
 add_custom_command(
@@ -312,8 +316,9 @@ install(TARGETS
 #Setup CMake to run tests
 enable_testing()
 
-#Prep ourselves for compiling boost
-set(Boost_USE_STATIC_LIBS ON)
+if(DO_STATIC_LINK)
+  set(Boost_USE_STATIC_LIBS ON)
+endif()
 find_package(Boost 1.48 COMPONENTS unit_test_framework REQUIRED)
 include_directories (${Boost_INCLUDE_DIRS})
 
@@ -322,6 +327,10 @@ add_executable(ConfigTests
         Config.cpp
         ConfigTests.cpp
 )
+
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(ConfigTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
 
 target_link_libraries(ConfigTests ${Boost_LIBRARIES})
 
@@ -336,6 +345,10 @@ add_executable(EventTests
         EventTests.cpp
 )
 
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(EventTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
+
 target_link_libraries(EventTests ${Boost_LIBRARIES}
         pthread
 )
@@ -349,6 +362,10 @@ add_executable(QueueTests
         QueueTests.cpp
 )
 
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(QueueTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
+
 target_link_libraries(QueueTests ${Boost_LIBRARIES})
 
 add_test(Queue ${CMAKE_BINARY_DIR}/QueueTests --log_sink=QueueTests.log --report_sink=QueueTests.report)
@@ -361,6 +378,10 @@ add_executable(PriorityQueueTests
         PriorityQueueTests.cpp
 )
 
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(PriorityQueueTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
+
 target_link_libraries(PriorityQueueTests ${Boost_LIBRARIES} pthread)
 
 add_test(PriorityQueue ${CMAKE_BINARY_DIR}/PriorityQueueTests --log_sink=PriorityQueueTests.log --report_sink=PriorityQueueTests.report)
@@ -370,6 +391,10 @@ add_executable(SPSCDataQueueTests
         SPSCDataQueue.cpp
         SPSCDataQueueTests.cpp
 )
+
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(SPSCDataQueueTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
 
 target_link_libraries(SPSCDataQueueTests ${Boost_LIBRARIES} pthread)
 
@@ -383,6 +408,10 @@ add_executable(UserDBTests
         UserDBTests.cpp
 )
 
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(UserDBTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
+
 target_link_libraries(UserDBTests ${Boost_LIBRARIES} pthread)
 
 add_test(UserDB ${CMAKE_BINARY_DIR}/UserDBTests --log_sink=UserDBTests.log --report_sink=UserDBTests.report)
@@ -391,6 +420,10 @@ add_executable(StringTests
         StringUtils.cpp
         StringTests.cpp
 )
+
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(StringTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
 
 target_link_libraries(StringTests ${Boost_LIBRARIES})
 
@@ -428,6 +461,10 @@ add_executable(EventProcessorTests
         FileUtils.cpp
 )
 
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(EventProcessorTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
+
 target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
         libre2.a
         dl
@@ -454,6 +491,10 @@ add_executable(ProcessTreeTests
         ExecveConverter.cpp
 )
 
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(ProcessTreeTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
+
 target_link_libraries(ProcessTreeTests ${Boost_LIBRARIES}
         libre2.a
         dl
@@ -476,6 +517,10 @@ add_executable(ExecveConverterTests
         RunBase.cpp
         Metrics.cpp
 )
+
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(ExecveConverterTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
 
 target_link_libraries(ExecveConverterTests ${Boost_LIBRARIES}
         dl
@@ -503,6 +548,10 @@ add_executable(OMSEventWriterTests
         ExecveConverter.cpp
 )
 
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(OMSEventWriterTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
+
 target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}
         libre2.a
         pthread
@@ -524,6 +573,10 @@ add_executable(FluentEventWriterTests
         FileUtils.cpp
         Config.cpp
 )
+
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(FluentEventWriterTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
 
 target_link_libraries(FluentEventWriterTests ${Boost_LIBRARIES}
         libre2.a
@@ -562,6 +615,10 @@ add_executable(OutputInputTests
         Version.cpp
 )
 
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(OutputInputTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
+
 target_link_libraries(OutputInputTests ${Boost_LIBRARIES}
         pthread
 )
@@ -578,6 +635,10 @@ add_executable(CmdlineRedactorTests
         StringUtils.cpp
         TempDir.cpp
 )
+
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(CmdlineRedactorTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
 
 target_link_libraries(CmdlineRedactorTests
         libre2.a
