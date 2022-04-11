@@ -24,13 +24,15 @@
 #include <netinet/in.h>
 #include <sys/un.h>
 #include <sys/socket.h>
+#include <linux/if.h>
+#include <linux/netlink.h>
+#include <arpa/inet.h>
+#ifndef NO_INTERP_EXTRA_PROTO
 #include <linux/ax25.h>
 #include <linux/atm.h>
 #include <linux/x25.h>
-#include <linux/if.h>
 #include <linux/ipx.h>
-#include <linux/netlink.h>
-#include <arpa/inet.h>
+#endif
 
 template <typename T>
 inline bool field_to_int(const EventRecordField& field, T& val, int base) {
@@ -148,6 +150,7 @@ bool InterpretSockaddrField(std::string& out, const EventRecord& record, const E
             out.append(" }");
             break;
         }
+#ifndef NO_INTERP_EXTRA_PROTO
         case AF_AX25: {
             auto addr = reinterpret_cast<struct sockaddr_ax25 *>(_buf.data());
             if (bsize < sizeof(struct sockaddr_ax25)) {
@@ -195,6 +198,7 @@ bool InterpretSockaddrField(std::string& out, const EventRecord& record, const E
             out.append(addr->sx25_addr.x25_addr);
             break;
         }
+#endif
         case AF_INET6: {
             std::array<char, INET6_ADDRSTRLEN+1> _abuf;
             auto addr = reinterpret_cast<struct sockaddr_in6 *>(_buf.data());

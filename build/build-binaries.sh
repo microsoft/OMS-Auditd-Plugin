@@ -23,16 +23,20 @@ ShowUsage()
   cat << EOF
   Error: $1
 
-  Usage: $0 -d <dest dir> -w <work dir> [ -a <architecture> ] [ -s <source dir> ] [ -p <deps dir> ] [ -bt <build type> ] [ -m ] [ -x ]
+  Usage: $0 -d <dest dir> -w <work dir> [ -a <architecture> ] [ -s <source dir> ] [ -p <deps dir> ] [ -e <env file> ] [ -bt <build type> ] [ -dl ] [ -m ] [ -x ] [ -n ] [ -v ]
 
     -d  <dest dir>     - Where built binares will be placed
     -w  <work dir>     - Directory where work dir will be placed
     -a  <architecture> - Target architecture
     -s  <source dir>   - Root of source code
     -p  <deps dir>     - Location of dependencies
+    -e  <env file>     - Alternate env_config.h file
     -bt <build type>   - The build type (Debug, Release, RelWithDebInfo). Default: RelWithDebInfo
+    -dl                - Do dynamic link
     -m                 - Only do the cmake setup then exit
     -x                 - Don't remove work dir when done
+    -n                 - Exclude extra protocols from interp
+    -v                 - Verbose build
 EOF
     exit 1
 }
@@ -43,8 +47,11 @@ Bail()
   exit 1
 }
 
+DO_DYNAMIC_LINK=0
 JUST_CMAKE=0
 SKIP_CLEAN=0
+NO_EXTRA_INTERP=0
+MAKE_VERBOSE_OPT=""
 
 while (( "$#" )); do
   if [ "$1" == "-d" ]; then
@@ -62,13 +69,22 @@ while (( "$#" )); do
   elif [ "$1" == "-p" ]; then
     shift
     DepsDir=$1
+  elif [ "$1" == "-e" ]; then
+    shift
+    EnvFile=$1
   elif [ "$1" == "-bt" ]; then
     shift
     BuildType=$1
+  elif [ "$1" == "-dl" ]; then
+    DO_DYNAMIC_LINK=1
   elif [ "$1" == "-m" ]; then
     JUST_CMAKE=1
   elif [ "$1" == "-x" ]; then
     SKIP_CLEAN=1
+  elif [ "$1" == "-n" ]; then
+    NO_EXTRA_INTERP=1
+  elif [ "$1" == "-v" ]; then
+    MAKE_VERBOSE_OPT="VERBOSE=1"
   else
     ShowUsage "unsupported argument '$1'"
   fi
@@ -93,6 +109,12 @@ fi
 
 if [ "$BuildType" != "Debug" -a "$BuildType" != "Release" -a "$BuildType" != "RelWithDebInfo" ]; then
   Bail "Invalid build type: $BuildType"
+fi
+
+if [ -n "$EnvFile" ]; then
+  if [ ! -e $EnvFile ]; then
+    Bail "'$EnvFile' is missing"
+  fi
 fi
 
 DEPS_OPTION=""
@@ -145,7 +167,22 @@ fi
 
 pushd $BuildDir
 
-cmake ${Toolchain} $DEPS_OPTION -DDO_STATIC_LINK=1 -DCMAKE_BUILD_TYPE=$BuildType ${SourceDir}
+LINK_OP="-DDO_STATIC_LINK=1"
+if [ $DO_DYNAMIC_LINK -eq 1 ]; then
+  LINK_OP=""
+fi
+
+NO_EXTRA_OP=""
+if [ $NO_EXTRA_INTERP -eq 1 ]; then
+  NO_EXTRA_OP="-DNO_EXTRA_INTERP_PROTO=1"
+fi
+
+ENV_OP=""
+if [ -n "$EnvFile" ]; then
+  ENV_OP="-DENV_CONFIG_PATH=$EnvFile"
+fi
+
+cmake ${Toolchain} $DEPS_OPTION $LINK_OP $NO_EXTRA_OP -DCMAKE_BUILD_TYPE=$BuildType ${SourceDir}
 if [ $? -ne 0 ]; then
   Bail "cmake failed"
 fi
@@ -155,12 +192,12 @@ if [ $JUST_CMAKE -eq 1 ]; then
   exit 0
 fi
 
-make
+make $MAKE_VERBOSE_OPT
 if [ $? -ne 0 ]; then
   Bail "make failed"
 fi
 
-make install
+make $MAKE_VERBOSE_OPT install
 if [ $? -ne 0 ]; then
   Bail "'make install' failed"
 fi
