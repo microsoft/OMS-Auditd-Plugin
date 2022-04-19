@@ -100,48 +100,14 @@ check_version_installable() {
         cleanup_and_exit 1
     fi
 
-    # Current version installed
-    local INS_MAJOR=`echo $1 | cut -d. -f1`
-    local INS_MINOR=`echo $1 | cut -d. -f2`
-    local INS_PATCH=`echo $1 | cut -d. -f3`
-    local INS_BUILD=`echo $1 | cut -d. -f4`
+    # Determine which of Installed and Available is the latest
+    local LATEST_VERSION=$(printf "$1\n$2\n" | sort -V | tail -n 1)
 
-    # Available version number
-    local AVA_MAJOR=`echo $2 | cut -d. -f1`
-    local AVA_MINOR=`echo $2 | cut -d. -f2`
-    local AVA_PATCH=`echo $2 | cut -d. -f3`
-    local AVA_BUILD=`echo $2 | cut -d. -f4`
-
-    # Check bounds on MAJOR
-    if [ $INS_MAJOR -lt $AVA_MAJOR ]; then
-        return 0
-    elif [ $INS_MAJOR -gt $AVA_MAJOR ]; then
-        return 1
+    if [ "$1" = "$LATEST_VERSION" ]; then
+      return 1
     fi
 
-    # MAJOR matched, so check bounds on MINOR
-    if [ $INS_MINOR -lt $AVA_MINOR ]; then
-        return 0
-    elif [ $INS_MINOR -gt $AVA_MINOR ]; then
-        return 1
-    fi
-
-    # MINOR matched, so check bounds on PATCH
-    if [ $INS_PATCH -lt $AVA_PATCH ]; then
-        return 0
-    elif [ $INS_PATCH -gt $AVA_PATCH ]; then
-        return 1
-    fi
-
-    # PATCH matched, so check bounds on BUILD
-    if [ $INS_BUILD -lt $AVA_BUILD ]; then
-        return 0
-    elif [ $INS_BUILD -gt $AVA_BUILD ]; then
-        return 1
-    fi
-
-    # Version available is identical to installed version, so don't install
-    return 1
+    return 0
 }
 
 getVersionNumber()
@@ -157,7 +123,7 @@ getVersionNumber()
         cleanup_and_exit 1
     fi
 
-    echo $1 | sed 's/$2\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*-[0-9][0-9]*\).*/\1/'
+    echo "$1" | sed "s/$2\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)[-\.]\([^\.-][^\.-]*\).*/\1.\2/"
 }
 
 verifyNoInstallationOption()
@@ -492,6 +458,13 @@ if [ -n "${shouldexit}" ]; then
     cleanup_and_exit 0
 fi
 
+if [ "$installMode" = "U" ]; then
+    if ! shouldInstall_auoms; then
+      echo "Installed version is the latest version"
+      cleanup_and_exit 0
+    fi
+fi
+
 #
 # Extract the binary here.
 #
@@ -528,7 +501,6 @@ case "$installMode" in
     U)
         echo "Updating auoms ..."
 
-        shouldInstall_auoms
         pkg_upd $AUOMS_PKG auoms $?
         EXIT_STATUS=$?
         ;;
