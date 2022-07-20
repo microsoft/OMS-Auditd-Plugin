@@ -250,6 +250,8 @@ std::string OperationalStatus::get_json_status() {
 }
 
 bool OperationalStatus::send_status() {
+    static std::string_view SV_EMPTY;
+
     struct timeval tv;
     gettimeofday(&tv, nullptr);
 
@@ -274,20 +276,20 @@ bool OperationalStatus::send_status() {
         return false;
     }
 
-    if (!_builder.AddField("desired_audit_rules", _desired_audit_rules, nullptr, field_type_t::UNCLASSIFIED)) {
+    if (!_builder.AddField("desired_audit_rules", _desired_audit_rules, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
         return false;
     }
 
-    if (!_builder.AddField("loaded_audit_rules", _loaded_audit_rules, nullptr, field_type_t::UNCLASSIFIED)) {
+    if (!_builder.AddField("loaded_audit_rules", _loaded_audit_rules, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
         return false;
     }
 
-    if (!_builder.AddField("redaction_rules", _redaction_rules, nullptr, field_type_t::UNCLASSIFIED)) {
+    if (!_builder.AddField("redaction_rules", _redaction_rules, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
         return false;
     }
 
     if (!errors.empty()) {
-        if (!_builder.AddField("errors", errors, nullptr, field_type_t::UNCLASSIFIED)) {
+        if (!_builder.AddField("errors", errors, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
             return false;
         }
     }

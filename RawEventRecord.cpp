@@ -214,6 +214,7 @@ bool RawEventRecord::Parse(RecordType record_type, size_t size) {
 bool RawEventRecord::AddRecord(EventBuilder& builder) {
     static auto SV_NODE = "node"sv;
     static auto SV_UNPARSED_TEXT = "unparsed_text"sv;
+    static auto SV_EMPTY = ""sv;
 
     uint16_t num_fields = static_cast<uint16_t>(_record_fields.size());
     if (!_node.empty()) {
@@ -225,7 +226,7 @@ bool RawEventRecord::AddRecord(EventBuilder& builder) {
     }
 
     if (!_node.empty()) {
-        if (!builder.AddField(SV_NODE, _node, nullptr, field_type_t::UNCLASSIFIED)) {
+        if (!builder.AddField(SV_NODE, _node, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
             return false;
         }
     }
@@ -233,7 +234,7 @@ bool RawEventRecord::AddRecord(EventBuilder& builder) {
     // If record is marked as unparsable, then the text (after the 'audit():' section is included as the only value in
     // _record_fields
     if (_unparsable) {
-        if (!builder.AddField(SV_UNPARSED_TEXT, _record_fields[0].second, nullptr, field_type_t::UNESCAPED)) {
+        if (!builder.AddField(SV_UNPARSED_TEXT, _record_fields[0].second, SV_EMPTY, field_type_t::UNESCAPED)) {
             return false;
         }
         return builder.EndRecord();
@@ -243,10 +244,10 @@ bool RawEventRecord::AddRecord(EventBuilder& builder) {
     for (auto& f: _record_fields) {
         int ret;
         if (!f.first.empty()) {
-            ret = builder.AddField(f.first, f.second, nullptr, field_type_t::UNCLASSIFIED);
+            ret = builder.AddField(f.first, f.second, SV_EMPTY, field_type_t::UNCLASSIFIED);
         } else {
             std::string key = "unknown" + std::to_string(unknown_key);
-            ret = builder.AddField(key, f.second, nullptr, field_type_t::UNCLASSIFIED);
+            ret = builder.AddField(key, f.second, SV_EMPTY, field_type_t::UNCLASSIFIED);
             unknown_key += 1;
         }
         if (!ret) {

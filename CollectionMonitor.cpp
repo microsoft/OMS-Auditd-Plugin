@@ -200,6 +200,8 @@ bool CollectionMonitor::is_collector_alive() {
 }
 
 void CollectionMonitor::send_audit_pid_report(int pid) {
+    static std::string_view SV_EMPTY;
+
     auto pinfo = ProcessInfo::OpenPid(pid, 0);
     std::string exe;
     int ppid = -1;
@@ -220,13 +222,13 @@ void CollectionMonitor::send_audit_pid_report(int pid) {
     if (!_builder.BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_COLLECTOR_REPORT), RecordTypeToName(RecordType::AUOMS_COLLECTOR_REPORT), "", 3)) {
         return;
     }
-    if (!_builder.AddField("pid", std::to_string(pid), nullptr, field_type_t::UNCLASSIFIED)) {
+    if (!_builder.AddField("pid", std::to_string(pid), SV_EMPTY, field_type_t::UNCLASSIFIED)) {
         return;
     }
-    if(!_builder.AddField("ppid", std::to_string(ppid), nullptr, field_type_t::UNCLASSIFIED)) {
+    if(!_builder.AddField("ppid", std::to_string(ppid), SV_EMPTY, field_type_t::UNCLASSIFIED)) {
         return;
     }
-    if(!_builder.AddField("exe", exe, nullptr, field_type_t::UNCLASSIFIED)) {
+    if(!_builder.AddField("exe", exe, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
         return;
     }
     if(!_builder.EndRecord()) {

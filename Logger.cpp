@@ -92,7 +92,7 @@ void Logger::_log_write(int level, const char* fmt, va_list ap)
         if (_enable_syslog) {
             syslog(level, "%s", buffer);
         } else {
-            (void)write(2, buffer, nr);
+            auto ignored = write(2, buffer, nr);
         }
         if (_log_fn) {
             _log_fn(buffer, nr);
