@@ -17,7 +17,7 @@
 cmake_minimum_required(VERSION 2.8.12)
 project(auoms)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Werror=return-type")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ggdb")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -ggdb -Wl,-z,relro -Wl,-z,now -fstack-protector-strong -D_FORTIFY_SOURCE=2")
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -ggdb")
@@ -100,10 +100,7 @@ add_executable(auomscollect
         SchedPriority.cpp
 )
 
-# See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
-# and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
-# for why it is safe to use -static-libgcc -static-libstdc++
-#set_target_properties(auomscollect PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+target_compile_options(auomscollect PRIVATE "-Werror")
 
 target_link_libraries(auomscollect
         dl
@@ -188,11 +185,7 @@ add_executable(auoms
         CmdlineRedactor.cpp
 )
 
-# See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
-# and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
-# for why it is safe to use -static-libgcc -static-libstdc++
-#set_target_properties(auoms PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -Wl,--wrap=memcpy -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
-#set_target_properties(auoms PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+target_compile_options(auoms PRIVATE "-Werror")
 
 target_link_libraries(auoms
         libre2.a
@@ -247,11 +240,7 @@ add_executable(auomsctl
         CmdlineRedactor.cpp
 )
 
-# See https://gcc.gnu.org/onlinedocs/libstdc++/manual/license.html
-# and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
-# for why it is safe to use -static-libgcc -static-libstdc++
-#set_target_properties(auoms PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -Wl,--wrap=memcpy -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
-#set_target_properties(auomsctl PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+target_compile_options(auomsctl PRIVATE "-Werror")
 
 target_link_libraries(auomsctl
         libre2.a
@@ -280,8 +269,6 @@ add_executable(testreceiver
         UnixDomainListener.cpp
 )
 
-#set_target_properties(testreceiver PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
-
 install(TARGETS
         testreceiver
         RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
@@ -290,8 +277,6 @@ install(TARGETS
 add_executable(fakeaudispd
         fakeaudispd.cpp
 )
-
-#set_target_properties(fakeaudispd PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 install(TARGETS
         fakeaudispd
@@ -305,8 +290,6 @@ add_executable(file2sock
         Logger.cpp
         Event.cpp
 )
-
-#set_target_properties(file2sock PROPERTIES LINK_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
 
 install(TARGETS
         file2sock

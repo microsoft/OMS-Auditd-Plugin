@@ -82,6 +82,8 @@ std::string system_time_to_iso3339(const std::chrono::system_clock::time_point s
 }
 
 bool Metrics::send_metrics() {
+    static std::string_view SV_EMPTY;
+
     MetricAggregateSnapshot snap;
 
     auto rec_type = RecordType::AUOMS_METRIC;
@@ -103,38 +105,38 @@ bool Metrics::send_metrics() {
             if (!_builder->BeginRecord(static_cast<uint32_t>(rec_type), rec_type_name, "", num_fields)) {
                 return false;
             }
-            if (!_builder->AddField("version", AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED)) {
+            if (!_builder->AddField("version", AUOMS_VERSION, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (!_builder->AddField("StartTime", system_time_to_iso3339(snap.start_time), nullptr,
+            if (!_builder->AddField("StartTime", system_time_to_iso3339(snap.start_time), SV_EMPTY,
                                   field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (!_builder->AddField("EndTime", system_time_to_iso3339(snap.end_time), nullptr,
+            if (!_builder->AddField("EndTime", system_time_to_iso3339(snap.end_time), SV_EMPTY,
                                   field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (!_builder->AddField("Namespace", snap.namespace_name, nullptr, field_type_t::UNCLASSIFIED)) {
+            if (!_builder->AddField("Namespace", snap.namespace_name, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (!_builder->AddField("Name", snap.name, nullptr, field_type_t::UNCLASSIFIED)) {
+            if (!_builder->AddField("Name", snap.name, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (!_builder->AddField("SamplePeriod", std::to_string(snap.sample_period), nullptr,
+            if (!_builder->AddField("SamplePeriod", std::to_string(snap.sample_period), SV_EMPTY,
                                   field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (!_builder->AddField("NumSamples", std::to_string(snap.num_samples), nullptr,
+            if (!_builder->AddField("NumSamples", std::to_string(snap.num_samples), SV_EMPTY,
                                   field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (!_builder->AddField("Min", std::to_string(snap.min), nullptr, field_type_t::UNCLASSIFIED)) {
+            if (!_builder->AddField("Min", std::to_string(snap.min), SV_EMPTY, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (!_builder->AddField("Max", std::to_string(snap.max), nullptr, field_type_t::UNCLASSIFIED)) {
+            if (!_builder->AddField("Max", std::to_string(snap.max), SV_EMPTY, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
-            if (!_builder->AddField("Avg", std::to_string(snap.avg), nullptr, field_type_t::UNCLASSIFIED)) {
+            if (!_builder->AddField("Avg", std::to_string(snap.avg), SV_EMPTY, field_type_t::UNCLASSIFIED)) {
                 return false;
             }
             if (!_builder->EndRecord()) {
@@ -150,6 +152,8 @@ bool Metrics::send_metrics() {
 }
 
 bool Metrics::send_log_metrics(bool flush_all) {
+    static std::string_view SV_EMPTY;
+
     auto rec_type = RecordType::AUOMS_METRIC;
     auto rec_type_name = RecordTypeToName(RecordType::AUOMS_METRIC);
 
@@ -174,46 +178,46 @@ bool Metrics::send_log_metrics(bool flush_all) {
         if (!_builder->BeginRecord(static_cast<uint32_t>(rec_type), rec_type_name, "", num_fields)) {
             return false;
         }
-        if (!_builder->AddField("version", AUOMS_VERSION, nullptr, field_type_t::UNCLASSIFIED)) {
+        if (!_builder->AddField("version", AUOMS_VERSION, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
             return false;
         }
-        if (!_builder->AddField("StartTime", system_time_to_iso3339(lm->_start_time), nullptr,
+        if (!_builder->AddField("StartTime", system_time_to_iso3339(lm->_start_time), SV_EMPTY,
                                 field_type_t::UNCLASSIFIED)) {
             return false;
         }
-        if (!_builder->AddField("EndTime", system_time_to_iso3339(lm->_end_time), nullptr,
+        if (!_builder->AddField("EndTime", system_time_to_iso3339(lm->_end_time), SV_EMPTY,
                                 field_type_t::UNCLASSIFIED)) {
             return false;
         }
-        if (!_builder->AddField("Namespace", _proc_name, nullptr, field_type_t::UNCLASSIFIED)) {
+        if (!_builder->AddField("Namespace", _proc_name, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
             return false;
         }
         if (!_builder->AddField("Name", "log", nullptr, field_type_t::UNCLASSIFIED)) {
             return false;
         }
-        if (!_builder->AddField("SamplePeriod", std::to_string(static_cast<uint64_t>(MetricPeriod::MINUTE)), nullptr,
+        if (!_builder->AddField("SamplePeriod", std::to_string(static_cast<uint64_t>(MetricPeriod::MINUTE)), SV_EMPTY,
                                 field_type_t::UNCLASSIFIED)) {
             return false;
         }
-        if (!_builder->AddField("NumSamples", std::to_string(1), nullptr,
+        if (!_builder->AddField("NumSamples", std::to_string(1), SV_EMPTY,
                                 field_type_t::UNCLASSIFIED)) {
             return false;
         }
-        if (!_builder->AddField("Min", std::to_string(static_cast<double>(lm->_count)), nullptr, field_type_t::UNCLASSIFIED)) {
+        if (!_builder->AddField("Min", std::to_string(static_cast<double>(lm->_count)), SV_EMPTY, field_type_t::UNCLASSIFIED)) {
             return false;
         }
-        if (!_builder->AddField("Max", std::to_string(static_cast<double>(lm->_count)), nullptr, field_type_t::UNCLASSIFIED)) {
+        if (!_builder->AddField("Max", std::to_string(static_cast<double>(lm->_count)), SV_EMPTY, field_type_t::UNCLASSIFIED)) {
             return false;
         }
-        if (!_builder->AddField("Avg", std::to_string(static_cast<double>(lm->_count)), nullptr, field_type_t::UNCLASSIFIED)) {
+        if (!_builder->AddField("Avg", std::to_string(static_cast<double>(lm->_count)), SV_EMPTY, field_type_t::UNCLASSIFIED)) {
             return false;
         }
-        if (!_builder->AddField("Message", lm->_fmt, nullptr,
+        if (!_builder->AddField("Message", lm->_fmt, SV_EMPTY,
                                 field_type_t::UNCLASSIFIED)) {
             return false;
         }
         if (include_fist_msg) {
-            if (!_builder->AddField("Data", lm->_first_msg, nullptr,
+            if (!_builder->AddField("Data", lm->_first_msg, SV_EMPTY,
                                     field_type_t::UNCLASSIFIED)) {
                 return false;
             }

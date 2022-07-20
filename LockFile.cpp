@@ -71,7 +71,7 @@ int LockFile::Lock() {
         } else {
             ret = PREVIOUSLY_ABANDONED;
         }
-        ftruncate(fd, 0);
+        auto ignored = ftruncate(fd, 0);
     }
 
     std::string pid = std::to_string(getpid());
@@ -93,6 +93,6 @@ int LockFile::Lock() {
 }
 
 void LockFile::Unlock() {
-    ftruncate(_fd, 0);
+    auto ignored = ftruncate(_fd, 0);
     close(_fd);
 }

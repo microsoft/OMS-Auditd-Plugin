@@ -34,7 +34,7 @@
 
 void write_error(int reason, int err, int fd) {
     uint32_t code = (static_cast<uint32_t>(reason) << 16) | static_cast<uint32_t>(err);
-    write(fd, &code, sizeof(code));
+    auto ignored = write(fd, &code, sizeof(code));
 }
 
 void Cmd::cleanup() {
