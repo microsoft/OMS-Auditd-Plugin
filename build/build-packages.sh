@@ -24,13 +24,14 @@ ShowUsage()
   cat << EOF
   Error: $1
 
-  Usage: $0 -d <dest dir> -w <work dir> [ -a <architecture> ] [ -s <source dir> ] [ -b <bin dir> ] [ -bt <build type > ] [ -bn <build number > ]
+  Usage: $0 -d <dest dir> -w <work dir> [ -a <architecture> ] [ -s <source dir> ] [ -b <bin dir> ] [ -p  <se pol dir> ] [ -bt <build type > ] [ -bn <build number > ]
 
     -d  <dest dir>     - Where built packages will be placed
     -w  <work dir>     - Directory where work dir will be placed
     -a  <architecture> - Target architecture (x86_64, aarch64) . Default: x86_64
     -s  <source dir>   - Root of source code
     -b  <bin dir>      - Location of bin dir (<bin dir>/bin) if binaries are not located in <dest dir>/bin
+    -p  <se pol dir>   - Location of selinux policy dir if policy files are not located in <dest dir>/selinux
     -bt <build type>   - The build type (Debug, Release, RelWithDebInfo). Default: RelWithDebInfo
     -bn <build number> - The build number
 
@@ -62,6 +63,9 @@ while (( "$#" )); do
   elif [ "$1" == "-b" ]; then
     shift
     BinDir=$1
+  elif [ "$1" == "-p" ]; then
+    shift
+    SEPolDir=$1
   elif [ "$1" == "-bt" ]; then
     shift
     BuildType=$1
@@ -111,6 +115,11 @@ if [ -n "$BinDir" ]; then
   cp $BinDir/bin/auoms* $DestDir/bin
 fi
 
+if [ -n "$SEPolDir" ]; then
+  mkdir -p $DestDir/selinux
+  cp $SEPolDir/auoms* $DestDir/selinux
+fi
+
 SubWorkDir=$BuildType-$Arch
 WorkDir=${WorkDirRoot}/$SubWorkDir
 PseudoDir=${WorkDir}/pseudo-state
@@ -118,15 +127,7 @@ StageDir=${WorkDir}/stage
 IntermediateDir=${WorkDir}/intermediate
 
 mkdir -p $StageDir
-mkdir -p $IntermediateDir/selinux
-
-cp $SourceDir/installer/selinux/auoms.{te,fc} $IntermediateDir/selinux
-pushd $IntermediateDir/selinux
-make -f /usr/share/selinux/devel/Makefile
-popd
-
-mkdir -p $DestDir/selinux
-cp $IntermediateDir/selinux/auoms.pp $DestDir/selinux
+mkdir -p $IntermediateDir
 
 . $SourceDir/auoms.version
 
