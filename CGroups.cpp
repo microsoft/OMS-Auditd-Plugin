@@ -38,6 +38,10 @@ void AppendUint64(const std::string& path, uint64_t val) {
     AppendFile(path, {{std::to_string(val)}});
 }
 
+void WriteUint64(const std::string& path, uint64_t val) {
+    WriteFile(path, {{std::to_string(val)}});
+}
+
 uint64_t ReadUint64(const std::string& path) {
     auto lines = ReadFile(path);
     if (lines.empty()) {
@@ -92,7 +96,7 @@ uint64_t CGroupCPU::GetShares() {
 }
 
 void CGroupCPU::SetShares(uint64_t val) {
-    AppendUint64(_dir + CGROUP_CPU_SHARES_FILE, val);
+    WriteUint64(_dir + CGROUP_CPU_SHARES_FILE, val);
 }
 
 bool CGroupCPU::HasCFSQuotaUS() {
@@ -104,7 +108,7 @@ uint64_t CGroupCPU::GetCFSPeriodUS() {
 }
 
 void CGroupCPU::SetCFSPeriodUS(uint64_t val) {
-    AppendUint64(_dir + CGROUP_CPU_PERIOD_US_FILE, val);
+    WriteUint64(_dir + CGROUP_CPU_PERIOD_US_FILE, val);
 }
 
 uint64_t CGroupCPU::GetCFSQuotaUS() {
@@ -112,7 +116,7 @@ uint64_t CGroupCPU::GetCFSQuotaUS() {
 }
 
 void CGroupCPU::SetCFSQuotaUS(uint64_t val) {
-    AppendUint64(_dir + CGROUP_CPU_QUOTA_US_FILE, val);
+    WriteUint64(_dir + CGROUP_CPU_QUOTA_US_FILE, val);
 }
 
 std::shared_ptr<CGroupCPU> CGroups::OpenCPU(const std::string& name) {

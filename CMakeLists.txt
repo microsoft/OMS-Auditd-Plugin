@@ -98,11 +98,14 @@ add_executable(auomscollect
         CGroups.cpp
         CPULimits.cpp
         SchedPriority.cpp
+        EventMatcher.cpp
+        EventAggregator.cpp
 )
 
 target_compile_options(auomscollect PRIVATE "-Werror")
 
 target_link_libraries(auomscollect
+        libre2.a
         dl
         pthread
         rt
@@ -183,6 +186,8 @@ add_executable(auoms
         CGroups.cpp
         CPULimits.cpp
         CmdlineRedactor.cpp
+        EventMatcher.cpp
+        EventAggregator.cpp
 )
 
 target_compile_options(auoms PRIVATE "-Werror")
@@ -596,13 +601,17 @@ add_executable(OutputInputTests
         TranslateSyscall.cpp
         UserDB.cpp
         Version.cpp
+        EventMatcher.cpp
+        EventAggregator.cpp
 )
 
 if(NOT DO_STATIC_LINK)
   target_compile_definitions(OutputInputTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(OutputInputTests ${Boost_LIBRARIES}
+target_link_libraries(OutputInputTests
+        libre2.a
+        ${Boost_LIBRARIES}
         pthread
 )
 
@@ -630,3 +639,50 @@ target_link_libraries(CmdlineRedactorTests
 )
 
 add_test(CmdlineRedactorTests ${CMAKE_BINARY_DIR}/CmdlineRedactorTests --log_sink=CmdlineRedactorTests.log --report_sink=CmdlineRedactorTests.report)
+
+
+add_executable(EventMatcherTests
+        auoms_version.h
+        EventMatcherTests.cpp
+        EventMatcher.cpp
+        Event.cpp
+        TranslateRecordType.cpp
+        StringUtils.cpp
+        TestEventData.cpp
+)
+
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(EventMatcherTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
+
+target_link_libraries(EventMatcherTests
+        libre2.a
+        ${Boost_LIBRARIES}
+        pthread
+)
+
+add_test(EventMatcherTests ${CMAKE_BINARY_DIR}/EventMatcherTests --log_sink=EventMatcherTests.log --report_sink=EventMatcherTests.report)
+
+add_executable(EventAggregatorTests
+        auoms_version.h
+        EventAggregatorTests.cpp
+        EventAggregator.cpp
+        EventMatcher.cpp
+        Event.cpp
+        TranslateRecordType.cpp
+        StringUtils.cpp
+        TestEventData.cpp
+        TempFile.cpp
+)
+
+if(NOT DO_STATIC_LINK)
+  target_compile_definitions(EventAggregatorTests PUBLIC BOOST_TEST_DYN_LINK=1)
+endif()
+
+target_link_libraries(EventAggregatorTests
+        libre2.a
+        ${Boost_LIBRARIES}
+        pthread
+)
+
+add_test(EventAggregatorTests ${CMAKE_BINARY_DIR}/EventAggregatorTests --log_sink=EventAggregatorTests.log --report_sink=EventAggregatorTests.report)

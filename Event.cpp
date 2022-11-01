@@ -59,6 +59,14 @@
  *              char[] field_name (null terminated)
  *              char[] raw_value (null terminated)
  *              char[] interp_value  (null terminated, only present if interp_value_size > 0)
+ *      Extensions:
+ *          uint32_t num_extensions
+ *          uint32_t[] index
+ *          Extension:
+ *              uint32_t type
+ *              uint32_t size
+ *              *data
+ *      uint32_t extensions_offset
  */
 
 inline uint32_t& INDEX_VALUE(uint8_t* data, uint32_t offset, uint32_t index) {
@@ -245,6 +253,61 @@ constexpr uint32_t FIELD_NAME_OFFSET = FIELD_HEADER_SIZE;
 constexpr uint32_t FIELD_RAW_VALUE_OFFSET(uint16_t name_size) { return FIELD_NAME_OFFSET + name_size; }
 constexpr uint32_t FIELD_INTERP_VALUE_OFFSET(uint16_t name_size, uint32_t raw_size) { return FIELD_NAME_OFFSET + name_size + raw_size; }
 
+constexpr uint32_t EXTENSIONS_HEADER_SIZE = sizeof(uint32_t);
+constexpr uint32_t EXTENSION_HEADER_SIZE = sizeof(uint32_t)*2;
+
+inline uint32_t EXTENSIONS_OFFSET(const uint8_t* data) {
+    return *reinterpret_cast<const uint32_t*>(data + (EVENT_SIZE(data) - sizeof(uint32_t)));
+}
+
+inline uint32_t& EXTENSIONS_OFFSET(uint8_t* data) {
+    return *reinterpret_cast<uint32_t*>(data + (EVENT_SIZE(data) - sizeof(uint32_t)));
+}
+
+constexpr uint32_t EVENT_NUM_EXTENSIONS(const uint8_t* data, uint32_t offset) {
+    return *reinterpret_cast<const uint32_t*>(data + offset + sizeof(uint32_t));
+}
+
+inline uint32_t& EVENT_NUM_EXTENSIONS(uint8_t* data, uint32_t offset) {
+    return *reinterpret_cast<uint32_t*>(data + offset + sizeof(uint32_t));
+}
+
+constexpr uint32_t EXTENSIONS_INDEX_OFFSET(const uint8_t* data, uint32_t offset) {
+    return *reinterpret_cast<const uint32_t*>(data + offset + (sizeof(uint32_t)*2));
+}
+
+inline uint32_t EXTENSION_OFFSET(const uint8_t* data, uint32_t offset, uint32_t index) {
+    return reinterpret_cast<const uint32_t*>(data + offset + (sizeof(uint32_t)*2))[index];
+}
+
+inline uint32_t& EXTENSION_OFFSET(uint8_t* data, uint32_t offset, uint32_t index) {
+    return reinterpret_cast<uint32_t*>(data + offset + (sizeof(uint32_t)*2))[index];
+}
+
+constexpr uint32_t EXTENSION_TYPE(const uint8_t* data, uint32_t offset) {
+    return *reinterpret_cast<const uint32_t*>(data + offset);
+}
+
+inline uint32_t& EXTENSION_TYPE(uint8_t* data, uint32_t offset) {
+    return *reinterpret_cast<uint32_t*>(data + offset);
+}
+
+constexpr uint32_t EXTENSION_SIZE(const uint8_t* data, uint32_t offset) {
+    return *reinterpret_cast<const uint32_t*>(data + offset + sizeof(uint32_t));
+}
+
+inline uint32_t& EXTENSION_SIZE(uint8_t* data, uint32_t offset) {
+    return *reinterpret_cast<uint32_t*>(data + offset + sizeof(uint32_t));
+}
+
+constexpr const void* EXTENSION_DATA(const uint8_t* data, uint32_t offset) {
+    return data + offset + (sizeof(uint32_t)*2);
+}
+
+constexpr void* EXTENSION_DATA(uint8_t* data, uint32_t offset) {
+    return data + offset + (sizeof(uint32_t)*2);
+}
+
 /*****************************************************************************
  ** EventBuilder
  *****************************************************************************/
@@ -258,6 +321,8 @@ bool EventBuilder::BeginEvent(uint64_t sec, uint32_t msec, uint64_t serial, uint
         throw std::runtime_error("num_records == 0!");
     }
 
+    _extensions_offset = 0;
+    _extension_idx = 0;
     _roffset = EVENT_HEADER_SIZE(num_records);
     _record_idx = 0;
 
@@ -296,12 +361,12 @@ uint16_t EventBuilder::GetEventPriority() {
     return EVENT_PRIORITY(_data);
 }
 
-void EventBuilder::SetEventFlags(uint16_t flags) {
+void EventBuilder::AddEventFlags(uint16_t flags) {
     if (_data == nullptr) {
         throw std::runtime_error("Event not started!");
     }
 
-    EVENT_FLAGS(_data) = flags;
+    EVENT_FLAGS(_data) |= flags;
 }
 
 uint16_t EventBuilder::GetEventFlags() {
@@ -335,6 +400,10 @@ int EventBuilder::EndEvent() {
 
     if (_record_idx != EVENT_NUM_RECORDS(_data)) {
         throw std::runtime_error("EventRecord ended prematurely: Expected " + std::to_string(EVENT_NUM_RECORDS(_data)) + " records, only " + std::to_string(_record_idx) + " were added");
+    }
+
+    if (_extensions_offset != 0 &&  _extension_idx != EVENT_NUM_EXTENSIONS(_data, _extensions_offset)) {
+        throw std::runtime_error("Event ended prematurely: Expected " + std::to_string(EVENT_NUM_EXTENSIONS(_data, _extensions_offset)) + " extensions, only " + std::to_string(_extension_idx) + " were added");
     }
 
     SET_EVENT_SIZE(_data, static_cast<uint32_t>(_size));
@@ -517,6 +586,74 @@ bool EventBuilder::AddField(const std::string_view& field_name, const std::strin
 
 int EventBuilder::GetFieldCount() {
     return _field_idx;
+}
+
+bool EventBuilder::BeginExtensions(uint32_t num_extensions) {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    if (_record_idx != EVENT_NUM_RECORDS(_data)) {
+        throw std::runtime_error("EventRecord ended prematurely: Expected " + std::to_string(EVENT_NUM_RECORDS(_data)) + " records, only " + std::to_string(_record_idx) + " were added");
+    }
+
+    size_t size = _size + EXTENSIONS_HEADER_SIZE + (sizeof(uint32_t) * num_extensions);
+    if (!_allocator->Allocate(reinterpret_cast<void**>(&_data), size)) {
+        return false;
+    }
+    _extensions_offset = _size;
+    _size = size;
+    _extension_idx = 0;
+    _eoffset = _size;
+
+    EVENT_NUM_EXTENSIONS(_data, _extensions_offset) = num_extensions;
+
+    return true;
+}
+
+bool EventBuilder::AddExtension(uint32_t type, uint32_t data_size, void* data) {
+    if (_data == nullptr) {
+        throw std::runtime_error("Event not started!");
+    }
+
+    if (_extensions_offset == 0) {
+        throw std::runtime_error("Event Extensions not started");
+    }
+
+    size_t size = _size + EXTENSION_HEADER_SIZE + data_size;
+    if (!_allocator->Allocate(reinterpret_cast<void**>(&_data), size)) {
+        return false;
+    }
+
+    EXTENSION_OFFSET(_data, _extensions_offset, _extension_idx) = _eoffset;
+    EXTENSION_TYPE(_data, _eoffset) = type;
+    EXTENSION_SIZE(_data, _eoffset) = data_size;
+    memcpy(_data, data, size);
+
+    _extension_idx += 1;
+    _eoffset = _size;
+    _size = size;
+
+    return true;
+}
+
+bool EventBuilder::EndExtensions() {
+    if (_extension_idx != EVENT_NUM_EXTENSIONS(_data, _extensions_offset)) {
+        throw std::runtime_error("Event ended prematurely: Expected " + std::to_string(EVENT_NUM_EXTENSIONS(_data, _extensions_offset)) + " extensions, only " + std::to_string(_extension_idx) + " were added");
+    }
+
+    size_t size = _size+sizeof(uint32_t);
+    if (!_allocator->Allocate(reinterpret_cast<void**>(&_data), size)) {
+        return false;
+    }
+    _size = size;
+
+    SET_EVENT_SIZE(_data, static_cast<uint32_t>(_size));
+    EXTENSIONS_OFFSET(_data) - _extensions_offset;
+    EVENT_FLAGS(_data) |= EVENT_FLAG_HAS_EXTENSIONS;
+
+
+    return true;
 }
 
 /*****************************************************************************
@@ -766,6 +903,77 @@ void EventRecord::move(int32_t n) {
 }
 
 /*****************************************************************************
+ ** EventExtension
+ *****************************************************************************/
+
+uint32_t EventExtension::Type() const {
+    return EXTENSION_TYPE(_data, _eoffset);
+}
+
+uint32_t EventExtension::Size() const {
+    return EXTENSION_SIZE(_data, _eoffset);
+}
+
+const void* EventExtension::Data() const {
+    return EXTENSION_DATA(_data, _eoffset);
+}
+
+EventExtension::EventExtension(const uint8_t* data, uint32_t offset, uint32_t index) {
+    _data = data;
+    _offset = offset;
+    _index = index;
+    if (_index < EVENT_NUM_EXTENSIONS(_data, _offset)) {
+        _eoffset = EXTENSION_OFFSET(_data, _offset, _index);
+    } else {
+        _eoffset = EVENT_SIZE(_data);
+    }
+}
+
+void EventExtension::move(int32_t n) {
+    _index += n;
+    if (_index < EVENT_NUM_EXTENSIONS(_data, _offset)) {
+        _eoffset = EXTENSION_OFFSET(_data, _offset, _index);
+    } else {
+        _eoffset = EVENT_SIZE(_data);
+    }
+}
+
+/*****************************************************************************
+ ** EventExtensions
+ *****************************************************************************/
+
+uint32_t EventExtensions::NumExtensions() const {
+    if (_data != nullptr) {
+        return EVENT_NUM_EXTENSIONS(_data, _offset);
+    }
+    return 0;
+}
+
+EventExtension EventExtensions::ExtensionAt(uint32_t index) const {
+    if (_data == nullptr || index >= EVENT_NUM_EXTENSIONS(_data, _offset)) {
+        throw std::out_of_range("Extension index out of range for event: " + std::to_string(index));
+    }
+    return EventExtension(_data, _offset, index);
+}
+
+EventExtension EventExtensions::begin() const {
+    if (_data != nullptr && EVENT_NUM_EXTENSIONS(_data, _offset) > 0) {
+        return EventExtension(_data, _offset, 0);
+    } else {
+        throw std::out_of_range("Event has no extensions");
+    }
+}
+
+EventExtension EventExtensions::end() const {
+    if (_data != nullptr && EVENT_NUM_EXTENSIONS(_data, _offset) > 0) {
+        return EventExtension(_data, _offset, EVENT_NUM_EXTENSIONS(_data, _offset));
+    } else {
+        throw std::out_of_range("Event has no extensions");
+    }
+}
+
+
+/*****************************************************************************
  ** Event
  *****************************************************************************/
 
@@ -806,7 +1014,7 @@ int32_t Event::Pid() const {
 }
 
 EventRecord Event::RecordAt(uint32_t index) const {
-    if (index > EVENT_NUM_RECORDS(_data)+1) {
+    if (index >= EVENT_NUM_RECORDS(_data)) {
         throw std::out_of_range("Record index out of range for event: " + std::to_string(index));
     }
     return EventRecord(_data, index);
@@ -826,6 +1034,34 @@ EventRecord Event::end() const {
     } else {
         throw std::out_of_range("Event has no records");
     }
+}
+
+uint32_t Event::NumExtensions() const {
+    if ((EVENT_FLAGS(_data) & EVENT_FLAG_HAS_EXTENSIONS) == 0) {
+        return 0;
+    }
+    return EVENT_NUM_EXTENSIONS(_data, EXTENSIONS_OFFSET(_data));
+}
+
+uint32_t Event::ExtensionTypeAt(uint32_t index) const {
+    if ((EVENT_FLAGS(_data) & EVENT_FLAG_HAS_EXTENSIONS) == 0 || index >= EVENT_NUM_EXTENSIONS(_data, EXTENSIONS_OFFSET(_data))) {
+        throw std::out_of_range("Extension index out of range for event: " + std::to_string(index));
+    }
+    return EXTENSION_TYPE(_data, EXTENSION_OFFSET(_data, EXTENSIONS_OFFSET(_data), index));
+}
+
+EventExtension Event::ExtensionAt(uint32_t index) const {
+    if ((EVENT_FLAGS(_data) & EVENT_FLAG_HAS_EXTENSIONS) == 0 || index >= EVENT_NUM_EXTENSIONS(_data, EXTENSIONS_OFFSET(_data))) {
+        throw std::out_of_range("Extension index out of range for event: " + std::to_string(index));
+    }
+    return EventExtension(_data, EXTENSIONS_OFFSET(_data), index);
+}
+
+EventExtensions Event::Extensions() const {
+    if ((EVENT_FLAGS(_data) & EVENT_FLAG_HAS_EXTENSIONS) == 0) {
+        return EventExtensions(nullptr, 0);
+    }
+    return EventExtensions(_data, EXTENSIONS_OFFSET(_data));
 }
 
 int Event::Validate() const {

@@ -21,7 +21,7 @@ ShowUsage()
   cat << EOF
   Error: $1
 
-  Usage: $0 -s <archive dir> -d <dest include dir> -l <dest lib dir> [ -t <toolset> ]
+  Usage: $0 -s <archive dir> -l <dest include dir> -l <dest lib dir> [ -t <toolset> ]
 
     -s <archive dir>      - The dir where source archives reside
     -i <dest include dir> - Where to place include files

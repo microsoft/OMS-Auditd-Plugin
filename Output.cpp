@@ -22,6 +22,9 @@
 #include "FluentEventWriter.h"
 #include "RawEventWriter.h"
 #include "SyslogEventWriter.h"
+#include "FileUtils.h"
+
+#include <functional>
 
 extern "C" {
 #include <unistd.h>
@@ -30,153 +33,66 @@ extern "C" {
 #include <fcntl.h>
 }
 
-
 /****************************************************************************
  *
  ****************************************************************************/
 
-AckQueue::AckQueue(size_t max_size): _max_size(max_size), _closed(false), _have_auto_cursor(false), _next_seq(0), _auto_cursor_seq(0) {}
-
-void AckQueue::Init(const std::shared_ptr<PriorityQueue>& queue, const std::shared_ptr<QueueCursorHandle>& cursor_handle) {
-    _queue = queue;
-    _cursor_handle = cursor_handle;
-    _closed = false;
-    _event_ids.clear();
-    _cursors.clear();
-    _auto_cursors.clear();
-    _next_seq = 0;
-    _have_auto_cursor = false;
-    _auto_cursor_seq = 0;
-}
-
-void AckQueue::Close() {
-    std::unique_lock<std::mutex> _lock(_mutex);
-    _closed = true;
-    _cond.notify_all();
-}
-
-bool AckQueue::IsClosed() {
-    std::unique_lock<std::mutex> _lock(_mutex);
-    return _closed;
-}
-
-bool AckQueue::Add(const EventId& event_id, uint32_t priority, uint64_t seq, long timeout) {
-    std::unique_lock<std::mutex> _lock(_mutex);
-
-    if (_cond.wait_for(_lock, std::chrono::milliseconds(timeout), [this]() { return _closed || _event_ids.size() < _max_size; })) {
-        auto qseq = _next_seq++;
-        _event_ids.emplace(event_id, qseq);
-        _cursors.emplace(qseq, _CursorEntry(event_id, priority, seq));
-        return true;
-    }
-    return false;
-}
-
-void AckQueue::SetAutoCursor(uint32_t priority, uint64_t seq) {
-    std::unique_lock<std::mutex> _lock(_mutex);
-
-    _auto_cursor_seq = _next_seq++;
-    _auto_cursors[priority] = seq;
-    _have_auto_cursor = true;
-}
-
-void AckQueue::ProcessAutoCursor() {
-    std::unique_lock<std::mutex> _lock(_mutex);
-
-    if (_have_auto_cursor) {
-        for (auto& c : _auto_cursors) {
-            _queue->Commit(_cursor_handle, c.first, c.second);
-        }
-        _auto_cursors.clear();
-        _have_auto_cursor = false;
-    }
-}
-
-void AckQueue::Remove(const EventId& event_id) {
-    std::unique_lock<std::mutex> _lock(_mutex);
-
-    auto eitr = _event_ids.find(event_id);
-    if (eitr == _event_ids.end()) {
-        return;
-    }
-    auto seq = eitr->second;
-    _event_ids.erase(eitr);
-
-    _cursors.erase(seq);
-}
-
-bool AckQueue::Wait(int millis) {
-    std::unique_lock<std::mutex> _lock(_mutex);
-
-    auto now = std::chrono::steady_clock::now();
-    return _cond.wait_until(_lock, now + std::chrono::milliseconds(millis), [this] { return _event_ids.empty(); });
-}
-
-void AckQueue::Ack(const EventId& event_id) {
-    std::unique_lock<std::mutex> _lock(_mutex);
-
-    std::unordered_map<uint32_t, uint64_t> found_seq;
-
-    auto eitr = _event_ids.find(event_id);
-    if (eitr != _event_ids.end()) {
-        auto seq = eitr->second;
-        _event_ids.erase(eitr);
-        _cond.notify_all(); // _event_ids was modified, so notify any waiting Add calls
-
-        // Find and remove all from cursors that are <= seq
-        while (!_cursors.empty() && _cursors.begin()->first <= seq) {
-            auto& entry = _cursors.begin()->second;
-            // Make sure to remove any associated event ids from _event_ids.
-            _event_ids.erase(entry._event_id);
-            auto itr = found_seq.find(entry._priority);
-            if (itr == found_seq.end() || itr->second < entry._seq) {
-                found_seq[entry._priority] = entry._seq;
-            }
-            _cursors.erase(_cursors.begin());
-        }
-    }
-
-    if (_have_auto_cursor) {
-        if (_cursors.empty() || _cursors.begin()->first > _auto_cursor_seq) {
-            for (auto& c : _auto_cursors) {
-                auto itr = found_seq.find(c.first);
-                if (itr == found_seq.end() || itr->second < c.second) {
-                    found_seq[c.first] = c.second;
-                }
-            }
-            _auto_cursors.clear();
-            _have_auto_cursor = false;
-        }
-    }
-
-    for (auto& c : found_seq) {
-        _queue->Commit(_cursor_handle, c.first, c.second);
-    }
-}
-
-/****************************************************************************
- *
- ****************************************************************************/
 void AckReader::Init(std::shared_ptr<IEventWriter> event_writer,
-                     std::shared_ptr<IOBase> writer,
-                     std::shared_ptr<AckQueue> ack_queue) {
+                     std::shared_ptr<IOBase> writer) {
     _event_writer = event_writer;
     _writer = writer;
-    _queue = ack_queue;
+    _event_ids.clear();
+}
+
+void AckReader::AddPendingAck(const EventId& id) {
+    std::lock_guard<std::mutex> _lock(_mutex);
+
+    auto it = _event_ids.find(id);
+    if (it == _event_ids.end()) {
+        _event_ids.emplace(id, false);
+    }
+}
+
+void AckReader::RemoveAck(const EventId& id) {
+    std::lock_guard<std::mutex> _lock(_mutex);
+
+    _event_ids.erase(id);
+}
+
+bool AckReader::WaitForAck(const EventId& id, long timeout) {
+    std::unique_lock<std::mutex> _lock(_mutex);
+
+    if (_event_ids.count(id) == 0) {
+        _event_ids.emplace(id, false);
+    }
+
+    if (!_cond.wait_for(_lock, std::chrono::milliseconds(timeout), [this, &id]{ return _event_ids[id]; })) {
+        return false;
+    }
+
+    _event_ids.erase(id);
+
+    return true;
+}
+
+void AckReader::handle_ack(const EventId& id) {
+    std::lock_guard<std::mutex> _lock(_mutex);
+
+    auto it = _event_ids.find(id);
+    if (it != _event_ids.end()) {
+        it->second = true;
+        _cond.notify_all();
+    }
 }
 
 void AckReader::run() {
     EventId id;
     while(_event_writer->ReadAck(id, _writer.get()) == IO::OK) {
-        _queue->Ack(id);
+        handle_ack(id);
     }
+
     // The connection is lost, Close writer here so that Output::handle_events will exit
     _writer->Close();
-
-    _queue->ProcessAutoCursor();
-
-    // Make sure any waiting AckQueue::Add() returns immediately instead of waiting for the timeout.
-    _queue->Close();
 }
 
 /****************************************************************************
@@ -239,6 +155,10 @@ bool Output::Load(std::unique_ptr<Config>& config) {
         _event_filter.reset();
     }
 
+    if (config->HasKey("aggregation_rules")) {
+        AggregationRule::RulesFromJSON(config->GetJSON("aggregation_rules"), _aggregation_rules);
+    }
+
     if (socket_path != _socket_path || !_writer) {
         _socket_path = socket_path;
         _writer = std::unique_ptr<UnixDomainWriter>(new UnixDomainWriter(_socket_path));
@@ -259,20 +179,6 @@ bool Output::Load(std::unique_ptr<Config>& config) {
     }
 
     if (_ack_mode) {
-        uint64_t ack_queue_size = DEFAULT_ACK_QUEUE_SIZE;
-        if (_config->HasKey("ack_queue_size")) {
-            try {
-                ack_queue_size = _config->GetUint64("ack_queue_size");
-            } catch (std::exception) {
-                Logger::Error("Output(%s): Invalid ack_queue_size parameter value", _name.c_str());
-                return false;
-            }
-        }
-        if (ack_queue_size < 1) {
-            Logger::Error("Output(%s): Invalid ack_queue_size parameter value", _name.c_str());
-            return false;
-        }
-
         if (_config->HasKey("ack_timeout")) {
             try {
                 _ack_timeout = _config->GetInt64("ack_timeout");
@@ -285,17 +191,9 @@ bool Output::Load(std::unique_ptr<Config>& config) {
             Logger::Warn("Output(%s): ack_timeout parameter value to small (%ld), using (%ld)", _name.c_str(), _ack_timeout, MIN_ACK_TIMEOUT);
             _ack_timeout = MIN_ACK_TIMEOUT;
         }
-
-        if (!_ack_queue || _ack_queue->MaxSize() != ack_queue_size) {
-            _ack_queue = std::make_shared<AckQueue>(ack_queue_size);
-        }
-    } else {
-        if (_ack_queue) {
-            _ack_queue.reset();
-        }
     }
-    return true;
 
+    return true;
 }
 
 // Delete any resources associated with the output
@@ -338,65 +236,92 @@ bool Output::check_open()
     return false;
 }
 
+ssize_t Output::send_event(const Event& event) {
+    EventId id(event.Seconds(), event.Milliseconds(), event.Serial());
+    if (_ack_mode) {
+        _ack_reader->AddPendingAck(id);
+    }
+    auto ret = _event_writer->WriteEvent(event, _writer.get());
+    switch (ret) {
+    case IEventWriter::NOOP:
+         _ack_reader->RemoveAck(id);
+        return IWriter::OK;
+    case IWriter::OK:
+        if (_ack_mode) {
+            if (!_ack_reader->WaitForAck(id, _ack_timeout)) {
+                Logger::Warn("Output(%s): Timeout waiting for ack", _name.c_str());
+                return IO::TIMEOUT;
+            }
+        }
+        return IWriter::OK;
+    default:
+         _ack_reader->RemoveAck(id);
+        return ret;
+    }
+}
+
+// Return true of the write succeeded
+bool Output::handle_queue_event(const Event& event, uint32_t priority, uint64_t sequence) {
+    auto ret = send_event(event);
+    if (ret != IWriter::OK) {
+        return false;
+    }
+
+    _queue->Commit(_cursor_handle, priority, sequence);
+
+    return true;
+}
+
+// Return <err,false> of the write failed
+std::pair<int64_t, bool> Output::handle_agg_event(const Event& event) {
+    auto ret = send_event(event);
+    return std::make_pair(static_cast<int64_t>(ret), ret == IWriter::OK);
+}
+
 bool Output::handle_events(bool checkOpen) {
     _queue->Rollback(_cursor_handle);
 
     if (_ack_mode) {
-        _ack_queue->Init(_queue, _cursor_handle);
-        _ack_reader->Init(_event_writer, _writer, _ack_queue);
+        _ack_reader->Init(_event_writer, _writer);
         _ack_reader->Start();
     }
 
     while(!IsStopping() && (!checkOpen || _writer->IsOpen())) {
-        std::pair<std::shared_ptr<QueueItem>,bool> get_ret;
-        do {
-            get_ret = _queue->Get(_cursor_handle, 100, !_ack_mode);
-        } while((!get_ret.first && !get_ret.second) && (!checkOpen || _writer->IsOpen()));
+        if (_event_aggregator) {
+            std::tuple<bool, int64_t, bool> agg_ret;
+            do {
+                agg_ret = _event_aggregator->HandleEvent([this, checkOpen](const Event& event) -> std::pair<int64_t, bool> {
+                    if (IsStopping() || !(checkOpen && _writer->IsOpen())) {
+                        return std::make_pair(0, false);
+                    }
+                    return handle_agg_event(event);
+                });
+            } while (std::get<0>(agg_ret));
+            if (std::get<0>(agg_ret) && !std::get<2>(agg_ret)) {
+                // The write failed, so assume the connection is bad
+                break;
+            }
+        }
 
-        if (get_ret.first && (!checkOpen || _writer->IsOpen()) && !IsStopping()) {
+        std::pair<std::shared_ptr<QueueItem>,bool> get_ret;
+        get_ret = _queue->Get(_cursor_handle, 100, !_ack_mode);
+
+        if(get_ret.first) {
             Event event(get_ret.first->Data(), get_ret.first->Size());
             bool filtered = _event_filter && _event_filter->IsEventFiltered(event);
             if (!filtered) {
-                if (_ack_mode) {
-                    // Avoid racing with receiver, add ack before sending event
-                    if (!_ack_queue->Add(EventId(event.Seconds(), event.Milliseconds(), event.Serial()),
-                                         get_ret.first->Priority(), get_ret.first->Sequence(),
-                                         _ack_timeout)) {
-                        if (!_ack_queue->IsClosed()) {
-                            Logger::Error("Output(%s): Timeout waiting for Acks", _name.c_str());
-                        }
-                        break;
+                if (_event_aggregator) {
+                    if (_event_aggregator->AddEvent(event)) {
+                        // The event was consumed
+                        continue;
                     }
                 }
-
-                auto ret = _event_writer->WriteEvent(event, _writer.get());
-                if (ret == IEventWriter::NOOP) {
-                    if (_ack_mode) {
-                        // The event was not sent, so remove it's ack
-                        _ack_queue->Remove(EventId(event.Seconds(), event.Milliseconds(), event.Serial()));
-                        // And update the auto cursor
-                        _ack_queue->SetAutoCursor(get_ret.first->Priority(), get_ret.first->Sequence());
-                    }
-                } else if (ret != IWriter::OK) {
+                if (!handle_queue_event(event, get_ret.first->Priority(), get_ret.first->Sequence())) {
+                    // The write failed, so assume the connection is bad
                     break;
-                }
-
-                if (!_ack_mode) {
-                    _queue->Commit(_cursor_handle, get_ret.first->Priority(), get_ret.first->Sequence());
-                }
-            } else {
-                if (_ack_mode) {
-                    _ack_queue->SetAutoCursor(get_ret.first->Priority(), get_ret.first->Sequence());
-                } else {
-                    _queue->Commit(_cursor_handle, get_ret.first->Priority(), get_ret.first->Sequence());
                 }
             }
         }
-    }
-
-    if (_ack_mode) {
-        // Wait a short time for final acks to arrive
-        _ack_queue->Wait(100);
     }
 
     // writer must be closed before calling _ack_reader->Stop(), or the stop may hang until the connection is closed remotely.
@@ -419,23 +344,67 @@ void Output::on_stopping() {
     if (_writer) {
         _writer->CloseWrite();
     }
-    if (_ack_queue) {
-        _ack_queue->Close();
-    }
 }
 
 void Output::on_stop() {
     if (_ack_reader) {
         _ack_reader->Stop();
     }
+
     if (_writer) {
         _writer->Close();
     }
+
+    if (_event_aggregator) {
+        if (!_save_file.empty()) {
+            try {
+                _event_aggregator->Save(_save_file);
+            } catch (const std::exception& ex) {
+                Logger::Error("Output(%s): Failed to save event aggregation state to '%s': %s", _name.c_str(), _save_file.c_str(), ex.what());
+            }
+        } else {
+            Logger::Error("Output(%s): Failed to save event aggregation state: No save file defined", _name.c_str());
+        }
+        _event_aggregator.reset();
+    }
+
     Logger::Info("Output(%s): Stopped", _name.c_str());
 }
 
 void Output::run() {
     Logger::Info("Output(%s): Started", _name.c_str());
+
+    if (_aggregation_rules.size() > 0) {
+        _event_aggregator = std::make_shared<EventAggregator>();
+        if (!_save_file.empty() && PathExists(_save_file)) {
+            if (!IsOnlyRootWritable(_save_file)) {
+                Logger::Error("Output(%s): Event aggregation state file is non-root writable '%s': It will ignored and removed", _name.c_str(), _save_file.c_str());
+                _event_aggregator = std::make_shared<EventAggregator>();
+            } else {
+                try {
+                    _event_aggregator->Load(_save_file);
+                } catch (const std::exception& ex) {
+                    Logger::Error("Output(%s): Failed to load event aggregation state from '%s': %s", _name.c_str(), _save_file.c_str(), ex.what());
+                    _event_aggregator = std::make_shared<EventAggregator>();
+                }
+            }
+            if (unlink(_save_file.c_str()) != 0) {
+                Logger::Error("Output(%s): Failed to remove aggregation state file '%s': %s", _name.c_str(), _save_file.c_str(), std::strerror(errno));
+            }
+        }
+        try {
+            _event_aggregator->SetRules(_aggregation_rules);
+        } catch (const std::exception& ex) {
+            Logger::Error("Output(%s): Failed to set event aggregation rules: %s", _name.c_str(), ex.what());
+            _event_aggregator.reset();
+        }
+    } else {
+        if (!_save_file.empty() && PathExists(_save_file)) {
+            if (unlink(_save_file.c_str()) != 0) {
+                Logger::Error("Output(%s): Failed to remove aggregation state file '%s': %s", _name.c_str(), _save_file.c_str(), std::strerror(errno));
+            }
+        }
+    }
 
     _cursor_handle = _queue->OpenCursor(_name);
     if (!_cursor_handle) {

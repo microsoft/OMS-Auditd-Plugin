@@ -19,6 +19,7 @@
 #include "StringUtils.h"
 #include "ExecveConverter.h"
 
+#include <algorithm>
 #include <climits>
 #include <cerrno>
 #include <cstring>
@@ -43,9 +44,9 @@ time_t boot_time() {
     return ts.tv_sec - sinfo.uptime;
 }
 
-bool read_file(const std::string& path, std::vector<uint8_t>& data, size_t limit, bool& truncated) {
+bool read_file(const char* path, std::vector<uint8_t>& data, size_t limit, bool& truncated) {
     errno = 0;
-    int fd = ::open(path.c_str(), O_RDONLY|O_CLOEXEC);
+    int fd = ::open(path, O_RDONLY|O_CLOEXEC);
     if (fd < 0) {
         return false;
     }
@@ -72,11 +73,11 @@ bool read_file(const std::string& path, std::vector<uint8_t>& data, size_t limit
 }
 
 // Return 1 on success, 0 if there is no exe (the case for kernel processes), or -1 on error.
-int read_link(const std::string& path, std::string& data) {
+int read_link(const char* path, std::string& data) {
     char buff[PATH_MAX];
     data.clear();
     errno = 0;
-    ssize_t len = ::readlink(path.c_str(), buff, sizeof(buff)-1);
+    ssize_t len = ::readlink(path, buff, sizeof(buff)-1);
     if (len < 0) {
         // For kernel processes errno will be ENOENT
         if (errno == ENOENT) {
@@ -88,13 +89,33 @@ int read_link(const std::string& path, std::string& data) {
     return 1;
 }
 
-bool ProcessInfo::parse_stat() {
-    if (_stat.empty()) {
-        return false;
+int ProcessInfo::read_and_parse_stat(int pid) {
+    std::array<char, 64> path;
+    std::array<char, 2048> data;
+
+    snprintf(path.data(), path.size(), "/proc/%d/stat", pid);
+
+    int fd = ::open(path.data(), O_RDONLY|O_CLOEXEC);
+    if (fd < 0) {
+        if (errno != ENOENT && errno != ESRCH) {
+            Logger::Warn("Failed to open /proc/%d/stat: %s", pid, strerror(errno));
+        }
+        return -1;
     }
 
-    char *ptr = reinterpret_cast<char*>(_stat.data());
-    char *end = reinterpret_cast<char*>(ptr+_stat.size());
+    auto nr = ::read(fd, data.data(), data.size());
+    if (nr <= 0) {
+        close(fd);
+        // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
+        if (nr < 0 && errno != ENOENT && errno != ESRCH) {
+            Logger::Warn("Failed to read /proc/%d/stat: %s", pid, strerror(errno));
+        }
+        return -1;
+    }
+    close(fd);
+
+    char *ptr = reinterpret_cast<char*>(data.data());
+    char *end = reinterpret_cast<char*>(ptr+nr);
 
     // pid
     char *f_end = ptr;
@@ -102,27 +123,33 @@ bool ProcessInfo::parse_stat() {
     errno = 0;
     _pid = static_cast<int>(strtol(ptr, &f_end, 10));
     if (errno != 0 || *f_end != ' ') {
-        return false;
+        return 1;
     }
 
     ptr = f_end+1;
 
     if (ptr >= end) {
-        return false;
+        return 1;
     }
 
     // comm
     if (*ptr != '(') {
-        return false;
+        return 1;
     }
     f_end = strstr(ptr, ") ");
     if (f_end != nullptr && f_end+1 < end && f_end[1] == ')') {
         f_end += 1;
     }
     if (f_end == nullptr || f_end >= end) {
-        return false;
+        return 1;
     }
-    _comm.assign(ptr+1, f_end-ptr-1);
+
+    _comm_size = f_end-ptr-1;
+    if (_comm_size >= _comm.max_size()) {
+        _comm_size = _comm.max_size()-1;
+    }
+    std::copy_n(ptr+1, _comm_size, _comm.data());
+    _comm[_comm_size] = 0;
 
     ptr = f_end+1;
     if (ptr < end && *ptr == ' ') {
@@ -130,64 +157,64 @@ bool ProcessInfo::parse_stat() {
     }
 
     if (ptr >= end) {
-        return false;
+        return 1;
     }
 
     // Skip state
     f_end = strchr(ptr, ' ');
     if (f_end == nullptr || f_end >= end) {
-        return false;
+        return 1;
     }
     ptr = f_end+1;
     if (ptr >= end) {
-        return false;
+        return 1;
     }
 
     // ppid
     errno = 0;
     _ppid = static_cast<int>(strtol(ptr, &f_end, 10));
     if (errno != 0 || *f_end != ' ') {
-        return false;
+        return 1;
     }
 
     ptr = f_end+1;
 
     if (ptr >= end) {
-        return false;
+        return 1;
     }
 
     // Skip pgrp
     f_end = strchr(ptr, ' ');
     if (f_end == nullptr || f_end >= end) {
-        return false;
+        return 1;
     }
     ptr = f_end+1;
     if (ptr >= end) {
-        return false;
+        return 1;
     }
 
     // sid
     errno = 0;
     _ses = static_cast<int>(strtol(ptr, &f_end, 10));
     if (errno != 0 || *f_end != ' ') {
-        return false;
+        return 1;
     }
 
     ptr = f_end+1;
 
     if (ptr >= end) {
-        return false;
+        return 1;
     }
 
     // Skip to utime
     for (int i = 0; i < 7; ++i) {
         f_end = strchr(ptr, ' ');
         if (f_end == nullptr || f_end >= end) {
-            return false;
+            return 1;
         }
         ptr = f_end + 1;
         if (ptr >= end) {
-            return false;
+            return 1;
         }
     }
 
@@ -195,35 +222,35 @@ bool ProcessInfo::parse_stat() {
     errno = 0;
     _utime = strtoull(ptr, &f_end, 10);
     if (errno != 0 || *f_end != ' ') {
-        return false;
+        return 1;
     }
 
     ptr = f_end+1;
     if (ptr >= end) {
-        return false;
+        return 1;
     }
 
     // stime
     errno = 0;
     _stime = strtoull(ptr, &f_end, 10);
     if (errno != 0 || *f_end != ' ') {
-        return false;
+        return 1;
     }
 
     ptr = f_end+1;
     if (ptr >= end) {
-        return false;
+        return 1;
     }
 
     // Skip to starttime
     for (int i = 0; i < 6; ++i) {
         f_end = strchr(ptr, ' ');
         if (f_end == nullptr || f_end >= end) {
-            return false;
+            return 1;
         }
         ptr = f_end + 1;
         if (ptr >= end) {
-            return false;
+            return 1;
         }
     }
 
@@ -231,51 +258,71 @@ bool ProcessInfo::parse_stat() {
     errno = 0;
     _starttime = strtoull(ptr, &f_end, 10);
     if (errno != 0 || *f_end != ' ') {
-        return false;
+        return 1;
     }
 
     ptr = f_end+1;
 
     if (ptr >= end) {
-        return false;
+        return 1;
     }
 
-    return true;
+    return 0;
 }
 
-bool ProcessInfo::parse_status() {
-    if (_status.empty()) {
-        return false;
+int ProcessInfo::read_and_parse_status(int pid) {
+    std::array<char, 64> path;
+    std::array<char, 8192> data;
+
+    snprintf(path.data(), path.size(), "/proc/%d/status", pid);
+
+    int fd = ::open(path.data(), O_RDONLY|O_CLOEXEC);
+    if (fd < 0) {
+        if (errno != ENOENT && errno != ESRCH) {
+            Logger::Warn("Failed to open /proc/%d/status: %s", pid, strerror(errno));
+        }
+        return -1;
     }
 
-    char *ptr = reinterpret_cast<char*>(_status.data());
-    char *end = reinterpret_cast<char*>(ptr+_status.size());
+    auto nr = ::read(fd, data.data(), data.size());
+    if (nr <= 0) {
+        close(fd);
+        // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
+        if (nr < 0 && errno != ENOENT && errno != ESRCH) {
+            Logger::Warn("Failed to read /proc/%d/status: %s", pid, strerror(errno));
+        }
+        return -1;
+    }
+    close(fd);
+
+    char *ptr = reinterpret_cast<char*>(data.data());
+    char *end = reinterpret_cast<char*>(ptr+nr);
 
     char *uid_line = strstr(ptr, "Uid:");
     if (uid_line == nullptr || uid_line >= end) {
-        return false;
+        return 1;
     }
 
     char *uid_line_end = strchr(uid_line, '\n');
     if (uid_line_end == nullptr || uid_line_end >= end) {
-        return false;
+        return 1;
     }
 
     char *gid_line = strstr(uid_line_end, "Gid:");
     if (gid_line == nullptr || gid_line >= end) {
-        return false;
+        return 1;
     }
 
     char *gid_line_end = strchr(gid_line, '\n');
     if (gid_line_end == nullptr || gid_line_end >= end) {
-        return false;
+        return 1;
     }
 
     ptr = uid_line;
     ptr += 4; // Skip "Uid:"
     ptr = strchr(ptr, '\t');
     if (ptr == nullptr) {
-        return false;
+        return 1;
     }
 
     int uids[4];
@@ -283,7 +330,7 @@ bool ProcessInfo::parse_status() {
         errno = 0;
         uids[i] = static_cast<int>(strtol(ptr, &end, 10));
         if (errno != 0) {
-            return false;
+            return 1;
         }
         while(*ptr == '\t') {
             ++ptr;
@@ -294,7 +341,7 @@ bool ProcessInfo::parse_status() {
     ptr += 4; // Skip "Gid:"
     ptr = strchr(ptr, '\t');
     if (ptr == nullptr) {
-        return false;
+        return 1;
     }
 
     int gids[4];
@@ -302,7 +349,7 @@ bool ProcessInfo::parse_status() {
         errno = 0;
         gids[i] = static_cast<int>(strtol(ptr, &end, 10));
         if (errno != 0) {
-            return false;
+            return 1;
         }
         while(*ptr == '\t') {
             ++ptr;
@@ -319,30 +366,31 @@ bool ProcessInfo::parse_status() {
     _sgid = gids[2];
     _fsgid = gids[3];
 
-    return true;
+    return 0;
 }
 
 bool ProcessInfo::read(int pid) {
-    const std::string path = "/proc/" + std::to_string(pid);
-    bool truncated;
+    std::array<char, 64> path;
 
-    if (!read_file(path+"/stat", _stat, 2048, truncated)) {
-        // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
-        if (errno != ENOENT && errno != ESRCH) {
-            Logger::Warn("Failed to read /proc/%d/stat: %s", pid, strerror(errno));
+    snprintf(path.data(), path.size(), "/proc/%d/exe", pid);
+
+    int pret = read_and_parse_stat(pid);
+    if (pret != 0) {
+        if (pret > 0) {
+            Logger::Warn("Failed to parse /proc/%d/stat", pid);
         }
         return false;
     }
 
-    if (!read_file(path+"/status", _status, 8192, truncated)) {
-        // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
-        if (errno != ENOENT && errno != ESRCH) {
-            Logger::Warn("Failed to read /proc/%d/status: %s", pid, strerror(errno));
+    pret = read_and_parse_status(pid);
+    if (pret != 0) {
+        if (pret > 0) {
+            Logger::Warn("Failed to parse /proc/%d/status", pid);
         }
         return false;
     }
 
-    auto exe_status = read_link(path+"/exe", _exe);
+    auto exe_status = read_link(path.data(), _exe);
     if (exe_status < 0) {
             // EACCES (Permission denied) will be seen occasionally (probably due to racy nature of /proc iteration)
             // ONly emit error if it wasn't EACCES or ESRCH
@@ -354,9 +402,10 @@ bool ProcessInfo::read(int pid) {
 
     // Only try to read the cmdline file if there was an exe link.
     // Kernel processes will not have anything in the cmdline file.
-    if (exe_status == 1) {
+    if (exe_status == 1 && _cmdline_size_limit > 0) {
         // The Event field value size limit is UINT16_MAX (including NULL terminator)
-        if (!read_file(path + "/cmdline", _cmdline, _cmdline_size_limit, _cmdline_truncated)) {
+        snprintf(path.data(), path.size(), "/proc/%d/cmdline", pid);
+        if (!read_file(path.data(), _cmdline, _cmdline_size_limit, _cmdline_truncated)) {
             // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
             if (errno != ENOENT && errno != ESRCH) {
                 Logger::Warn("Failed to read /proc/%d/cmdline: %s", pid, strerror(errno));
@@ -365,16 +414,6 @@ bool ProcessInfo::read(int pid) {
         }
     }
 
-
-    if (!parse_stat()) {
-        Logger::Warn("Failed to parse /proc/%d/stat", pid);
-        return false;
-    }
-
-    if (!parse_status()) {
-        Logger::Warn("Failed to parse /proc/%d/status", pid);
-        return false;
-    }
 
     return true;
 }
@@ -428,7 +467,7 @@ void ProcessInfo::clear() {
     _sgid = -1;
     _fsgid = -1;
     _exe.clear();
-    _comm.clear();
+    _comm.fill(0);
     _cmdline.clear();
     _cmdline_truncated = false;
     _starttime_str.clear();

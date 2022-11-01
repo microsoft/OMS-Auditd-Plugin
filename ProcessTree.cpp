@@ -24,7 +24,11 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 #include <linux/netlink.h>
+#include <linux/connector.h>
+#include <linux/cn_proc.h>
+#include <linux/filter.h>
 #include <sys/stat.h>
 
 #ifndef SOL_NETLINIK
@@ -52,7 +56,7 @@ bool ProcessNotify::InitProcSocket()
 
     Logger::Info("ProcessNotify initialising");
 
-    _proc_socket = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_CONNECTOR);
+    _proc_socket = socket(PF_NETLINK, SOCK_DGRAM | SOCK_CLOEXEC, NETLINK_CONNECTOR);
     if (_proc_socket < 0) {
         Logger::Error("Cannot create netlink socket for proc monitoring: %s", std::strerror(errno));
         return false;
@@ -68,10 +72,68 @@ bool ProcessNotify::InitProcSocket()
         return false;
     }
 
+    // Add BPF filter to exclude proc connector messages related to threads
+    struct sock_filter filter[] = {
+        // If netlink message is multi-part, just pass the message
+        BPF_STMT (BPF_LD|BPF_H|BPF_ABS, offsetof (struct nlmsghdr, nlmsg_type)),
+        BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K, htons (NLMSG_DONE), 1, 0),
+        // Pass the whole message
+        BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
+
+        // If the netlink message doesn't contain a proc connector message, just pass the message
+        BPF_STMT (BPF_LD|BPF_W|BPF_ABS,
+                    NLMSG_LENGTH (0) + offsetof (struct cn_msg, id)
+                            + offsetof (struct cb_id, idx)),
+        BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
+                    htonl (CN_IDX_PROC),
+                    1, 0),
+        BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
+
+        
+        BPF_STMT (BPF_LD|BPF_W|BPF_ABS,
+                    NLMSG_LENGTH (0) + offsetof (struct cn_msg, id)
+                            + offsetof (struct cb_id, idx)),
+        BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
+                    htonl (CN_VAL_PROC),
+                    1, 0),
+        BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
+
+        // If the proc event is a PROC_EVENT_EXIT, pass it
+        BPF_STMT (BPF_LD|BPF_W|BPF_ABS,
+                    NLMSG_LENGTH (0) + offsetof (struct cn_msg, data)
+                            + offsetof (struct proc_event, what)),
+        BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
+                    htonl (proc_event::what::PROC_EVENT_EXIT),
+                    0, 1),
+        BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
+
+        // If the proc event is a PROC_EVENT_EXEC, pass it
+        BPF_STMT (BPF_LD|BPF_W|BPF_ABS,
+                    NLMSG_LENGTH (0) + offsetof (struct cn_msg, data)
+                            + offsetof (struct proc_event, what)),
+        BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
+                    htonl (proc_event::what::PROC_EVENT_EXEC),
+                    0, 1),
+        BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
+
+        // Drop what's left
+        BPF_STMT (BPF_RET|BPF_K, 0),
+    };
+
+    struct sock_fprog fprog;
+    fprog.filter = filter;
+    fprog.len = sizeof filter / sizeof filter[0];
+
+    if (setsockopt (_proc_socket, SOL_SOCKET, SO_ATTACH_FILTER, &fprog, sizeof fprog) != 0) {
+        Logger::Error("Failed set BPF filter socket for proc monitoring: %s", std::strerror(errno));
+        close(_proc_socket);
+        return false;
+    }
+
     // Prevent ENOBUFS when messages generated faster then can be received.
     int on = 1;
     if (setsockopt(_proc_socket, SOL_NETLINK, NETLINK_NO_ENOBUFS, &on, sizeof(on)) != 0) {
-        Logger::Error("Cannot set NETLINK_NO_ENOBUFS option on socket for proc monitoring: %s", std::strerror(errno));
+        Logger::Error("Failed set NETLINK_NO_ENOBUFS option on socket for proc monitoring: %s", std::strerror(errno));
         close(_proc_socket);
         return false;
     }

@@ -132,13 +132,9 @@ if [ -n "$DepsDir" ]; then
 fi
 
 if [ -z "$SourceDir" ]; then
-  pushd $(dirname $0)/..
-  SourceDir=$(pwd)
-  popd
+  SourceDir=$(cd $(dirname $0)/.. && pwd)
 else
-  pushd $SourceDir
-  SourceDir=$(pwd)
-  popd
+  SourceDir=$(cd $SourceDir && pwd)
 fi
 
 ToolchainFile=""
@@ -203,9 +199,11 @@ if [ $? -ne 0 ]; then
 fi
 popd
 
-mkdir $DestDir/bin
-if [ $? -ne 0 ]; then
-  Bail "Failed to create '$DestDir/bin'"
+if [ ! -d $DestDir/bin ]; then
+  mkdir $DestDir/bin
+  if [ $? -ne 0 ]; then
+    Bail "Failed to create '$DestDir/bin'"
+  fi
 fi
 
 cp $BuildDir/release/bin/* $DestDir/bin
@@ -213,9 +211,11 @@ if [ $? -ne 0 ]; then
   Bail "Failed to copy binaries to dest dir"
 fi
 
-mkdir $DestDir/tests
-if [ $? -ne 0 ]; then
-  Bail "Failed to create '$DestDir/tests'"
+if [ ! -d $DestDir/tests ]; then
+  mkdir $DestDir/tests
+  if [ $? -ne 0 ]; then
+    Bail "Failed to create '$DestDir/tests'"
+  fi
 fi
 
 cp $BuildDir/*Tests $DestDir/tests

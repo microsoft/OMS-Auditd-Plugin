@@ -82,7 +82,7 @@ struct TestEvent {
 
     void Write(const std::shared_ptr<EventBuilder>& builder) {
         builder->BeginEvent(_seconds, _milliseconds, _serial, _records.size());
-        builder->SetEventFlags(_flags);
+        builder->AddEventFlags(_flags);
         builder->SetEventPid(_pid);
         for (auto rec : _records) {
             rec.Write(builder);

@@ -31,11 +31,94 @@
 #include <iostream>
 #include <sys/types.h>
 #include <unistd.h>
-#include <sys/socket.h>
-#include <linux/netlink.h>
-#include <linux/connector.h>
-#include <linux/cn_proc.h>
 #include <bits/stdc++.h>
+
+/*
+
+    Init
+        Read app procs
+        Apply filter to each proc
+        Propogate filter results to child processes
+
+    Add Pid
+        Read proc into
+        Apply filter to proc
+        Propogate filter results from parent
+
+    ProcInfo
+        Trigger (execve, pnotify_fork, pnotify_exec)
+        Origin (audit, procfs)
+        pid
+        ppid
+        starttime
+        parent_starttime
+        containerid
+        filterflags
+
+    ProcTree
+        std::unordered_map<pid_t, std::shared_ptr<ProcInfo>> proc_tree
+
+    AddForkPid(pid_t pid, pid_t ppid)
+        Lock(new_pids_lock)
+        Add pid to new_pids
+        Notify condition
+
+    AddExecve(pid_t pid, pid_t ppid, exe, cmdline)
+        Lock(mutex)
+
+    addForkPid(pid, ppid)
+        pp = getProc(ppid, 0)
+        p = getProcFromProcFS(pid)
+        p->parent = pp
+        if p->parent
+            copy containerid and filter state from parent
+        if p->notfiltered
+            filterProc(p)
+
+    addExecPid(pid)
+        p = getProc(pid, 0)
+
+    addProc(uid, gid, pid, ppid, exe, cmdline)
+        pi = proc_tree.find(pid)
+        if pi == null
+            pi = new ProcInfo
+        pi->Set(uid, gif, pid, ppid, exe, cmdline)
+
+    getProcFromProcFS(pid)
+        p = new ProcInfo
+        read to p
+        filterProc(p)
+        return p
+
+    getProc(pid, nestcount)
+        if nestcount > 10
+            return nullptr
+        nestcount++;
+        ProcInfo *p
+        pi = proc_tree.find(pid)
+        if pi == null
+            p = getProcFromProcFS(pid)
+            proc_tree[pid] = p
+        else
+            p = pi->second
+        if !(p->parent)
+            p->parent = getProc(pid, nestcount)
+        if p->parent
+            copy containerid and filter state from parent
+        if p->notfiltered
+            filterProc(p)
+        return p
+
+    pnotify_run()
+        read from sock
+            AddForkPid(pid, ppid)
+            AddExecPid(pid)
+            ExitPid(pid)
+
+    run()
+
+
+*/
 
 enum ProcessTreeSource { ProcessTreeSource_execve, ProcessTreeSource_pnotify, ProcessTreeSource_procfs };
 

@@ -40,7 +40,7 @@ bool BuildEvent(std::shared_ptr<EventBuilder>& builder, uint64_t sec, uint32_t m
         builder->CancelEvent();
         return false;
     }
-    if (!builder->AddField("seq", std::to_string(seq), nullptr, field_type_t::UNCLASSIFIED)) {
+    if (!builder->AddField("seq", std::to_string(seq), std::string_view(), field_type_t::UNCLASSIFIED)) {
         builder->CancelEvent();
         return false;
     }
@@ -86,7 +86,7 @@ BOOST_AUTO_TEST_CASE( basic_test ) {
         {"ack_timeout", "1000"}
     }));
     auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
-    Output output("output", queue, writer_factory, nullptr);
+    Output output("output", "", queue, writer_factory, nullptr);
     output.Load(output_config);
 
     auto operational_status = std::make_shared<OperationalStatus>("", nullptr);
@@ -185,7 +185,7 @@ BOOST_AUTO_TEST_CASE( same_event_id_test ) {
         {"ack_timeout", "1000"}
     }));
     auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
-    Output output("output", queue, writer_factory, nullptr);
+    Output output("output", "", queue, writer_factory, nullptr);
     output.Load(output_config);
 
     auto operational_status = std::make_shared<OperationalStatus>("", nullptr);
@@ -281,11 +281,10 @@ BOOST_AUTO_TEST_CASE( dropped_acks_test ) {
         {"output_format","raw"},
         {"output_socket", socket_path},
         {"enable_ack_mode", "true"},
-        {"ack_queue_size", "10"},
         {"ack_timeout", "100"}
     }));
     auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
-    Output output("output", queue, writer_factory, nullptr);
+    Output output("output", "", queue, writer_factory, nullptr);
     output.Load(output_config);
 
     Gate done_gate;
@@ -308,7 +307,6 @@ BOOST_AUTO_TEST_CASE( dropped_acks_test ) {
 
         bool stop = false;
         bool drop = true;
-        int num_received = 0;
         std::array<uint8_t, 1024> data;
         RawEventReader reader;
 
@@ -323,17 +321,19 @@ BOOST_AUTO_TEST_CASE( dropped_acks_test ) {
                     break;
                 }
                 Event event(data.data(), ret);
+                Logger::Info("Input: Recevied %ld", event.Serial());
                 if (event.Serial() == end_serial) {
+                    Logger::Info("Input: Recevied End");
                     reader.WriteAck(event, &io);
                     stop = true;
                     break;
                 }
                 if (!drop) {
+                    Logger::Info("Input: Sending Ack");
                     reader.WriteAck(event, &io);
+                    _outputs.emplace_back(reinterpret_cast<char *>(data.data()), ret);
                 }
                 drop = !drop;
-                _outputs.emplace_back(reinterpret_cast<char *>(data.data()), ret);
-                num_received += 1;
             }
         }
         done_gate.Open();
@@ -359,7 +359,7 @@ BOOST_AUTO_TEST_CASE( dropped_acks_test ) {
         }
     }
 
-    if (!done_gate.Wait(Gate::OPEN, 10000)) {
+    if (!done_gate.Wait(Gate::OPEN, 15000)) {
         BOOST_FAIL("Time out waiting for inputs");
     }
 
@@ -367,12 +367,14 @@ BOOST_AUTO_TEST_CASE( dropped_acks_test ) {
     queue->Close();
     input_thread.join();
 
+    int timeout_count = 0;
     for (auto& msg : log_lines) {
-        if (starts_with(msg, "Output(output): Timeout waiting for Acks")) {
-            BOOST_FAIL("Found 'Timeout waiting for Acks' in log output");
+        if (starts_with(msg, "Output(output): Timeout waiting for ack")) {
+            timeout_count += 1;
         }
     }
 
+    BOOST_REQUIRE_EQUAL(num_events, timeout_count);
     BOOST_REQUIRE_EQUAL(num_events, _outputs.size());
 
     for (int i = 0; i < num_events; i++) {
@@ -410,7 +412,7 @@ BOOST_AUTO_TEST_CASE( dropped_conn_test ) {
         {"ack_timeout", "1000"}
     }));
     auto writer_factory = std::shared_ptr<IEventWriterFactory>(static_cast<IEventWriterFactory*>(new RawOnlyEventWriterFactory()));
-    Output output("output", queue, writer_factory, nullptr);
+    Output output("output", "", queue, writer_factory, nullptr);
     output.Load(output_config);
 
     Gate done_gate;
