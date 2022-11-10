@@ -30,6 +30,7 @@
 #define FTRACE_SYS_ENTER_TRIGGER "/sys/kernel/debug/tracing/instances/auoms/events/raw_syscalls/sys_enter/trigger"
 #define FTRACE_SYS_ENTER_HIST "/sys/kernel/debug/tracing/instances/auoms/events/raw_syscalls/sys_enter/hist"
 #define SYSCALL_HIST_TRIGGER "hist:key=id.syscall:val=hitcount"
+#define SYSCALL_HIST_TRIGGER_CLEAR "hist:key=id.syscall:val=hitcount:clear"
 
 // Lines like: { id: sys_recvmsg                   [ 47] } hitcount:      27076
 const std::string SyscallMetrics::_hist_line_match_re = R"REGEX(^\{\s*id:\s*(\S+)\s*\[\s*([0-9]+)\s*\]\s*\}\s*hitcount:\s*([0-9]+))REGEX";
@@ -137,7 +138,7 @@ bool SyscallMetrics::collect_metrics() {
 
     // Reset hist
     try {
-        WriteFile(FTRACE_SYS_ENTER_TRIGGER, {{SYSCALL_HIST_TRIGGER}});
+        AppendFile(FTRACE_SYS_ENTER_TRIGGER, {{SYSCALL_HIST_TRIGGER_CLEAR}});
     } catch (std::exception &ex) {
         Logger::Warn("SyscallMetrics: Failed to write sys_enter trigger (%s): %s", FTRACE_SYS_ENTER_TRIGGER, ex.what());
         return false;

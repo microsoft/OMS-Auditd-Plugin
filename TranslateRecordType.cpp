@@ -223,6 +223,7 @@ static StringTable<RecordType> s_record_type_table(RecordType ::UNKNOWN, {
         {"AUOMS_DROPPED_RECORDS", RecordType::AUOMS_DROPPED_RECORDS},
         {"AUOMS_STATUS", RecordType::AUOMS_STATUS},
         {"AUOMS_METRIC", RecordType::AUOMS_METRIC},
+        {"AUOMS_AGGREGATE", RecordType::AUOMS_AGGREGATE},
         {"AUOMS_EXECVE", RecordType::AUOMS_EXECVE},
 });
 

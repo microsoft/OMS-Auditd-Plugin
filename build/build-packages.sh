@@ -133,17 +133,25 @@ mkdir -p $IntermediateDir
 
 BUILD_NUMBER=${BuildNumber:-$AUOMS_BUILDVERSION_BUILDNR}
 
-cp $BinDir/bin/* $TargetDir/bin
+#cp $BinDir/bin/* $TargetDir/bin
 
 pushd $DestDir
 
 PSEUDO_OPTS=""
 if [ $(id -u) -ne 0 ]; then
   mkdir -p $PseudoDir
-  PSEUDO_OPTS="PSEUDO_PREFIX=/opt/pseudo PSEUDO_LOCALSTATEDIR=$PseudoDir pseudo"
 fi
 
-$PSEUDO_OPTS python $SourceDir/installer/InstallBuilder/installbuilder.py \
+PseudoPython()
+{
+    if [ $(id -u) -ne 0 ]; then
+        PSEUDO_PREFIX=/usr PSEUDO_LOCALSTATEDIR=$PseudoDir pseudo python $*
+    else
+        python $*
+    fi
+}
+
+PseudoPython $SourceDir/installer/InstallBuilder/installbuilder.py \
 		--BASE_DIR=$SourceDir \
 		--TARGET_DIR=$DestDir \
 		--INTERMEDIATE_DIR=$IntermediateDir \
@@ -160,7 +168,7 @@ if [ $(id -u) -ne 0 ]; then
 fi
 rm -rf $StageDir/*
 
-$PSEUDO_OPTS python $SourceDir/installer/InstallBuilder/installbuilder.py \
+PseudoPython $SourceDir/installer/InstallBuilder/installbuilder.py \
 		--BASE_DIR=$SourceDir \
 		--TARGET_DIR=$DestDir \
 		--INTERMEDIATE_DIR=$IntermediateDir \
@@ -178,7 +186,7 @@ fi
 rm -rf $StageDir/*
 
 if [ "$BuildType" == "RelWithDebInfo" ]; then
-  $PSEUDO_OPTS python $SourceDir/installer/InstallBuilder/installbuilder.py \
+  PseudoPython $SourceDir/installer/InstallBuilder/installbuilder.py \
       --BASE_DIR=$SourceDir \
       --TARGET_DIR=$DestDir \
       --INTERMEDIATE_DIR=$IntermediateDir \
@@ -195,7 +203,7 @@ if [ "$BuildType" == "RelWithDebInfo" ]; then
   fi
   rm -rf $StageDir/*
 
-  $PSEUDO_OPTS python $SourceDir/installer/InstallBuilder/installbuilder.py \
+  PseudoPython $SourceDir/installer/InstallBuilder/installbuilder.py \
       --BASE_DIR=$SourceDir \
       --TARGET_DIR=$DestDir \
       --INTERMEDIATE_DIR=$IntermediateDir \

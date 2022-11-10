@@ -740,7 +740,7 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
 
 void RawEventProcessor::end_event()
 {
-    _builder->SetEventFlags(_event_flags);
+    _builder->AddEventFlags(_event_flags);
     _event_flags = 0;
     if (!_builder->EndEvent()) {
         throw std::runtime_error("Queue closed");
@@ -938,7 +938,7 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
         throw std::runtime_error("Queue closed");
     }
 
-    _builder->SetEventFlags(EVENT_FLAG_IS_AUOMS_EVENT);
+    _builder->AddEventFlags(EVENT_FLAG_IS_AUOMS_EVENT);
 
     uint16_t num_fields = 17;
 

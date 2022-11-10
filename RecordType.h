@@ -256,6 +256,7 @@ enum class RecordType: int {
     AUOMS_DROPPED_RECORDS     = 10004,
     AUOMS_STATUS              = 10005,
     AUOMS_METRIC              = 10006,
+    AUOMS_AGGREGATE           = 10007,
     AUOMS_EXECVE              = 14688,
 };
 

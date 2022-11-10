@@ -48,6 +48,7 @@
 #include <unistd.h>
 #include <syslog.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 
 #include "env_config.h"
 #include "LockFile.h"
@@ -197,6 +198,12 @@ int main(int argc, char**argv) {
         status_socket_path = config.GetString("status_socket_path");
     }
 
+    std::string save_dir = data_dir + "/save";
+
+    if (config.HasKey("save_dir")) {
+        save_dir = config.GetString("save_dir");
+    }
+
     int num_priorities = 8;
     size_t max_file_data_size = 1024*1024;
     size_t max_unsaved_files = 128;
@@ -319,6 +326,13 @@ int main(int argc, char**argv) {
     if (!event_prioritizer->LoadFromConfig(config)) {
         Logger::Error("Failed to load EventPrioritizer config, exiting");
         exit(1);
+    }
+
+    if (!PathExists(save_dir)) {
+        if (mkdir(save_dir.c_str(), 0750) != 0) {
+            Logger::Error("Failed to create dir '%s': %s", save_dir.c_str(), std::strerror(errno));
+            exit(1);
+        }
     }
 
     Logger::Info("Trying to acquire singleton lock");
@@ -463,7 +477,7 @@ int main(int argc, char**argv) {
         outputsFilterFactory = std::shared_ptr<IEventFilterFactory>(static_cast<IEventFilterFactory*>(new OutputsEventFilterFactory(user_db, filtersEngine, processTree)));
     }
 
-    Outputs outputs(queue, outconf_dir, outputsFilterFactory);
+    Outputs outputs(queue, outconf_dir, save_dir, outputsFilterFactory);
 
     std::thread autosave_thread([&]() {
         Signals::InitThread();

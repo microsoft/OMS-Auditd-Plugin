@@ -75,7 +75,7 @@ BOOST_AUTO_TEST_CASE( test )
     if (!ret) {
         BOOST_FAIL("EndRecord failed: " + std::to_string(ret));
     }
-    builder.SetEventFlags(5);
+    builder.AddEventFlags(5);
     builder.SetEventPid(12);
     ret = builder.EndEvent();
     if (ret != 1) {

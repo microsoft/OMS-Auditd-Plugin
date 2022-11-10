@@ -221,7 +221,7 @@ void Outputs::do_conf_sync() {
                 load = true;
             }
         } else {
-            auto o = std::make_shared<Output>(ent.first, _queue, _writer_factory, _filter_factory);
+            auto o = std::make_shared<Output>(ent.first, _save_dir, _queue, _writer_factory, _filter_factory);
             it = _outputs.insert(std::make_pair(ent.first, o)).first;
             load = true;
         }

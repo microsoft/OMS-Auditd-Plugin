@@ -136,7 +136,7 @@ void WriteFile(const std::string& path, const std::vector<std::string>& lines) {
 }
 
 void AppendFile(const std::string& path, const std::vector<std::string>& lines) {
-    std::ofstream out(path, std::ios::binary);
+    std::ofstream out(path, std::ios::binary | std::ios::ate);
     if (!out.is_open()) {
         throw std::runtime_error("Failed to open '" + path + "'");
     }

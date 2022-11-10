@@ -46,7 +46,7 @@ public:
     inline int sgid()  { return _sgid; }
     inline int fsgid() { return _fsgid; }
 
-    inline std::string comm() { return _comm; }
+    inline std::string_view comm() { return std::string_view(_comm.data(), _comm_size); }
     inline std::string exe() { return _exe; }
 
     inline uint64_t utime() { return _utime; }
@@ -59,8 +59,8 @@ public:
 private:
     explicit ProcessInfo(void* dp, int cmdline_size_limit);
 
-    bool parse_stat();
-    bool parse_status();
+    int read_and_parse_stat(int pid);
+    int read_and_parse_status(int pid);
 
     bool read(int pid);
     void clear();
@@ -83,11 +83,9 @@ private:
     int _sgid;
     int _fsuid;
     int _fsgid;
-    std::string _comm;
+    size_t _comm_size;
+    std::array<char, 16> _comm;
     std::string _exe;
-    std::vector<uint8_t> _stat;
-    std::vector<uint8_t> _status;
-    std::vector<uint8_t> _statm;
     std::vector<uint8_t> _cmdline;
     std::string _starttime_str;
     bool _cmdline_truncated;
