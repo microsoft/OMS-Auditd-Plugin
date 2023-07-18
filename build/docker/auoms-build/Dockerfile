@@ -14,7 +14,7 @@ RUN apt-get update -y \
  && apt-get install -y wget gcc g++ flex texinfo xz-utils unzip help2man file patch gawk make libtool-bin libncurses5-dev autoconf python cmake \
  && cd /root \
  && wget http://crosstool-ng.org/download/crosstool-ng/crosstool-ng-1.24.0.tar.bz2 \
- && echo "d200d1ea5e2056c60d2b11b3f2721d30e53e817e1e0050fffaca074864e2f523  crosstool-ng-1.24.0.tar.bz2" | sha256sum -c -
+ && echo "d200d1ea5e2056c60d2b11b3f2721d30e53e817e1e0050fffaca074864e2f523  crosstool-ng-1.24.0.tar.bz2" | sha256sum -c - \
  && tar jxf crosstool-ng-1.24.0.tar.bz2 \
  && cd crosstool-ng-1.24.0 \
  && ./configure --prefix=/opt/ctng \
