@@ -58,6 +58,7 @@ jobs:
           sudo apt-get -y install rapidjson-dev
           sudo apt-get -y install libre2-dev
           sudo apt-get -y install libmsgpack-dev
+          sudo apt-get -y install linux-headers-$(uname -r)
       continue-on-error: true
 
     # Initializes the CodeQL tools for scanning.
