@@ -48,6 +48,13 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
+    # Download required dependencies
+    - name: Download Dependencies
+      run: |
+          apt-get update -y
+          apt-get -y install cmake
+          apt -y install libboost-test-dev
+
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v2
