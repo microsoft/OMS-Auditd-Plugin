@@ -28,7 +28,7 @@ jobs:
     #   - https://gh.io/supported-runners-and-hardware-resources
     #   - https://gh.io/using-larger-runners
     # Consider using larger runners for possible analysis time improvements.
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-18.04' }}
     timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
     permissions:
       actions: read
@@ -58,9 +58,9 @@ jobs:
           sudo apt-get -y install rapidjson-dev
           sudo apt-get -y install libre2-dev
           sudo apt-get -y install libmsgpack-dev
-          sudo apt-get -y install linux-headers-$(uname -r)
-          sudo apt-get -y install linux-headers-generic
-          sudo apt-get -y install build-essential
+          #sudo apt-get -y install linux-headers-$(uname -r)
+          #sudo apt-get -y install linux-headers-generic
+          #sudo apt-get -y install build-essential
       continue-on-error: true
 
     # Initializes the CodeQL tools for scanning.
