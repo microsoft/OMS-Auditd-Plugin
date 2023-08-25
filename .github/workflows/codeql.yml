@@ -55,6 +55,7 @@ jobs:
           sudo apt-get -y install cmake
           sudo apt-get -y install libboost-test-dev
           sudo apt-get -y install rapidjson-dev
+          sudo apt-get -y install libre2-dev
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
