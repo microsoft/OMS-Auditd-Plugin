@@ -25,6 +25,7 @@
 #include <functional>
 #include <unordered_set>
 #include <string>
+#include <stdexcept>
 
 #ifndef AUDIT_MESSAGE_TEXT_MAX
 #define AUDIT_MESSAGE_TEXT_MAX  8560
