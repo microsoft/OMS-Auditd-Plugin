@@ -58,7 +58,6 @@ jobs:
           sudo apt-get -y install rapidjson-dev
           sudo apt-get -y install libre2-dev
           sudo apt-get -y install libmsgpack-dev
-
           sudo ln -s /usr/include/netipx/ipx.h /usr/include/linux/ipx.h
       continue-on-error: true
 
