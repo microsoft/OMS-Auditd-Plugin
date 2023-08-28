@@ -61,7 +61,7 @@ jobs:
           sudo apt-get -y install net-tools
           sudo snap install iputils
           sudo apt-get update -y
-
+          sudo ln -s /usr/include/netipx/ipx.h /usr/include/linux/ipx.h
           sudo find / -name ipx.h
           #sudo apt-get -y install linux-headers-$(uname -r)
           #sudo apt-get -y install linux-headers-generic
