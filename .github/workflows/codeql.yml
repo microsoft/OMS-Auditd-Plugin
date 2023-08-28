@@ -59,9 +59,9 @@ jobs:
           sudo apt-get -y install libre2-dev
           sudo apt-get -y install libmsgpack-dev
           sudo apt-get -y install net-tools
-          sudo snap install iputils
+          #sudo snap install iputils
+          sudo find / -name ipx.h
           sudo ln -s /usr/include/netipx/ipx.h /usr/include/linux/ipx.h
-          #sudo find / -name ipx.h
           #sudo apt-get -y install linux-headers-$(uname -r)
           #sudo apt-get -y install linux-headers-generic
           #sudo apt-get -y install build-essential
