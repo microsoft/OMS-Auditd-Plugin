@@ -58,8 +58,8 @@ jobs:
           sudo apt-get -y install rapidjson-dev
           sudo apt-get -y install libre2-dev
           sudo apt-get -y install libmsgpack-dev
-          sudo apt-get -y install ipxutils
           sudo apt-get -y install net-tools
+          sudo snap install iputils
           #sudo apt-get -y install linux-headers-$(uname -r)
           #sudo apt-get -y install linux-headers-generic
           #sudo apt-get -y install build-essential
