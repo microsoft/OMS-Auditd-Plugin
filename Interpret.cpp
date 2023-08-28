@@ -31,7 +31,7 @@
 #include <linux/ax25.h>
 #include <linux/atm.h>
 #include <linux/x25.h>
-#include <linux/ipx.h>
+#include <net/ipx.h>
 #endif
 
 template <typename T>
