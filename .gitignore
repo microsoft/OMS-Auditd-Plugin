@@ -18,3 +18,4 @@ env_config.h
 /.idea/
 /.vscode/
 /.vs
+/out/build/x64-Debug
