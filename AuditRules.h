@@ -24,6 +24,7 @@
 #include <vector>
 #include <functional>
 #include <unordered_set>
+#include <string>
 
 #ifndef AUDIT_MESSAGE_TEXT_MAX
 #define AUDIT_MESSAGE_TEXT_MAX  8560
