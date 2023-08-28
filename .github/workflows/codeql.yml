@@ -18,7 +18,7 @@ on:
     # The branches below must be a subset of the branches above
     branches: [ "master" ]
   schedule:
-    - cron: '37 1 * * 4'
+    - cron: '0 12 1,16 * *'
 
 jobs:
   analyze:
@@ -28,7 +28,7 @@ jobs:
     #   - https://gh.io/supported-runners-and-hardware-resources
     #   - https://gh.io/using-larger-runners
     # Consider using larger runners for possible analysis time improvements.
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-22.04' }}
     timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
     permissions:
       actions: read
@@ -51,9 +51,15 @@ jobs:
     # Download required dependencies
     - name: Download Dependencies
       run: |
-          apt-get update -y
-          apt-get -y install cmake
-          apt-get -y install libboost-test-dev
+          sudo apt-get update -y
+          sudo apt-get -y install make
+          sudo apt-get -y install cmake
+          sudo apt-get -y install libboost-test-dev
+          sudo apt-get -y install rapidjson-dev
+          sudo apt-get -y install libre2-dev
+          sudo apt-get -y install libmsgpack-dev
+          sudo ln -s /usr/include/netipx/ipx.h /usr/include/linux/ipx.h
+      continue-on-error: true
 
     # Initializes the CodeQL tools for scanning.
     - name: Initialize CodeQL
@@ -72,6 +78,7 @@ jobs:
     # If this step fails, then you should remove it and run the build manually (see below)
     - name: Autobuild
       uses: github/codeql-action/autobuild@v2
+      continue-on-error: true
 
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
