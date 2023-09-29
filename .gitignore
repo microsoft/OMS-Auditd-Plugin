@@ -17,3 +17,5 @@ env_config.h
 /cmake-build-debug/
 /.idea/
 /.vscode/
+/.vs
+/out/build/x64-Debug

@@ -16,6 +16,7 @@
 
 #include "Translate.h"
 #include "StringTable.h"
+#include <stdexcept>
 
 static StringTable<uint32_t> s_i386_table(-1, {
 	{"restart_syscall", 0},
