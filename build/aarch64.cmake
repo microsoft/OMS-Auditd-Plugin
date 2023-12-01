@@ -5,6 +5,11 @@ SET(CMAKE_SYSTEM_PROCESSOR aarch64)
 SET(CMAKE_C_COMPILER   /opt/x-tools/aarch64-msft-linux-gnu/bin/aarch64-msft-linux-gnu-gcc)
 SET(CMAKE_CXX_COMPILER /opt/x-tools/aarch64-msft-linux-gnu/bin/aarch64-msft-linux-gnu-g++)
 
+
+set(CMAKE_C_FLAGS "-fstack-protector-strong")
+set(CMAKE_CXX_FLAGS "-fstack-protector-strong")
+
+
 SET(OBJCOPY /opt/x-tools/aarch64-msft-linux-gnu/bin/aarch64-msft-linux-gnu-objcopy)
 
 # where is the target environment
