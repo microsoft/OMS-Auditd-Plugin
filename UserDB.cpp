@@ -21,6 +21,8 @@
 #include <cstring>
 #include <fstream>
 
+#include <pwd.h>
+
 extern "C" {
 #include <unistd.h>
 #include <sys/inotify.h>
@@ -31,6 +33,21 @@ std::string UserDB::GetUserName(int uid)
 {
     std::lock_guard<std::mutex> lock(_lock);
 
+    char* buffer = NULL;
+	struct passwd pwent;
+	struct passwd* pwentp;
+    long size = sysconf(_SC_GETPW_R_SIZE_MAX);
+	if (size == -1) {
+		size = BUFSIZ;
+	}
+    buffer = new char[size];
+
+    getpwuid_r(uid, &pwent, buffer, size, &pwentp);
+    if (pwentp != NULL || pwentp->pw_name != NULL) {
+        free(buffer);
+        return pwentp->pw_name;
+    }
+
     auto it = _users.find(uid);
     if (it != _users.end()) {
         return it->second;
@@ -38,6 +55,7 @@ std::string UserDB::GetUserName(int uid)
 
     return std::string();
 }
+
 
 std::string UserDB::GetGroupName(int gid)
 {
