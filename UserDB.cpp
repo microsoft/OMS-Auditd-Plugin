@@ -33,6 +33,7 @@ std::string UserDB::GetUserName(int uid)
 {
     std::lock_guard<std::mutex> lock(_lock);
 
+    Logger::Info("Acquired lock guard");
     char* buffer = NULL;
 	struct passwd pwent;
 	struct passwd* pwentp;
@@ -42,12 +43,15 @@ std::string UserDB::GetUserName(int uid)
 	}
     buffer = new char[size];
 
+    Logger::Info("Call NSS kernel module");
     getpwuid_r(uid, &pwent, buffer, size, &pwentp);
-    if (pwentp != NULL || pwentp->pw_name != NULL) {
+    if (pwentp != NULL && pwentp->pw_name != NULL) {
         free(buffer);
+        Logger::Info("Return from NSS module %s", pwentp->pw_name);
         return pwentp->pw_name;
     }
 
+    Logger::Info("Get from pwd file");
     auto it = _users.find(uid);
     if (it != _users.end()) {
         return it->second;
