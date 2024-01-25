@@ -31,6 +31,7 @@ extern "C" {
 
 std::string UserDB::GetUserName(int uid)
 {
+    Logger::Info("Return from NSS module for UID = %d", uid);
     std::lock_guard<std::mutex> lock(_lock);
 
     Logger::Info("Acquired lock guard");
