@@ -47,7 +47,7 @@ std::string UserDB::GetUserName(int uid)
     getpwuid_r(uid, &pwent, buffer, size, &pwentp);
     if (pwentp != NULL && pwentp->pw_name != NULL) {
         free(buffer);
-        Logger::Info("Return from NSS module %s", pwentp->pw_name);
+        Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwentp->pw_name);
         return pwentp->pw_name;
     }
 
