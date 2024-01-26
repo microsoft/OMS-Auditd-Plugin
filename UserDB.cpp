@@ -31,7 +31,7 @@ extern "C" {
 
 std::string UserDB::GetUserName(int uid)
 {
-    Logger::Info("Return from NSS module for UID = %d", uid);
+    Logger::Info("To retrieve details for UID = %d", uid);
     std::lock_guard<std::mutex> lock(_lock);
 
     Logger::Info("Acquired lock guard");
@@ -44,7 +44,7 @@ std::string UserDB::GetUserName(int uid)
 	}
     buffer = new char[size];
 
-    Logger::Info("Call NSS kernel module");
+    Logger::Info("Calling NSS kernel module");
     getpwuid_r(uid, &pwent, buffer, size, &pwentp);
     if (pwentp != NULL && pwentp->pw_name != NULL) {
         free(buffer);
@@ -52,7 +52,7 @@ std::string UserDB::GetUserName(int uid)
         return pwentp->pw_name;
     }
 
-    Logger::Info("Get from pwd file");
+    Logger::Info("NSS returned null, getting from pwd file");
     auto it = _users.find(uid);
     if (it != _users.end()) {
         return it->second;

@@ -858,7 +858,7 @@ bool RawEventProcessor::process_field(const EventRecord& record, const EventReco
             if (uid < 0) {
                 _tmp_val = S_UNSET;
             } else {
-                _tmp_val = _user_db->GetUserName(65055);
+                _tmp_val = _user_db->GetUserName(uid);
             }
             if (_tmp_val.size() == 0) {
                 _tmp_val = "unknown-uid(" + std::to_string(uid) + ")";
@@ -915,7 +915,7 @@ bool RawEventProcessor::add_str_field(const std::string_view& name, const std::s
 
 bool RawEventProcessor::add_uid_field(const std::string_view& name, int uid, field_type_t ft) {
     _tmp_val.assign(std::to_string(uid));
-    std::string user = _user_db->GetUserName(65055);
+    std::string user = _user_db->GetUserName(uid);
     if (!_builder->AddField(name, _tmp_val, user.c_str(), ft)) {
         throw std::runtime_error("Queue closed");
     }
