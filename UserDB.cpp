@@ -54,7 +54,7 @@ std::string UserDB::GetUserName(int uid)
 
     // enum nss_status ret;
     // char buffer[BUFFER_LEN];
-    struct passwd pwd;
+    struct passwd *pwd;
     // int _errno = 0;
 
     pwd = getpwuid(uid);
