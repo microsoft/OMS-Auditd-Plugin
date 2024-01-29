@@ -59,7 +59,7 @@ std::string UserDB::GetUserName(int uid)
 
     pwd = getpwuid(uid);
 
-    Logger::Info("pw name: %d", pwd->pw_name);
+    Logger::Info("pw name: %s", pwd->pw_name);
 
     Logger::Info("NSS returned null, getting from pwd file");
     auto it = _users.find(uid);
