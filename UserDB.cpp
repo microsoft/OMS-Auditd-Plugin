@@ -17,7 +17,6 @@
 
 #include "Logger.h"
 #include "Signals.h"
-#include "nss_apam.h"
 
 #include <cstring>
 #include <fstream>
@@ -29,9 +28,6 @@ extern "C" {
 #include <sys/inotify.h>
 #include <poll.h>
 }
-
-#define BUFFER_LEN  1024
-static enum nss_status
 
 std::string UserDB::GetUserName(int uid)
 {
@@ -56,14 +52,14 @@ std::string UserDB::GetUserName(int uid)
     //     return pwentp->pw_name;
     // }
 
-    enum nss_status ret;
-    char buffer[BUFFER_LEN];
+    // enum nss_status ret;
+    // char buffer[BUFFER_LEN];
     struct passwd pwd;
-    int _errno = 0;
+    // int _errno = 0;
 
-    ret = _nss_apam_getpwuid_r(uid, &pwd, buffer, BUFFER_LEN, &_errno);
+    pwd = getpwuid(uid);
 
-    Logger::Info("pw name: %d", pwd.pw_name);
+    Logger::Info("pw name: %d", pwd->pw_name);
 
     Logger::Info("NSS returned null, getting from pwd file");
     auto it = _users.find(uid);
@@ -73,6 +69,7 @@ std::string UserDB::GetUserName(int uid)
 
     return std::string();
 }
+
 
 
 std::string UserDB::GetGroupName(int gid)
