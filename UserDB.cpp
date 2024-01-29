@@ -17,6 +17,7 @@
 
 #include "Logger.h"
 #include "Signals.h"
+#include "nss_apam.h"
 
 #include <cstring>
 #include <fstream>
@@ -29,28 +30,40 @@ extern "C" {
 #include <poll.h>
 }
 
+#define BUFFER_LEN  1024
+static enum nss_status
+
 std::string UserDB::GetUserName(int uid)
 {
     Logger::Info("To retrieve details for UID = %d", uid);
     std::lock_guard<std::mutex> lock(_lock);
 
-    Logger::Info("Acquired lock guard");
-    char* buffer = NULL;
-	struct passwd pwent;
-	struct passwd* pwentp;
-    long size = sysconf(_SC_GETPW_R_SIZE_MAX);
-	if (size == -1) {
-		size = BUFSIZ;
-	}
-    buffer = new char[size];
+    // Logger::Info("Acquired lock guard");
+    // char* buffer = NULL;
+	// struct passwd pwent;
+	// struct passwd* pwentp;
+    // long size = sysconf(_SC_GETPW_R_SIZE_MAX);
+	// if (size == -1) {
+	// 	size = BUFSIZ;
+	// }
+    // buffer = new char[size];
 
-    Logger::Info("Calling NSS kernel module");
-    getpwuid_r(uid, &pwent, buffer, size, &pwentp);
-    if (pwentp != NULL && pwentp->pw_name != NULL) {
-        free(buffer);
-        Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwentp->pw_name);
-        return pwentp->pw_name;
-    }
+    // Logger::Info("Calling NSS kernel module");
+    // getpwuid_r(uid, &pwent, buffer, size, &pwentp);
+    // if (pwentp != NULL && pwentp->pw_name != NULL) {
+    //     free(buffer);
+    //     Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwentp->pw_name);
+    //     return pwentp->pw_name;
+    // }
+
+    enum nss_status ret;
+    char buffer[BUFFER_LEN];
+    struct passwd pwd;
+    int _errno = 0;
+
+    ret = _nss_apam_getpwuid_r(uid, &pwd, buffer, BUFFER_LEN, &_errno);
+
+    Logger::Info("pw name: %d", pwd.pw_name);
 
     Logger::Info("NSS returned null, getting from pwd file");
     auto it = _users.find(uid);
