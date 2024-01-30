@@ -59,15 +59,18 @@ std::string UserDB::GetUserName(int uid)
 
     pwd = getpwuid(uid);
 
-    Logger::Info("pw name: %s", pwd->pw_name);
+    if (pwd) {
+        Logger::Info("pw name: %s", pwd->pw_name);
+        return pwd->pw_name;
+    } else {
+        Logger::Info("NSS returned null, getting from pwd file");
+        auto it = _users.find(uid);
+        if (it != _users.end()) {
+            return it->second;
+        }
 
-    Logger::Info("NSS returned null, getting from pwd file");
-    auto it = _users.find(uid);
-    if (it != _users.end()) {
-        return it->second;
+        return std::string();
     }
-
-    return std::string();
 }
 
 
