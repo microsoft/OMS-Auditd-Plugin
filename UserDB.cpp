@@ -50,7 +50,7 @@ std::string UserDB::GetUserName(int uid)
         Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwent.pw_name);
         return pwent.pw_name;
     }
-    Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwentp->pw_name);
+    Logger::Info("Return from NSS module for UID from pointer = %d - User = %s", uid, pwentp->pw_name);
 
     Logger::Info("NSS returned null, getting from pwd file");
     auto it = _users.find(uid);
