@@ -34,46 +34,33 @@ std::string UserDB::GetUserName(int uid)
     Logger::Info("To retrieve details for UID = %d", uid);
     std::lock_guard<std::mutex> lock(_lock);
 
-    // Logger::Info("Acquired lock guard");
-    // char* buffer = NULL;
-	// struct passwd pwent;
-	// struct passwd* pwentp;
-    // long size = sysconf(_SC_GETPW_R_SIZE_MAX);
-	// if (size == -1) {
-	// 	size = BUFSIZ;
-	// }
-    // buffer = new char[size];
+    char* buffer = NULL;
+	struct passwd pwent;
+	struct passwd* pwentp;
+    long size = sysconf(_SC_GETPW_R_SIZE_MAX);
+	if (size == -1) {
+		size = BUFSIZ;
+	}
+    buffer = new char[size];
 
-    // Logger::Info("Calling NSS kernel module");
-    // getpwuid_r(uid, &pwent, buffer, size, &pwentp);
-    // if (pwentp != NULL && pwentp->pw_name != NULL) {
-    //     free(buffer);
-    //     Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwentp->pw_name);
-    //     return pwentp->pw_name;
-    // }
-
-    // enum nss_status ret;
-    // char buffer[BUFFER_LEN];
-    struct passwd *pwd;
-    // int _errno = 0;
-
-    pwd = getpwuid(uid);
-
-    if (pwd) {
-        Logger::Info("pw name: %s", pwd->pw_name);
-        return pwd->pw_name;
-    } else {
-        Logger::Info("NSS returned null, getting from pwd file");
-        auto it = _users.find(uid);
-        if (it != _users.end()) {
-            return it->second;
-        }
-
-        return std::string();
+    Logger::Info("Calling NSS kernel module");
+    getpwuid_r(uid, &pwent, buffer, size, &pwentp);
+    if (pwent.pw_name != NULL) {
+        free(buffer);
+        Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwent.pw_name);
+        return pwent.pw_name;
     }
+    Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwent.pw_name);
+    Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwentp->pw_name);
+
+    Logger::Info("NSS returned null, getting from pwd file");
+    auto it = _users.find(uid);
+    if (it != _users.end()) {
+        return it->second;
+    }
+
+    return std::string();
 }
-
-
 
 std::string UserDB::GetGroupName(int gid)
 {
