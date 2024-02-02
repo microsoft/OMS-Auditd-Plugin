@@ -44,10 +44,12 @@ std::string UserDB::GetUserName(int uid)
     buffer = new char[size];
 
     Logger::Info("Calling NSS kernel module");
-    getpwuid_r(uid, &pwent, buffer, size, &pwentp);
+
+    uid_t userId = uid;
+    getpwuid_r(userId, &pwent, buffer, size, &pwentp);
     if (pwent.pw_name != NULL) {
         free(buffer);
-        Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwent.pw_name);
+        Logger::Info("Return from NSS module for UID from 2nd = %d - User = %s", uid, pwent.pw_name);
         return pwent.pw_name;
     }
     Logger::Info("Return from NSS module for UID from pointer = %d - User = %s", uid, pwentp->pw_name);
