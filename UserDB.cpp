@@ -46,23 +46,22 @@ std::string UserDB::GetUserName(int uid)
     Logger::Info("Calling NSS kernel module");
 
     uid_t user_id = uid;
-    if (getpwuid_r(user_id, &pwent, buffer, size, &pwentp) == 0 && pwentp != nullptr) {
-        Logger::Info("Return from NSS module for UID  from second = %d - User = %s", uid, pwent.pw_name);
+    getpwuid_r(user_id, &pwent, buffer, size, &pwentp);
+
+    if (pwent.pw_name == "nobody") {
+        Logger::Info("Returned 'nobody' from NSS module for UID, retriving from passwd file");
+        auto it = _users.find(uid);
+        if (it != _users.end()) {
+            Logger::Info("passwd file details %d - %s", uid, (it->second).c_str());
+            return it->second;
+        }
+    }
+    else if (pwent.pw_name != NULL) {
+        Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwent.pw_name);
         return pwent.pw_name;
     }
-    // getpwuid_r(userId, &pwent, buffer, size, &pwentp);
-    // if (pwent.pw_name != NULL) {
-    //     Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwent.pw_name);
-    //     return pwent.pw_name;
-    // }
-    Logger::Info("Return from NSS module for UID from pointer = %d - User = %s", uid, pwentp->pw_name);
 
-    Logger::Info("NSS returned null, getting from pwd file");
-    auto it = _users.find(uid);
-    if (it != _users.end()) {
-        return it->second;
-    }
-
+    Logger::Info("Returning null, NSS and passwd file do not contain user details");
     return std::string();
 }
 
