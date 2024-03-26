@@ -99,7 +99,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
             } else if (strncmp(am->value.GetString(), "drop", am->value.GetStringLength()) == 0) {
                 mode = AggregationFieldMode::DROP;
             } else {
-                throw new std::invalid_argument(std::string("AggregationRule::FromJSON(): Invalid 'mode' valud for aggregation field: ") + am->value.GetString());
+                throw new std::invalid_argument(std::string("AggregationRule::FromJSON(): Invalid 'mode' value for aggregation field: ") + am->value.GetString());
             }
         }
         am = it->value.FindMember("output_name");
@@ -341,7 +341,7 @@ std::shared_ptr<AggregatedEvent> AggregatedEvent::Read(FILE* file, std::vector<s
     uint32_t lmsec;
     time_t exp_time;
     if (fscanf(file, "AggregatedEvent:HEADER: %d:%ld:%ld:%d:%ld:%ld:%d:%ld\n", &rule_idx, &origin_size, &data_size, &count, &exp_time, &lsec, &lmsec, &lser) != 8) {
-        throw std::runtime_error("AggregatedEvent::Read(): Invlid AggregatedEvent header: Failed to read all elements");
+        throw std::runtime_error("AggregatedEvent::Read(): Invalid AggregatedEvent header: Failed to read all elements");
     }
 
     auto ae = std::shared_ptr<AggregatedEvent>(new AggregatedEvent());
@@ -351,13 +351,13 @@ std::shared_ptr<AggregatedEvent> AggregatedEvent::Read(FILE* file, std::vector<s
     ae->_count = count;
 
     if (origin_size > max_data_size) {
-        throw std::runtime_error("AggregatedEvent::Read(): Invlid AggregatedEvent header: Origin Event size too large");
+        throw std::runtime_error("AggregatedEvent::Read(): Invalid AggregatedEvent header: Origin Event size too large");
     }
 
     ae->_origin_event.resize(origin_size);
 
     if (data_size > max_data_size || data_size > ae->_rule->MaxSize()) {
-        throw std::runtime_error("AggregatedEvent::Read(): Invlid AggregatedEvent header: Data size too large");
+        throw std::runtime_error("AggregatedEvent::Read(): Invalid AggregatedEvent header: Data size too large");
     }
 
     ae->_data.reserve(round_up_pow_2(data_size));
@@ -877,7 +877,7 @@ void EventAggregator::SetRules(const std::vector<std::shared_ptr<AggregationRule
             _events.emplace_back(std::make_shared<PerRuleAgg>(r));
         }
 
-        // Sort out the existing events        
+        // Sort out the existing events
         for (auto& e : events) {
             std::string js = e->_rule->ToJSONString();
             auto it = rule_idx.find(js);
@@ -928,7 +928,7 @@ void EventAggregator::Load(const std::string& path) {
         fclose(file);
     });
 
-    // Rerad the header
+    // Reread the header
     size_t num_rules;
     size_t num_ready_events;
     size_t num_partial_events;
@@ -1118,7 +1118,7 @@ bool EventAggregator::AddEvent(const Event& event) {
         if (!agg->AddEvent(event)) {
             return false;
         }
-        // Event was added so add new AggregatedEvent to e->_events and _agged_events
+        // Event was added so add new AggregatedEvent to e->_events and _aged_events
         e->_events.emplace(std::make_pair(agg->AggregationKey(), agg));
         e->_events_age.emplace(agg->AgeKey(), agg->AggregationKey());
         _aged_events.emplace(agg->AgeKey(), std::make_pair(agg,idx));

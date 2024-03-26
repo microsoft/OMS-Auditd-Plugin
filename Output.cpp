@@ -157,6 +157,7 @@ bool Output::Load(std::unique_ptr<Config>& config) {
 
     if (config->HasKey("aggregation_rules")) {
         AggregationRule::RulesFromJSON(config->GetJSON("aggregation_rules"), _aggregation_rules);
+        Logger::Info("Output(%s): Aggregation Rules loaded from json", _name.c_str());
     }
 
     if (socket_path != _socket_path || !_writer) {
@@ -292,6 +293,7 @@ bool Output::handle_events(bool checkOpen) {
             do {
                 agg_ret = _event_aggregator->HandleEvent([this, checkOpen](const Event& event) -> std::pair<int64_t, bool> {
                     if (IsStopping() || !(checkOpen && _writer->IsOpen())) {
+                        Logger::Info("Output(%s): Handle event called", _name.c_str());
                         return std::make_pair(0, false);
                     }
                     return handle_agg_event(event);
@@ -313,6 +315,7 @@ bool Output::handle_events(bool checkOpen) {
                 if (_event_aggregator) {
                     if (_event_aggregator->AddEvent(event)) {
                         // The event was consumed
+                        Logger::Info("Output(%s): New event was consumed by AddEvent", _name.c_str());
                         continue;
                     }
                 }
@@ -383,6 +386,7 @@ void Output::run() {
             } else {
                 try {
                     _event_aggregator->Load(_save_file);
+                    Logger::Info("Output(%s): aggregation load successful", _name.c_str());
                 } catch (const std::exception& ex) {
                     Logger::Error("Output(%s): Failed to load event aggregation state from '%s': %s", _name.c_str(), _save_file.c_str(), ex.what());
                     _event_aggregator = std::make_shared<EventAggregator>();
@@ -394,6 +398,7 @@ void Output::run() {
         }
         try {
             _event_aggregator->SetRules(_aggregation_rules);
+            Logger::Info("Output(%s): aggregation SetRules successful", _name.c_str());
         } catch (const std::exception& ex) {
             Logger::Error("Output(%s): Failed to set event aggregation rules: %s", _name.c_str(), ex.what());
             _event_aggregator.reset();

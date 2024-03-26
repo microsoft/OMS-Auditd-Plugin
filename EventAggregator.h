@@ -47,17 +47,17 @@
                         "field_name": "cmdline",
                         "op": "re",
                         "value": "/stuff/[0-9]+/foo"
-                    },
+                    }
                 ]
             },
             "aggregation_fields": {
                 "time": {
-                    "mode": "raw" // interp, dynamic
+                    "mode": "raw", // interp, dynamic
                     "output_name": "aggregated_time"
-                }
-                "pid": {},
+                },
+                "pid": {}
             },
-            "time_field_mode": "drop", (full, delta, drop)
+            "time_field_mode": "drop", // (full, delta, drop)
             "serial_field_mode": "drop",
             "max_size": 2048,
             "max_time": 300,
@@ -71,10 +71,10 @@
                         "field_name": "syscall",
                         "op": "re",
                         "values": ["execve","open"]
-                    },
+                    }
                 ]
-            },
-        },
+            }
+        }
     ]
 
 
