@@ -158,6 +158,8 @@ bool Output::Load(std::unique_ptr<Config>& config) {
     if (config->HasKey("aggregation_rules")) {
         AggregationRule::RulesFromJSON(config->GetJSON("aggregation_rules"), _aggregation_rules);
         Logger::Info("Output(%s): Aggregation Rules loaded from json", _name.c_str());
+    } else {
+        Logger::Info("Output(%s): Aggregation Rules not found in json", _name.c_str());
     }
 
     if (socket_path != _socket_path || !_writer) {
