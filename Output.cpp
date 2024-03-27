@@ -291,7 +291,9 @@ bool Output::handle_events(bool checkOpen) {
     }
 
     while(!IsStopping() && (!checkOpen || _writer->IsOpen())) {
+        Logger::Info("Output(%s): event aggregation on stopping", _name.c_str());
         if (_event_aggregator) {
+            Logger::Info("Output(%s): event aggregation stopping aggregration true", _name.c_str());
             std::tuple<bool, int64_t, bool> agg_ret;
             do {
                 agg_ret = _event_aggregator->HandleEvent([this, checkOpen](const Event& event) -> std::pair<int64_t, bool> {
@@ -303,6 +305,7 @@ bool Output::handle_events(bool checkOpen) {
                 });
             } while (std::get<0>(agg_ret));
             if (std::get<0>(agg_ret) && !std::get<2>(agg_ret)) {
+                Logger::Info("Output(%s): event aggregation write failed due to bad connection", _name.c_str());
                 // The write failed, so assume the connection is bad
                 break;
             }
@@ -318,11 +321,12 @@ bool Output::handle_events(bool checkOpen) {
                 if (_event_aggregator) {
                     if (_event_aggregator->AddEvent(event)) {
                         // The event was consumed
-                        Logger::Info("Output(%s): New event was consumed by AddEvent", _name.c_str());
+                        Logger::Info("Output(%s): event aggregation New event was consumed by AddEvent", _name.c_str());
                         continue;
                     }
                 }
                 if (!handle_queue_event(event, get_ret.first->Priority(), get_ret.first->Sequence())) {
+                    Logger::Info("Output(%s): event aggregation write failed due to bad connection 2", _name.c_str());
                     // The write failed, so assume the connection is bad
                     break;
                 }
