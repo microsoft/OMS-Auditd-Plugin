@@ -324,12 +324,15 @@ bool Output::handle_events(bool checkOpen) {
                         Logger::Info("Output(%s): event aggregation New event was consumed by AddEvent", _name.c_str());
                         continue;
                     }
+                } else {
+                    Logger::Info("Output(%s): event aggregation is not active", _name.c_str());
                 }
                 if (!handle_queue_event(event, get_ret.first->Priority(), get_ret.first->Sequence())) {
                     Logger::Info("Output(%s): event aggregation write failed due to bad connection 2", _name.c_str());
                     // The write failed, so assume the connection is bad
                     break;
                 }
+
             }
         }
     }
