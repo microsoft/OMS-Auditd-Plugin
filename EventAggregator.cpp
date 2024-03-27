@@ -585,7 +585,7 @@ bool AggregatedEvent::AddEvent(const Event& event) {
     }
 
     if (_count >= _rule->MaxCount()) {
-        std::cout << "eventaggregator: AddEvent returned" << std::endl;
+        std::cout << "eventaggregator: AddEvent returned maxcount is greater" << std::endl;
         return false;
     }
 
@@ -646,8 +646,8 @@ bool AggregatedEvent::AddEvent(const Event& event) {
         }
     }
 
-    std::cout << "eventaggregator: AddEvent returned" << std::endl;
     if (_data.size() + size > _rule->MaxSize()) {
+        std::cout << "eventaggregator: AddEvent returned maxsize exceeded" << std::endl;
         return false;
     }
 
@@ -1192,9 +1192,8 @@ std::tuple<bool, int64_t, bool> EventAggregator::HandleEvent(const std::function
         _aged_events.erase(_aged_events.begin());
     }
 
-    std::cout << "eventaggregator: HandleEvent called" << std::endl;
-
     if (_ready_events.empty()) {
+        std::cout << "eventaggregator: HandleEvent return _ready_events empty" << std::endl;
         return std::make_tuple(false, 0, false);
     }
 
