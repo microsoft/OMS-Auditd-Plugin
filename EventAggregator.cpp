@@ -45,6 +45,8 @@ constexpr size_t round_up_pow_2(size_t v) {
  ****************************************************************************/
 
 void AggregationRule::RulesFromJSON(const rapidjson::Value& value, std::vector<std::shared_ptr<AggregationRule>>& rules) {
+
+    Logger::Info("eventaggregator: Called rules from json");
     if (!value.IsArray()) {
         throw new std::invalid_argument("AggregationRule::RulesFromJSON(): value is not a JSON array");
     }
