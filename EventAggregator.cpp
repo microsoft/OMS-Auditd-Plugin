@@ -69,6 +69,7 @@ void AggregationRule::RulesFromJSON(const rapidjson::Value& value, std::vector<s
 
 std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Value& value) {
     if (!value.IsObject()) {
+        std::cout << "eventaggregator: FromJSON() value is not a JSON object" << std::endl;
         throw new std::invalid_argument("AggregationRule::FromJSON(): value is not a JSON object");
     }
 
