@@ -300,6 +300,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const std::string& st
     rapidjson::Document doc;
     doc.Parse(str.c_str());
     if (doc.HasParseError()) {
+        std::cout << "eventaggregator: FromJSON() value is not a JSON object in str param" << std::endl;
         throw std::runtime_error(rapidjson::GetParseError_En(doc.GetParseError()));
     }
     return FromJSON(doc);
