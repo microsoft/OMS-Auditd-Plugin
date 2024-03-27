@@ -28,7 +28,6 @@
 
 #include "EventMatcher.h"
 #include "EventId.h"
-#include "Logger.h"
 
 #include <rapidjson/document.h>
 
@@ -162,7 +161,6 @@ public:
             _max_time = MAX_MAX_TIME;
         }
 
-        Logger::Info("eventaggregator: create aggregation_fields_map");
         _num_drop_fields = 0;
         for (int i = 0; i < _aggregation_fields.size(); ++i) {
             if (_aggregation_fields[i].Mode() == AggregationFieldMode::DROP) {
@@ -170,7 +168,6 @@ public:
             }
             _aggregation_fields_map.emplace(std::make_pair(std::string_view(_aggregation_fields[i].Name()), i));
         }
-        Logger::Info("eventaggregator: create aggregation_fields_map done");
     }
 
     static void RulesFromJSON(const rapidjson::Value& value, std::vector<std::shared_ptr<AggregationRule>>& rules);
