@@ -68,6 +68,8 @@ void AggregationRule::RulesFromJSON(const rapidjson::Value& value, std::vector<s
 }
 
 std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Value& value) {
+
+    std::cout << "eventaggregator: called FromJSON()" << std::endl;
     if (!value.IsObject()) {
         std::cout << "eventaggregator: FromJSON() value is not a JSON object" << std::endl;
         throw new std::invalid_argument("AggregationRule::FromJSON(): value is not a JSON object");
@@ -572,6 +574,8 @@ void AggregatedEvent::Write(FILE* file, const std::unordered_map<std::shared_ptr
 }
 
 bool AggregatedEvent::AddEvent(const Event& event) {
+
+    std::cout << "eventaggregator: AddEvent called" << std::endl;
     if (_count == 0) {
         _origin_event.resize(event.Size());
         memcpy(_origin_event.data(), event.Data(), _origin_event.size());
@@ -581,6 +585,7 @@ bool AggregatedEvent::AddEvent(const Event& event) {
     }
 
     if (_count >= _rule->MaxCount()) {
+        std::cout << "eventaggregator: AddEvent returned" << std::endl;
         return false;
     }
 
@@ -641,6 +646,7 @@ bool AggregatedEvent::AddEvent(const Event& event) {
         }
     }
 
+    std::cout << "eventaggregator: AddEvent returned" << std::endl;
     if (_data.size() + size > _rule->MaxSize()) {
         return false;
     }
@@ -705,6 +711,7 @@ bool AggregatedEvent::AddEvent(const Event& event) {
         _last_event = id;
     }
 
+    std::cout << "eventaggregator: AddEvent returned" << std::endl;
     return true;
 }
 
@@ -1172,6 +1179,7 @@ bool EventAggregator::AddEvent(const Event& event) {
 }
 
 std::tuple<bool, int64_t, bool> EventAggregator::HandleEvent(const std::function<std::pair<int64_t, bool> (const Event& event)>& handler_fn) {
+    std::cout << "eventaggregator: HandleEvent called" << std::endl;
     auto now = std::chrono::steady_clock::now();
     while (!_aged_events.empty() && _aged_events.begin()->first.first < now) {
         auto agg = _aged_events.begin()->second.first;
@@ -1183,6 +1191,8 @@ std::tuple<bool, int64_t, bool> EventAggregator::HandleEvent(const std::function
         // Remove from _aged_events
         _aged_events.erase(_aged_events.begin());
     }
+
+    std::cout << "eventaggregator: HandleEvent called" << std::endl;
 
     if (_ready_events.empty()) {
         return std::make_tuple(false, 0, false);
@@ -1201,5 +1211,6 @@ std::tuple<bool, int64_t, bool> EventAggregator::HandleEvent(const std::function
         _ready_events.pop();
     }
 
+    std::cout << "eventaggregator: HandleEvent return" << std::endl;
     return std::make_tuple(true, fret.first, fret.second);
 }
