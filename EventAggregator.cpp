@@ -18,7 +18,6 @@
 #include "EventId.h"
 #include "Defer.h"
 #include "StringUtils.h"
-#include "Logger.h"
 
 #include "rapidjson/error/en.h"
 
@@ -49,16 +48,23 @@ void AggregationRule::RulesFromJSON(const rapidjson::Value& value, std::vector<s
 
     std::cout << "eventaggregator: Called rules from json" << std::endl;
     if (!value.IsArray()) {
+        std::cout << "eventaggregator: RulesFromJSON(): value is not a JSON array" << std::endl;
         throw new std::invalid_argument("AggregationRule::RulesFromJSON(): value is not a JSON array");
     }
 
     rules.resize(0);
     rules.reserve(value.Size());
 
+    std::cout << "eventaggregator: Create rules vector" << std::endl;
     for (auto it = value.Begin(); it != value.End(); ++it) {
+        std::cout << "eventaggregator: get rule" << std::endl;
         auto rule = FromJSON(*it);
+        std::cout << "eventaggregator: append to rules vector" << std::endl;
         rules.emplace_back(rule);
+        std::cout << "eventaggregator: return from rules vector build" << std::endl;
     }
+
+    std::cout << "eventaggregator: return from rules from json" << std::endl;
 }
 
 std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Value& value) {
@@ -73,18 +79,22 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
 
     auto m = value.FindMember("match_rule");
     if (m == value.MemberEnd()) {
+        std::cout << "eventaggregator: match_rule missing" << std::endl;
         throw new std::invalid_argument("FieldMatchRule::FromJSON(): Missing 'match_rule'");
     }
     auto match_rule = EventMatchRule::FromJSON(m->value);
 
     m = value.FindMember("aggregation_fields");
     if (m == value.MemberEnd()) {
+        std::cout << "eventaggregator: aggregation_fields missing" << std::endl;
         throw new std::invalid_argument("FieldMatchRule::FromJSON(): Missing 'aggregation_fields'");
     }
     if (!m->value.IsObject()) {
+        std::cout << "eventaggregator: aggregation_fields is not a JSON Obj" << std::endl;
         throw new std::invalid_argument("AggregationRule::FromJSON(): aggregation_fields is not a JSON object");
     }
     if (m->value.MemberCount() == 0) {
+        std::cout << "eventaggregator: aggregation_fields is empty" << std::endl;
         throw new std::invalid_argument("AggregationRule::FromJSON(): aggregation_fields is empty");
     }
     std::vector<AggregationField> agg_fields;
@@ -102,6 +112,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
             } else if (strncmp(am->value.GetString(), "drop", am->value.GetStringLength()) == 0) {
                 mode = AggregationFieldMode::DROP;
             } else {
+                std::cout << "eventaggregator: Invalid 'mode' value for aggregation field:" << std::endl;
                 throw new std::invalid_argument(std::string("AggregationRule::FromJSON(): Invalid 'mode' value for aggregation field: ") + am->value.GetString());
             }
         }
@@ -124,6 +135,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
     m = value.FindMember("time_field_mode");
     if (m != value.MemberEnd()) {
         if (!m->value.IsString()) {
+            std::cout << "eventaggregator: time_field_mode is not a JSON string" << std::endl;
             throw new std::invalid_argument("AggregationRule::FromJSON(): time_field_mode is not a JSON string");
         }
         if (strncmp(m->value.GetString(), "full", m->value.GetStringLength()) == 0) {
@@ -133,6 +145,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
         } else if (strncmp(m->value.GetString(), "drop", m->value.GetStringLength()) == 0) {
             time_field_mode = AggregationFieldMode::DROP;
         } else {
+            std::cout << "eventaggregator:  Invalid 'time_field_mode' value" << std::endl;
             throw new std::invalid_argument(std::string("AggregationRule::FromJSON(): Invalid 'time_field_mode' value: ") + m->value.GetString());
         }
     }
@@ -140,6 +153,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
     m = value.FindMember("serial_field_mode");
     if (m != value.MemberEnd()) {
         if (!m->value.IsString()) {
+            std::cout << "eventaggregator: serial_field_mode is not a JSON string" << std::endl;
             throw new std::invalid_argument("AggregationRule::FromJSON(): serial_field_mode is not a JSON string");
         }
         if (strncmp(m->value.GetString(), "full", m->value.GetStringLength()) == 0) {
@@ -149,6 +163,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
         } else if (strncmp(m->value.GetString(), "drop", m->value.GetStringLength()) == 0) {
             serial_field_mode = AggregationFieldMode::DROP;
         } else {
+            std::cout << "eventaggregator:  Invalid 'serial_field_mode' value" << std::endl;
             throw new std::invalid_argument(std::string("AggregationRule::FromJSON(): Invalid 'serial_field_mode' value: ") + m->value.GetString());
         }
     }
@@ -156,6 +171,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
     m = value.FindMember("max_pending");
     if (m != value.MemberEnd()) {
         if (!m->value.IsUint()) {
+            std::cout << "eventaggregator:  max_pending is not a JSON unsigned integer" << std::endl;
             throw new std::invalid_argument("AggregationRule::FromJSON(): max_pending is not a JSON unsigned integer");
         }
         max_pending = m->value.GetUint();
@@ -164,6 +180,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
     m = value.FindMember("max_count");
     if (m != value.MemberEnd()) {
         if (!m->value.IsUint()) {
+            std::cout << "eventaggregator:  max_count is not a JSON unsigned integer" << std::endl;
             throw new std::invalid_argument("AggregationRule::FromJSON(): max_count is not a JSON unsigned integer");
         }
         max_count = m->value.GetUint();
@@ -172,6 +189,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
     m = value.FindMember("max_size");
     if (m != value.MemberEnd()) {
         if (!m->value.IsUint()) {
+            std::cout << "eventaggregator:  max_size is not a JSON unsigned integer" << std::endl;
             throw new std::invalid_argument("AggregationRule::FromJSON(): max_size is not a JSON unsigned integer");
         }
         max_size = m->value.GetUint();
@@ -180,6 +198,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
     m = value.FindMember("max_time");
     if (m != value.MemberEnd()) {
         if (!m->value.IsUint()) {
+            std::cout << "eventaggregator:  max_time is not a JSON unsigned integer" << std::endl;
             throw new std::invalid_argument("AggregationRule::FromJSON(): max_time is not a JSON unsigned integer");
         }
         max_time = m->value.GetUint();
@@ -188,6 +207,7 @@ std::shared_ptr<AggregationRule> AggregationRule::FromJSON(const rapidjson::Valu
     m = value.FindMember("send_first");
     if (m != value.MemberEnd()) {
         if (!m->value.IsBool()) {
+            std::cout << "eventaggregator: send_first is not a JSON bool" << std::endl;
             throw new std::invalid_argument("AggregationRule::FromJSON(): send_first is not a JSON bool");
         }
         send_first = m->value.GetBool();
