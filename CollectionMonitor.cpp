@@ -32,6 +32,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <fcntl.h>
+#include <cstdlib>
 
 
 void CollectionMonitor::run() {
