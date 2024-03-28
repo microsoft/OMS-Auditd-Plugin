@@ -32,6 +32,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <fcntl.h>
+#include <cstdlib>
 
 
 void CollectionMonitor::run() {
@@ -192,7 +193,10 @@ void CollectionMonitor::signal_collector(int sig) {
 }
 
 bool CollectionMonitor::is_auditd_present() {
-    return PathExists(_auditd_path);
+    int auditd_present = std::system("which auditd > /dev/null 2>&1");
+    int auditd_enabled = std::system("systemctl is-enabled auditd.service > /dev/null 2>&1");
+    int auditd_active = std::system("systemctl is-active auditd.service > /dev/null 2>&1");
+    return (PathExists(_auditd_path) && (auditd_present == 0) && (auditd_enabled == 0) && (auditd_active == 0));
 }
 
 bool CollectionMonitor::is_collector_alive() {
