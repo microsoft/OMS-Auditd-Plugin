@@ -61,6 +61,9 @@ private:
     bool is_auditd_present();
     bool is_collector_alive();
     void send_audit_pid_report(int pid);
+    bool is_auditd_enabled_systemd();
+    bool is_auditd_enabled_sysv();
+    bool is_auditd_enabled_upstart();
 
     Netlink _netlink;
     EventBuilder _builder;
