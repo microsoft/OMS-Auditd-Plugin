@@ -32,6 +32,8 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <fcntl.h>
+#include <cstdlib>
+#include <fstream>
 
 
 void CollectionMonitor::run() {
@@ -191,8 +193,44 @@ void CollectionMonitor::signal_collector(int sig) {
     }
 }
 
+bool CollectionMonitor::is_auditd_enabled_systemd() {
+    int isEnabledStatus = std::system("systemctl is-enabled auditd.service > /dev/null 2>&1");
+    int isActiveStatus = std::system("systemctl is-active auditd.service > /dev/null 2>&1");
+    return (PathExists(_auditd_path) && (isEnabledStatus == 0) && (isActiveStatus == 0));
+}
+
+bool CollectionMonitor::is_auditd_enabled_sysv() {
+    int isEnabledStatus = std::system("chkconfig --list auditd | grep -q ':on' > /dev/null 2>&1");
+    int isActiveStatus = std::system("service auditd status | grep 'running' > /dev/null 2>&1");
+    return ((isEnabledStatus == 0) && (isActiveStatus == 0));
+}
+
+bool CollectionMonitor::is_auditd_enabled_upstart() {
+    int isEnabledStatus = 0;
+    std::ifstream file("/etc/init/auditd.conf");
+    if (!file.is_open()) {
+        return false;
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        // Check if the line contains 'start on' indicating service is enabled
+        if (line.find("start on") != std::string::npos) {
+            isEnabledStatus = 1;
+            break;
+        }
+    }
+    file.close();
+
+    int isActiveStatus = std::system("initctl status auditd | grep 'running' > /dev/null 2>&1");
+    return (isEnabledStatus && (isActiveStatus == 0));
+}
+
 bool CollectionMonitor::is_auditd_present() {
-    return PathExists(_auditd_path);
+    if (is_auditd_enabled_systemd() || is_auditd_enabled_sysv() || is_auditd_enabled_upstart()) {
+        return true;
+    }
+    return false;
 }
 
 bool CollectionMonitor::is_collector_alive() {
