@@ -216,8 +216,8 @@ bool CollectionMonitor::is_auditd_enabled_upstart() {
     while (std::getline(file, line)) {
         // Check if the line contains 'start on' indicating service is enabled
         if (line.find("start on") != std::string::npos) {
-            file.close();
             isEnabledStatus = 1;
+            break;
         }
     }
     file.close();
