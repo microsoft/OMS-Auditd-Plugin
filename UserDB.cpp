@@ -20,7 +20,9 @@
 
 #include <cstring>
 #include <fstream>
-
+#include <cstdio>
+#include <sstream>
+#include <array>
 #include <pwd.h>
 
 extern "C" {
@@ -29,7 +31,52 @@ extern "C" {
 #include <poll.h>
 }
 
+std::string UserDB::exec(const char* cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+    FILE* pipe = popen(cmd, "r");
+    if (!pipe) {
+        return std::string();
+    }
+    try {
+        while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+            result += buffer.data();
+        }
+    } catch (...) {
+        pclose(pipe);  // Ensure the pipe is closed if an exception occurs
+        return std::string();
+    }
+    pclose(pipe);  // Ensure the pipe is closed when done
+    return result;
+}
+
 std::string UserDB::GetUserName(int uid)
+{
+    Logger::Info("To retrieve details for UID = %d", uid);
+    // Execute loginctl list-users and capture the output
+    std::string command = "loginctl list-users --no-legend";
+    std::string output = exec(command.c_str());
+    std::istringstream stream(output);  // Create a string stream from the output
+    std::string line;
+
+    // Parse the output line by line
+    while (std::getline(stream, line)) {
+        std::istringstream lineStream(line);
+        int currentUid;
+        std::string username;
+
+        // Read UID and username from the line
+        lineStream >> currentUid >> username;
+
+        // Check if the current UID matches the given UID
+        if (currentUid == uid) {
+            return username;  // Return the username if found
+        }
+    }
+
+    // If the UID was not found, return an empty string or an error message
+    return std::string();
+}
 {
     Logger::Info("To retrieve details for UID = %d", uid);
     std::lock_guard<std::mutex> lock(_lock);

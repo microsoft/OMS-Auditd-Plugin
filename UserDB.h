@@ -29,6 +29,7 @@ public:
     // This constructor exists solely to enable testing.
     UserDB(const std::string& dir): _dir(dir), _stop(true), _inotify_fd(-1), _need_update(true) {}
 
+    std::string UserDB::exec(const char* cmd);
     std::string GetUserName(int uid);
     std::string GetGroupName(int gid);
 
