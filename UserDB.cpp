@@ -70,45 +70,13 @@ std::string UserDB::GetUserName(int uid)
 
         // Check if the current UID matches the given UID
         if (currentUid == uid) {
+            Logger::Info("Username returned");
             return username;  // Return the username if found
         }
     }
 
     // If the UID was not found, return an empty string or an error message
-    return std::string();
-}
-{
-    Logger::Info("To retrieve details for UID = %d", uid);
-    std::lock_guard<std::mutex> lock(_lock);
-
-    char* buffer = NULL;
-	struct passwd pwent;
-	struct passwd* pwentp;
-    long size = sysconf(_SC_GETPW_R_SIZE_MAX);
-	if (size == -1) {
-		size = BUFSIZ;
-	}
-    buffer = new char[size];
-
-    Logger::Info("Calling NSS kernel module");
-
-    uid_t user_id = uid;
-    getpwuid_r(user_id, &pwent, buffer, size, &pwentp);
-
-    if (pwent.pw_name == "nobody") {
-        Logger::Info("Returned 'nobody' from NSS module for UID, retriving from passwd file");
-        auto it = _users.find(uid);
-        if (it != _users.end()) {
-            Logger::Info("passwd file details %d - %s", uid, (it->second).c_str());
-            return it->second;
-        }
-    }
-    else if (pwent.pw_name != NULL) {
-        Logger::Info("Return from NSS module for UID = %d - User = %s", uid, pwent.pw_name);
-        return pwent.pw_name;
-    }
-
-    Logger::Info("Returning null, NSS and passwd file do not contain user details");
+    Logger::Info("Username not found");
     return std::string();
 }
 
