@@ -36,6 +36,7 @@ std::string UserDB::exec(const char* cmd) {
     std::string result;
     FILE* pipe = popen(cmd, "r");
     if (!pipe) {
+        Logger::Error("Failed to open pipe for command: %s", cmd);
         return std::string();
     }
     try {
@@ -43,10 +44,15 @@ std::string UserDB::exec(const char* cmd) {
             result += buffer.data();
         }
     } catch (...) {
+        Logger::Error("Exception occurred while reading command output");
         pclose(pipe);  // Ensure the pipe is closed if an exception occurs
         return std::string();
     }
-    pclose(pipe);  // Ensure the pipe is closed when done
+    int returnCode = pclose(pipe);
+    if (returnCode != 0) {
+        Logger::Error("Command exited with non-zero return code: %d", returnCode);
+        return std::string();
+    }
     return result;
 }
 
@@ -55,7 +61,14 @@ std::string UserDB::GetUserName(int uid)
     Logger::Info("To retrieve details for UID = %d", uid);
     // Execute loginctl list-users and capture the output
     std::string command = "loginctl list-users --no-legend";
+    Logger::Info("Executing command: %s", command.c_str());
     std::string output = exec(command.c_str());
+
+    if (output.empty()) {
+        Logger::Error("No output received from command: %s", command.c_str());
+        return std::string();
+    }
+
     std::istringstream stream(output);  // Create a string stream from the output
     std::string line;
 
@@ -67,19 +80,22 @@ std::string UserDB::GetUserName(int uid)
         std::string username;
 
         // Read UID and username from the line
-        lineStream >> currentUid >> username;
+        if (!(lineStream >> currentUid >> username)) {
+            Logger::Error("Failed to parse line: %s", line.c_str());
+            continue;
+        }
 
         Logger::Info("Parsed UID: %d, Username: %s", currentUid, username.c_str());
 
         // Check if the current UID matches the given UID
         if (currentUid == uid) {
-            Logger::Info("Username returned");
+            Logger::Info("Matching username found: %s", username.c_str());
             return username;  // Return the username if found
         }
     }
 
     // If the UID was not found, return an empty string or an error message
-    Logger::Info("Username not found");
+    Logger::Error("Username not found for UID = %d", uid);
     return std::string();
 }
 
