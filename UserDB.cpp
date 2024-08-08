@@ -61,12 +61,15 @@ std::string UserDB::GetUserName(int uid)
 
     // Parse the output line by line
     while (std::getline(stream, line)) {
+        Logger::Info("Parsing line: %s", line.c_str());
         std::istringstream lineStream(line);
         int currentUid;
         std::string username;
 
         // Read UID and username from the line
         lineStream >> currentUid >> username;
+
+        Logger::Info("Parsed UID: %d, Username: %s", currentUid, username.c_str());
 
         // Check if the current UID matches the given UID
         if (currentUid == uid) {
