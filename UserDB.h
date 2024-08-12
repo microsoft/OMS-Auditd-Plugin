@@ -21,6 +21,8 @@
 #include <mutex>
 #include <condition_variable>
 #include <thread>
+#include <systemd/sd-bus.h>
+
 
 class UserDB {
 public:

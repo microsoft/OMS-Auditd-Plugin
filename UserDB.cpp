@@ -25,8 +25,6 @@
 #include <array>
 #include <pwd.h>
 
-#include <systemd/sd-bus.h>
-
 extern "C" {
 #include <unistd.h>
 #include <sys/inotify.h>
