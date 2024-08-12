@@ -25,77 +25,30 @@
 #include <array>
 #include <pwd.h>
 
+#include <systemd/sd-bus.h>
+
 extern "C" {
 #include <unistd.h>
 #include <sys/inotify.h>
 #include <poll.h>
 }
 
-std::string UserDB::exec(const char* cmd) {
-    std::array<char, 128> buffer;
-    std::string result;
-    FILE* pipe = popen(cmd, "r");
-    if (!pipe) {
-        Logger::Error("Failed to open pipe for command: %s", cmd);
-        return std::string();
-    }
-    try {
-        while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
-            result += buffer.data();
-        }
-    } catch (...) {
-        Logger::Error("Exception occurred while reading command output");
-        pclose(pipe);  // Ensure the pipe is closed if an exception occurs
-        return std::string();
-    }
-    int returnCode = pclose(pipe);
-    if (returnCode != 0) {
-        Logger::Error("Command exited with non-zero return code: %d", returnCode);
-        return std::string();
-    }
-    return result;
-}
-
 std::string UserDB::GetUserName(int uid)
 {
-    Logger::Info("To retrieve details for UID = %d", uid);
-    // Execute loginctl list-users and capture the output
-    std::string command = "loginctl list-users --no-legend";
-    Logger::Info("Executing command: %s", command.c_str());
-    std::string output = exec(command.c_str());
+    std::lock_guard<std::mutex> lock(_lock);
 
-    if (output.empty()) {
-        Logger::Error("No output received from command: %s", command.c_str());
-        return std::string();
+    auto it = user_map.find(uid);
+    if (it != user_map.end()) {
+        Logger::Info("Matching username found: %s", it->second.c_str());
+        return it->second;
     }
 
-    std::istringstream stream(output);  // Create a string stream from the output
-    std::string line;
-
-    // Parse the output line by line
-    while (std::getline(stream, line)) {
-        Logger::Info("Parsing line: %s", line.c_str());
-        std::istringstream lineStream(line);
-        int currentUid;
-        std::string username;
-
-        // Read UID and username from the line
-        if (!(lineStream >> currentUid >> username)) {
-            Logger::Error("Failed to parse line: %s", line.c_str());
-            continue;
-        }
-
-        Logger::Info("Parsed UID: %d, Username: %s", currentUid, username.c_str());
-
-        // Check if the current UID matches the given UID
-        if (currentUid == uid) {
-            Logger::Info("Matching username found: %s", username.c_str());
-            return username;  // Return the username if found
-        }
+    auto it = _users.find(uid);
+    if (it != _users.end()) {
+        Logger::Info("Matching username found in /etc/passwd file: %s", it->second.c_str());
+        return it->second;
     }
 
-    // If the UID was not found, return an empty string or an error message
-    Logger::Error("Username not found for UID = %d", uid);
     return std::string();
 }
 
@@ -125,6 +78,20 @@ void UserDB::Start()
         std::thread update_thread([this](){ this->update_task(); });
         _inotify_thread = std::move(inotify_thread);
         _update_thread = std::move(update_thread);
+
+        int ret = sd_bus_open_system(&bus);
+        if (ret < 0) {
+            Logger::Error("Failed to connect to system bus: %s", strerror(-ret));
+        }
+
+        // Initialize the user list
+        update_user_list();
+
+        // Start the listener thread for user change signals
+        listener_thread = std::thread(&UserDB::ListenForUserChanges, this);
+
+        // Wait for a short period to allow the listener to initialize and capture signals
+        std::this_thread::sleep_for(std::chrono::seconds(5));
     }
 }
 
@@ -140,9 +107,135 @@ void UserDB::Stop()
         lock.unlock();
         _inotify_thread.join();
         _update_thread.join();
+
+        if (listener_thread.joinable()) {
+            listener_thread.join();
+        }
+        sd_bus_unref(bus);
+        bus = nullptr;
     }
 }
 
+void UserDB::ListenForUserChanges() {
+    // Add match rules for user added and removed signals
+    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserNew", user_added_handler, this);
+    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserRemoved", user_removed_handler, this);
+
+    while (running) {
+        int ret = sd_bus_process(bus, nullptr);
+        if (ret < 0) {
+            Logger::Error("Failed to process bus: %s", strerror(-ret));
+            break;
+        }
+        if (ret > 0) {
+            continue; // Continue to process any further pending events
+        }
+
+        // Wait for the next event
+        ret = sd_bus_wait(bus, UINT64_MAX);
+        if (ret < 0) {
+            Logger::Error("Failed to wait on bus: %s", strerror(-ret));
+            break;
+        }
+    }
+}
+
+int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+    UserDB* db = static_cast<UserDB*>(userdata);
+    uint32_t uid;
+    const char* username;
+
+    int ret = sd_bus_message_read(m, "us", &uid, &username);
+    if (ret < 0) {
+        Logger::Error("Failed to parse UserNew signal: %s", strerror(-ret));
+        return ret;
+    }
+
+    Logger::Info("User added: UID=%d, Username=%s", uid, username);
+    db->user_map[uid] = username;
+    return 0;
+}
+
+int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+    UserDB* db = static_cast<UserDB*>(userdata);
+    uint32_t uid;
+
+    int ret = sd_bus_message_read(m, "u", &uid);
+    if (ret < 0) {
+        Logger::Error("Failed to parse UserRemoved signal: %s", strerror(-ret));
+        return ret;
+    }
+
+    Logger::Info("User removed: UID=%d", uid);
+    db->user_map.erase(uid);
+    return 0;
+}
+
+void UserDB::update_user_list() {
+    std::vector<std::pair<int, std::string>> users;
+    int ret = get_user_list(users);
+
+    if (ret < 0) {
+        Logger::Error("Failed to get user list");
+        return;
+    }
+
+    user_map.clear();
+    for (const auto& user : users) {
+        user_map[user.first] = user.second;
+    }
+}
+
+int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
+    sd_bus_message* msg = nullptr;
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    int ret;
+
+    // Call ListUsers method on login1.Manager interface
+    ret = sd_bus_call_method(bus,
+                             "org.freedesktop.login1",          // service name
+                             "/org/freedesktop/login1",         // object path
+                             "org.freedesktop.login1.Manager",  // interface name
+                             "ListUsers",                       // method name
+                             &error,
+                             &msg,
+                             nullptr);                          // no input arguments
+
+    if (ret < 0) {
+        Logger::Error("Failed to call ListUsers: %s", error.message);
+        sd_bus_error_free(&error);
+        return ret;
+    }
+
+    // Read the array of (uint32, string) structures
+    ret = sd_bus_message_enter_container(msg, SD_BUS_TYPE_ARRAY, "(us)");
+    if (ret < 0) {
+        Logger::Error("Failed to enter array container: %s", strerror(-ret));
+        sd_bus_message_unref(msg);
+        return ret;
+    }
+
+    while ((ret = sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "us")) > 0) {
+        uint32_t user_id;
+        const char* user_name;
+
+        ret = sd_bus_message_read(msg, "us", &user_id, &user_name);
+        if (ret < 0) {
+            Logger::Error("Failed to read user entry: %s", strerror(-ret));
+            break;
+        }
+
+        users.emplace_back(static_cast<int>(user_id), user_name);
+        sd_bus_message_exit_container(msg);  // Exit the struct container
+    }
+
+    sd_bus_message_exit_container(msg);  // Exit the array container
+
+    // Clean up
+    sd_bus_message_unref(msg);
+
+    return ret < 0 ? ret : 0;
+}
 
 int _read(int fd, void *buf, size_t buf_size)
 {

@@ -29,7 +29,6 @@ public:
     // This constructor exists solely to enable testing.
     UserDB(const std::string& dir): _dir(dir), _stop(true), _inotify_fd(-1), _need_update(true) {}
 
-    std::string exec(const char* cmd);
     std::string GetUserName(int uid);
     std::string GetGroupName(int gid);
 
@@ -45,6 +44,17 @@ private:
     void inotify_task();
 
     void update_task();
+
+    // dbus related functions
+    void ListenForUserChanges();
+    int get_user_list(std::vector<std::pair<int, std::string>>& users);
+    void update_user_list();
+    static int user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
+    static int user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error* ret_error);
+
+    sd_bus* bus;
+    std::unordered_map<int, std::string> user_map;
+    std::thread listener_thread;
 
     std::mutex _lock;
     std::condition_variable _cond;
