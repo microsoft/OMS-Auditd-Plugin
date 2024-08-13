@@ -62,6 +62,18 @@ add_custom_command(
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SYSTEMD REQUIRED libsystemd)
+
+if(SYSTEMD_FOUND)
+    message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
+    include_directories(${SYSTEMD_INCLUDE_DIRS})
+    link_directories(${SYSTEMD_LIBRARY_DIRS})
+else()
+    message(FATAL_ERROR "libsystemd not found!")
+endif()
+
 add_executable(auomscollect
         env_config.h
         auoms_version.h
@@ -318,13 +330,6 @@ add_executable(ConfigTests
         Config.cpp
         ConfigTests.cpp
 )
-
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(SYSTEMD REQUIRED libsystemd)
-
-include_directories(${SYSTEMD_INCLUDE_DIRS})
-link_directories(${SYSTEMD_LIBRARY_DIRS})
-
 
 if(NOT DO_STATIC_LINK)
   target_compile_definitions(ConfigTests PUBLIC BOOST_TEST_DYN_LINK=1)
