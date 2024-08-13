@@ -83,6 +83,7 @@ if(NOT SYSTEMD_INCLUDE_DIRS)
 endif()
 
 # Include directories
+link_directories(${SYSTEMD_LIBRARY_DIRS})
 include_directories(${SYSTEMD_INCLUDE_DIRS})
 
 add_executable(auomscollect
@@ -356,6 +357,7 @@ if(NOT SYSTEMD_INCLUDE_DIRS)
 endif()
 
 # Include directories
+link_directories(${SYSTEMD_LIBRARY_DIRS})
 include_directories(${SYSTEMD_INCLUDE_DIRS})
 
 add_executable(ConfigTests
