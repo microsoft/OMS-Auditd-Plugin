@@ -319,6 +319,13 @@ add_executable(ConfigTests
         ConfigTests.cpp
 )
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SYSTEMD REQUIRED libsystemd)
+
+include_directories(${SYSTEMD_INCLUDE_DIRS})
+link_directories(${SYSTEMD_LIBRARY_DIRS})
+
+
 if(NOT DO_STATIC_LINK)
   target_compile_definitions(ConfigTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
