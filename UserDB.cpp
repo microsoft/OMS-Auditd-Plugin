@@ -119,7 +119,7 @@ void UserDB::ListenForUserChanges() {
     sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserNew", user_added_handler, this);
     sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserRemoved", user_removed_handler, this);
 
-    while (running) {
+    while (!_stop) {
         int ret = sd_bus_process(bus, nullptr);
         if (ret < 0) {
             Logger::Error("Failed to process bus: %s", strerror(-ret));
