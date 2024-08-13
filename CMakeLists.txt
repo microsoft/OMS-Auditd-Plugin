@@ -109,6 +109,7 @@ target_link_libraries(auomscollect
         dl
         pthread
         rt
+        ${SYSTEMD_LIBRARIES}
 )
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
@@ -197,6 +198,7 @@ target_link_libraries(auoms
         dl
         pthread
         rt
+        ${SYSTEMD_LIBRARIES}
 )
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
@@ -251,6 +253,7 @@ target_link_libraries(auomsctl
         libre2.a
         pthread
         rt
+        ${SYSTEMD_LIBRARIES}
 )
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
