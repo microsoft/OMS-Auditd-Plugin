@@ -66,13 +66,24 @@ add_custom_command(
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SYSTEMD REQUIRED libsystemd)
 
+# Debug information
 if(SYSTEMD_FOUND)
+    message(STATUS "Systemd version: ${SYSTEMD_VERSION}")
     message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
-    include_directories(${SYSTEMD_INCLUDE_DIRS})
-    link_directories(${SYSTEMD_LIBRARY_DIRS})
+    message(STATUS "Systemd library dirs: ${SYSTEMD_LIBRARY_DIRS}")
+    message(STATUS "Systemd libraries: ${SYSTEMD_LIBRARIES}")
 else()
     message(FATAL_ERROR "libsystemd not found!")
 endif()
+
+# Manually specify include directories if not found by pkg-config
+if(NOT SYSTEMD_INCLUDE_DIRS)
+    set(SYSTEMD_INCLUDE_DIRS "/usr/include/systemd")
+    message(WARNING "Manually setting SYSTEMD_INCLUDE_DIRS to ${SYSTEMD_INCLUDE_DIRS}")
+endif()
+
+# Include directories
+include_directories(${SYSTEMD_INCLUDE_DIRS})
 
 add_executable(auomscollect
         env_config.h
