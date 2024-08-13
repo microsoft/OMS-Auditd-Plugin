@@ -62,13 +62,27 @@ add_custom_command(
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+# Define common directories to search
+set(CUSTOM_SYSTEMD_INCLUDE_DIRS
+    /usr/include/systemd
+    /usr/local/include/systemd
+    /opt/systemd/include
+)
 
-# Specify the path to libsystemd (you might need to adjust these paths)
+set(CUSTOM_SYSTEMD_LIBRARY_DIRS
+    /usr/lib
+    /usr/local/lib
+    /opt/systemd/lib
+)
+
+# Find Systemd include directory
 find_path(SYSTEMD_INCLUDE_DIR NAMES sd-bus.h
-          PATHS /usr/include/systemd /usr/local/include/systemd
+          PATHS ${CUSTOM_SYSTEMD_INCLUDE_DIRS}
           NO_DEFAULT_PATH)
+
+# Find Systemd library
 find_library(SYSTEMD_LIBRARY NAMES systemd
-             PATHS /usr/lib /usr/local/lib
+             PATHS ${CUSTOM_SYSTEMD_LIBRARY_DIRS}
              NO_DEFAULT_PATH)
 
 # Check if the required components were found
