@@ -63,22 +63,52 @@ add_custom_command(
 )
 
 find_package(PkgConfig REQUIRED)
+if (NOT PkgConfig_FOUND)
+    message(FATAL_ERROR "pkg-config not found")
+endif()
 pkg_check_modules(SYSTEMD REQUIRED libsystemd)
 
 message(STATUS "CMake version: ${CMAKE_VERSION}")
 
-# Display the paths and flags found by pkg-config
-message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
-message(STATUS "Systemd libraries: ${SYSTEMD_LIBRARIES}")
+# Check if SYSTEMD_INCLUDE_DIRS is empty
+if (NOT SYSTEMD_INCLUDE_DIRS OR NOT SYSTEMD_LIBRARIES)
+    message(STATUS "Pkg-config did not provide valid Systemd paths. Trying custom find logic.")
 
-if(SYSTEMD_FOUND)
-    message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
-    include_directories(${SYSTEMD_INCLUDE_DIRS})
-    link_directories(${SYSTEMD_LIBRARY_DIRS})
-else()
-    message(FATAL_ERROR "libsystemd not found!")
+    # Custom logic to find Systemd manually
+    function(find_systemd)
+        # Try to find the systemd include directory
+        find_path(SYSTEMD_INCLUDE_DIRS NAMES systemd/sd-bus.h)
+        if (SYSTEMD_INCLUDE_DIRS)
+            message(STATUS "Systemd include dirs (manual): ${SYSTEMD_INCLUDE_DIRS}")
+        else()
+            message(FATAL_ERROR "Systemd include directory not found.")
+        endif()
+
+        # Try to find the systemd library
+        find_library(SYSTEMD_LIBRARIES NAMES systemd)
+        if (SYSTEMD_LIBRARIES)
+            message(STATUS "Systemd libraries (manual): ${SYSTEMD_LIBRARIES}")
+        else()
+            message(FATAL_ERROR "Systemd library not found.")
+        endif()
+
+        # Handle the standard arguments for find_package
+        include(FindPackageHandleStandardArgs)
+        find_package_handle_standard_args(Systemd DEFAULT_MSG SYSTEMD_INCLUDE_DIRS SYSTEMD_LIBRARIES)
+        mark_as_advanced(SYSTEMD_INCLUDE_DIRS SYSTEMD_LIBRARIES)
+    endfunction()
+
+    # Call the custom find function
+    find_systemd()
 endif()
 
+if (SYSTEMD_INCLUDE_DIRS AND SYSTEMD_LIBRARIES)
+    include_directories(${SYSTEMD_INCLUDE_DIRS})
+    link_directories(${SYSTEMD_LIBRARY_DIRS})
+    target_link_libraries(my_executable PRIVATE ${SYSTEMD_LIBRARIES})
+else()
+    message(FATAL_ERROR "Systemd not found. Cannot proceed with the build.")
+endif()
 
 add_executable(auomscollect
         env_config.h
