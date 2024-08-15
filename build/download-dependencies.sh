@@ -88,3 +88,8 @@ CheckDownloadFile b7a29e40083005d280136205a925a49a1cc2b22df7c2a5e3764c35d1c70f44
 if [ $? -ne 0 ]; then
   exit 1
 fi
+
+CheckDownloadFile 7861d544190f938cac1b242624d78c96fe2ebbc7b72f86166e88b50451c6fa58 https://github.com/systemd/systemd/archive/v256.4.tar.gz ${DestDir}/systemd-256.4.zip
+if [ $? -ne 0 ]; then
+  exit 1
+fi

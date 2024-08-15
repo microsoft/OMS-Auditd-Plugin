@@ -95,6 +95,14 @@ unzip -d ${IncludeDir} ${ArchiveDir}/msgpack-c-cpp-2.0.0.zip "msgpack-c-cpp-2.0.
 mv ${IncludeDir}/msgpack-c-cpp-2.0.0/include/* ${IncludeDir}
 rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 
+if [ -e ${IncludeDir}/systemd ]; then
+  rm -rf ${IncludeDir}/systemd
+fi
+mkdir -p ${IncludeDir}/systemd
+# tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir}/systemd
+tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir} systemd-256.4\src\systemd
+
+
 if [ -e ${IncludeDir}/re2 ]; then
   rm -rf ${IncludeDir}/re2
 fi
@@ -113,5 +121,7 @@ fi
 popd
 cp $tmpdir/re2-2020-11-01/re2/{filtered_re2.h,re2.h,set.h,stringpiece.h} ${IncludeDir}/re2
 cp $tmpdir/re2-2020-11-01/obj/libre2.a $LibDir
+
+ls -la ${IncludeDir}
 
 rm -rf $tmpdir
