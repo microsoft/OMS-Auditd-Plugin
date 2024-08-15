@@ -100,7 +100,7 @@ if [ -e ${IncludeDir}/systemd ]; then
 fi
 mkdir -p ${IncludeDir}/systemd
 # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir}/systemd
-tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir} systemd-256.4\src\systemd
+tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir} systemd-256.4/src/systemd
 
 
 if [ -e ${IncludeDir}/re2 ]; then
