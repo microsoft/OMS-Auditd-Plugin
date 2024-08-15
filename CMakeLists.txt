@@ -65,6 +65,12 @@ add_custom_command(
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SYSTEMD REQUIRED libsystemd)
 
+message(STATUS "CMake version: ${CMAKE_VERSION}")
+
+# Display the paths and flags found by pkg-config
+message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
+message(STATUS "Systemd libraries: ${SYSTEMD_LIBRARIES}")
+
 if(SYSTEMD_FOUND)
     message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
     include_directories(${SYSTEMD_INCLUDE_DIRS})
