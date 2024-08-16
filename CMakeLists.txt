@@ -62,23 +62,58 @@ add_custom_command(
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-# Custom function to find the systemd package
+# Function to find systemd package
 function(find_package_systemd)
-    # Search for the systemd include directory
+    # Define possible search paths for systemd headers and libraries
+    set(SYSTEMD_SEARCH_PATHS
+        # Standard locations for headers
+        /usr/include
+        /usr/local/include
+        /opt/local/include
+        /usr/lib/x86_64-linux-gnu
+        /usr/lib/i386-linux-gnu
+        /usr/lib64
+        /usr/lib
+        /lib64
+        /lib
+        /usr/local/lib/x86_64-linux-gnu
+        /usr/local/lib/i386-linux-gnu
+        /opt/local/lib
+        /usr/local/include/systemd
+        /usr/include/systemd
+        /usr/lib/systemd
+        /usr/local/lib/systemd
+        /lib/systemd
+        /opt/local/lib/systemd
+        /usr/lib/pkgconfig
+        /usr/local/lib/pkgconfig
+        /opt/local/lib/pkgconfig
+        /usr/share/pkgconfig
+        /usr/local/share/pkgconfig
+        /opt/local/share/pkgconfig
+    )
+
+    # Find the systemd include directory
     find_path(SYSTEMD_INCLUDE_DIR
               NAMES systemd/sd-bus.h
-              PATHS /usr/include /usr/local/include /opt/local/include)
+              PATHS ${SYSTEMD_SEARCH_PATHS}
+              NO_DEFAULT_PATH)
 
-    # Search for the systemd library
+    # Find the systemd library
     find_library(SYSTEMD_LIBRARY
                  NAMES systemd
-                 PATHS /usr/lib /usr/local/lib /opt/local/lib /lib /lib64 /usr/local/lib64)
+                 PATHS ${SYSTEMD_SEARCH_PATHS}
+                 NO_DEFAULT_PATH)
 
-    # Print out the results of the search
-    message(STATUS "Check Systemd include dirs: ${SYSTEMD_INCLUDE_DIR}")
-    message(STATUS "Check Systemd libraries: ${SYSTEMD_LIBRARY}")
+    # If the library was not found in the usual locations, print the paths checked
+    if(NOT SYSTEMD_LIBRARY)
+        message(STATUS "Systemd library not found in the usual locations. Paths checked:")
+        foreach(path ${SYSTEMD_SEARCH_PATHS})
+            message(STATUS "    ${path}")
+        endforeach()
+    endif()
 
-    # Check if both include directory and library were found
+    # Check if both the include directory and the library were found
     if(SYSTEMD_INCLUDE_DIR AND SYSTEMD_LIBRARY)
         set(SYSTEMD_FOUND TRUE PARENT_SCOPE)
         set(SYSTEMD_INCLUDE_DIRS ${SYSTEMD_INCLUDE_DIR} PARENT_SCOPE)
@@ -88,7 +123,7 @@ function(find_package_systemd)
     endif()
 endfunction()
 
-# Call the custom function to find systemd
+# Call the function to find systemd
 find_package_systemd()
 
 # Handle the result of the systemd search
@@ -98,10 +133,6 @@ if(SYSTEMD_FOUND)
 
     # Include systemd headers
     include_directories(${SYSTEMD_INCLUDE_DIRS})
-    
-    # Link the systemd library to your target
-    # Assuming you have a target named 'your_target_name'
-    target_link_libraries(your_target_name ${SYSTEMD_LIBRARIES})
 else()
     message(FATAL_ERROR "Systemd package not found. Please install the required systemd development files.")
 endif()
