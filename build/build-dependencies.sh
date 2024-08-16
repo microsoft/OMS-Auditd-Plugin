@@ -151,7 +151,7 @@ cp $tmpdirSystemd/build/libsystemd.so $LibDir/
 # cp $tmpdirSystemd/lib/libsystemd.a $LibDir
 
 # Clean up temporary directory
-rm -rf $tmpdir
+rm -rf $tmpdirSystemd
 
 if [ -e ${IncludeDir}/re2 ]; then
   rm -rf ${IncludeDir}/re2
