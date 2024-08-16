@@ -63,7 +63,7 @@ add_custom_command(
 )
 
 # Find the systemd package
-find_package(systemd REQUIRED)
+find_package(libsystemd REQUIRED)
 
 # Display the found include directories and libraries
 message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
