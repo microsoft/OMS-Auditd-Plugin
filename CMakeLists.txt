@@ -75,6 +75,9 @@ function(find_package_systemd)
                  PATHS /usr/lib /usr/local/lib /opt/local/lib /lib /lib64)
 
     # Check if both the include directory and the library were found
+    message(STATUS "Check Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
+    message(STATUS "Check Systemd libraries: ${SYSTEMD_LIBRARIES}")
+
     if(SYSTEMD_INCLUDE_DIR AND SYSTEMD_LIBRARY)
         set(SYSTEMD_FOUND TRUE PARENT_SCOPE)
         set(SYSTEMD_INCLUDE_DIRS ${SYSTEMD_INCLUDE_DIR} PARENT_SCOPE)
