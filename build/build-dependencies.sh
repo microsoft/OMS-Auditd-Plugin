@@ -115,23 +115,40 @@ tar zxf ${ArchiveDir}/systemd-256.4.tar.gz -C $tmpdirSystemd --strip-components=
 # Change to the extracted directory
 pushd $tmpdirSystemd
 
-# Configure and build the library
-if [ -n "$Toolset" ]; then
-  CC=${Toolset}-gcc CXX=${Toolset}-g++ make static
-else
-  make static
-fi
+# # Configure and build the library
+# if [ -n "$Toolset" ]; then
+#   CC=${Toolset}-gcc CXX=${Toolset}-g++ make static
+# else
+#   make static
+# fi
+
+mkdir -p build
+cd build
+
+echo "Configuring the build..."
+meson --prefix=$tmpdir/install ..
+
+# Compile the source code
+echo "Building systemd..."
+ninja
+
+# Install the compiled binaries
+echo "Installing systemd..."
+ninja install
 
 # Return to the original directory
 popd
 
+cp -r $tmpdirSystemd/install/usr/include/systemd/* $IncludeDir/
+cp $tmpdirSystemd/install/usr/lib/libsystemd.a $LibDir/
+
 # Copy headers and static library to the include and lib directories
-mkdir -p ${IncludeDir}/systemd
-ls -la $tmpdirSystemd
-ls -la $tmpdirSystemd/include
-ls -la $tmpdirSystemd/lib
-cp $tmpdirSystemd/include/systemd/*.h ${IncludeDir}/systemd
-cp $tmpdirSystemd/lib/libsystemd.a $LibDir
+# mkdir -p ${IncludeDir}/systemd
+# ls -la $tmpdirSystemd
+# ls -la $tmpdirSystemd/include
+# ls -la $tmpdirSystemd/lib
+# cp $tmpdirSystemd/include/systemd/*.h ${IncludeDir}/systemd
+# cp $tmpdirSystemd/lib/libsystemd.a $LibDir
 
 # Clean up temporary directory
 rm -rf $tmpdir
