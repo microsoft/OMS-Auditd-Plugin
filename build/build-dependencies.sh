@@ -95,12 +95,46 @@ unzip -d ${IncludeDir} ${ArchiveDir}/msgpack-c-cpp-2.0.0.zip "msgpack-c-cpp-2.0.
 mv ${IncludeDir}/msgpack-c-cpp-2.0.0/include/* ${IncludeDir}
 rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 
-if [ -e ${IncludeDir}/systemd ]; then
-  rm -rf ${IncludeDir}/systemd
+# if [ -e ${IncludeDir}/systemd ]; then
+#   rm -rf ${IncludeDir}/systemd
+# fi
+# mkdir -p ${IncludeDir}/systemd
+# # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir}/systemd
+# tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=1 -C ${IncludeDir} systemd-256.4/src
+
+
+# Create temporary directory
+mkdir -p $tmpdirSystemd
+
+# Download the libsystemd source code if not already downloaded
+# curl -L https://github.com/systemd/systemd/archive/v256.4.tar.gz -o ${ArchiveDir}/systemd-256.4.tar.gz
+
+# Extract the archive
+tar zxf ${ArchiveDir}/systemd-256.4.tar.gz -C $tmpdirSystemd --strip-components=1
+
+# Change to the extracted directory
+pushd $tmpdirSystemd/systemd-256.4
+
+# Configure and build the library
+if [ -n "$Toolset" ]; then
+  CC=${Toolset}-gcc CXX=${Toolset}-g++ ./configure --prefix=$tmpdirSystemd/install
+else
+  ./configure --prefix=$tmpdirSystemd/install
 fi
+
+make
+make install
+
+# Return to the original directory
+popd
+
+# Copy headers and static library to the include and lib directories
 mkdir -p ${IncludeDir}/systemd
-# tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir}/systemd
-tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=1 -C ${IncludeDir} systemd-256.4/src
+cp $tmpdirSystemd/install/include/systemd/*.h ${IncludeDir}/systemd
+cp $tmpdirSystemd/install/lib/libsystemd.a $LibDir
+
+# Clean up temporary directory
+rm -rf $tmpdir
 
 if [ -e ${IncludeDir}/re2 ]; then
   rm -rf ${IncludeDir}/re2
@@ -122,5 +156,11 @@ cp $tmpdir/re2-2020-11-01/re2/{filtered_re2.h,re2.h,set.h,stringpiece.h} ${Inclu
 cp $tmpdir/re2-2020-11-01/obj/libre2.a $LibDir
 
 ls -la ${IncludeDir}
+
+ls -la ${IncludeDir}/re
+
+ls -la ${IncludeDir}/rapidjson
+
+ls -la ${IncludeDir}/systemd
 
 rm -rf $tmpdir
