@@ -62,26 +62,18 @@ add_custom_command(
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-find_package(PkgConfig REQUIRED)
-if (NOT PkgConfig_FOUND)
-    message(FATAL_ERROR "pkg-config not found")
-endif()
-pkg_check_modules(SYSTEMD REQUIRED libsystemd)
+# Find the systemd package
+find_package(systemd REQUIRED)
 
-message(STATUS "CMake version: ${CMAKE_VERSION}")
-
-# Display the paths and flags found by pkg-config
+# Display the found include directories and libraries
 message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
 message(STATUS "Systemd libraries: ${SYSTEMD_LIBRARIES}")
+message(STATUS "Systemd library dir: ${SYSTEMD_LIBRARY_DIRS}")
 
-if(SYSTEMD_FOUND)
-    message(STATUS "Found systemd. Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
-    include_directories(${SYSTEMD_INCLUDE_DIRS})
-    link_directories(${SYSTEMD_LIBRARY_DIRS})
-else()
-    message(FATAL_ERROR "libsystemd not found!")
-endif()
 
+# Include systemd headers
+include_directories(${SYSTEMD_INCLUDE_DIRS})
+link_directories(${SYSTEMD_LIBRARY_DIRS})
 
 add_executable(auomscollect
         env_config.h
