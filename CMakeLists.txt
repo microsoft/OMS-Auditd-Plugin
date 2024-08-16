@@ -140,10 +140,13 @@ endif()
 # Recursively list all files under /usr/include
 file(GLOB_RECURSE all_include_files "/usr/include/*")
 
-# Print the list of files
+# Print only files that contain 'systemd' in the path
 foreach(file ${all_include_files})
-    message(STATUS "Found file: ${file}")
+    if("${file}" MATCHES "systemd")
+        message(STATUS "Found systemd-related file: ${file}")
+    endif()
 endforeach()
+
 
 add_executable(auomscollect
         env_config.h
