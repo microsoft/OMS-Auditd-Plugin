@@ -137,6 +137,13 @@ else()
     message(FATAL_ERROR "Systemd package not found. Please install the required systemd development files.")
 endif()
 
+# Recursively list all files under /usr/include
+file(GLOB_RECURSE all_include_files "/usr/include/*")
+
+# Print the list of files
+foreach(file ${all_include_files})
+    message(STATUS "Found file: ${file}")
+endforeach()
 
 add_executable(auomscollect
         env_config.h
