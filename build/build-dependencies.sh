@@ -113,25 +113,25 @@ tmpdirSystemd=$(mktemp -d)
 tar zxf ${ArchiveDir}/systemd-256.4.tar.gz -C $tmpdirSystemd --strip-components=1
 
 # Change to the extracted directory
-pushd $tmpdirSystemd/systemd-256.4
+pushd $tmpdirSystemd
 
 # Configure and build the library
 if [ -n "$Toolset" ]; then
-  CC=${Toolset}-gcc CXX=${Toolset}-g++ ./configure --prefix=$tmpdirSystemd/install
+  CC=${Toolset}-gcc CXX=${Toolset}-g++ make static
 else
-  ./configure --prefix=$tmpdirSystemd/install
+  make static
 fi
-
-make
-make install
 
 # Return to the original directory
 popd
 
 # Copy headers and static library to the include and lib directories
 mkdir -p ${IncludeDir}/systemd
-cp $tmpdirSystemd/install/include/systemd/*.h ${IncludeDir}/systemd
-cp $tmpdirSystemd/install/lib/libsystemd.a $LibDir
+ls -la $tmpdirSystemd
+ls -la $tmpdirSystemd/include
+ls -la $tmpdirSystemd/lib
+cp $tmpdirSystemd/include/systemd/*.h ${IncludeDir}/systemd
+cp $tmpdirSystemd/lib/libsystemd.a $LibDir
 
 # Clean up temporary directory
 rm -rf $tmpdir
