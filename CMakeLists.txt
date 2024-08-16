@@ -62,22 +62,23 @@ add_custom_command(
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-# Custom Findsystemd function defined in CMakeLists.txt
+# Custom function to find the systemd package
 function(find_package_systemd)
-    # Find the systemd include directories
+    # Search for the systemd include directory
     find_path(SYSTEMD_INCLUDE_DIR
               NAMES systemd/sd-bus.h
               PATHS /usr/include /usr/local/include /opt/local/include)
 
-    # Find the systemd library
+    # Search for the systemd library
     find_library(SYSTEMD_LIBRARY
                  NAMES systemd
-                 PATHS /usr/lib /usr/local/lib /opt/local/lib /lib /lib64)
+                 PATHS /usr/lib /usr/local/lib /opt/local/lib /lib /lib64 /usr/local/lib64)
 
-    # Check if both the include directory and the library were found
+    # Print out the results of the search
     message(STATUS "Check Systemd include dirs: ${SYSTEMD_INCLUDE_DIR}")
     message(STATUS "Check Systemd libraries: ${SYSTEMD_LIBRARY}")
 
+    # Check if both include directory and library were found
     if(SYSTEMD_INCLUDE_DIR AND SYSTEMD_LIBRARY)
         set(SYSTEMD_FOUND TRUE PARENT_SCOPE)
         set(SYSTEMD_INCLUDE_DIRS ${SYSTEMD_INCLUDE_DIR} PARENT_SCOPE)
@@ -87,20 +88,24 @@ function(find_package_systemd)
     endif()
 endfunction()
 
-# Call the custom find_package_systemd function
+# Call the custom function to find systemd
 find_package_systemd()
 
 # Handle the result of the systemd search
 if(SYSTEMD_FOUND)
     message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
     message(STATUS "Systemd libraries: ${SYSTEMD_LIBRARIES}")
+
+    # Include systemd headers
+    include_directories(${SYSTEMD_INCLUDE_DIRS})
+    
+    # Link the systemd library to your target
+    # Assuming you have a target named 'your_target_name'
+    target_link_libraries(your_target_name ${SYSTEMD_LIBRARIES})
 else()
     message(FATAL_ERROR "Systemd package not found. Please install the required systemd development files.")
 endif()
 
-# Include systemd headers
-include_directories(${SYSTEMD_INCLUDE_DIRS})
-link_directories(${SYSTEMD_LIBRARY_DIRS})
 
 add_executable(auomscollect
         env_config.h
