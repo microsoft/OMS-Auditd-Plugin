@@ -139,9 +139,10 @@ ninja install
 # Return to the original directory
 popd
 
-cp -r $tmpdirSystemd/build/* $IncludeDir/
-cp $tmpdirSystemd/build/libsystemd.so $LibDir/
+cp -r $tmpdirSystemd/install//include/* $IncludeDir/
+cp $tmpdirSystemd/install/libsystemd.so $LibDir/
 
+echo "Copy of systemd complete"
 # Copy headers and static library to the include and lib directories
 # mkdir -p ${IncludeDir}/systemd
 # ls -la $tmpdirSystemd
@@ -153,6 +154,8 @@ cp $tmpdirSystemd/build/libsystemd.so $LibDir/
 # Clean up temporary directory
 rm -rf $tmpdirSystemd
 
+
+echo "Start re2 installation"
 if [ -e ${IncludeDir}/re2 ]; then
   rm -rf ${IncludeDir}/re2
 fi
@@ -162,6 +165,8 @@ mkdir -p ${IncludeDir}/re2
 tmpdir=$(mktemp -d)
 
 unzip -q -d $tmpdir ${ArchiveDir}/re2-2020-11-01.zip
+
+echo "Start gcc build for re"
 pushd $tmpdir/re2-2020-11-01
 if [ -n "$Toolset" ]; then
   CC=${Toolset}-gcc CXX=${Toolset}-g++ make static
