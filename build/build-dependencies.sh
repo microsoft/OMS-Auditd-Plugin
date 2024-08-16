@@ -126,7 +126,7 @@ mkdir -p build
 cd build
 
 echo "Configuring the build..."
-meson --prefix=$tmpdir/install ..
+meson --prefix=$tmpdirSystemd/install ..
 
 # Compile the source code
 echo "Building systemd..."
