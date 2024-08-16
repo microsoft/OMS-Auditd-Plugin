@@ -62,15 +62,45 @@ add_custom_command(
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-# Find the systemd package
-find_package(libsystemd REQUIRED)
+find_package(systemd REQUIRED)
 
-# Display the found include directories and libraries
-message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
-message(STATUS "Systemd libraries: ${SYSTEMD_LIBRARIES}")
-message(STATUS "Systemd library dir: ${SYSTEMD_LIBRARY_DIRS}")
+# Check if SYSTEMD_INCLUDE_DIRS is empty
+if(NOT SYSTEMD_INCLUDE_DIRS)
+    message(WARNING "Systemd include dirs not found, manually setting the include dirs and library paths.")
 
+    # Manually set the systemd include directories and libraries
+    find_path(SYSTEMD_INCLUDE_DIRS
+              NAMES systemd/sd-bus.h
+              PATHS /usr/include /usr/local/include /opt/local/include
+              NO_DEFAULT_PATH)
 
+    find_library(SYSTEMD_LIBRARIES
+                 NAMES systemd
+                 PATHS /usr/lib /usr/local/lib /opt/local/lib /lib /lib64
+                 NO_DEFAULT_PATH)
+
+    find_path(SYSTEMD_LIBRARY_DIRS
+              NAMES libsystemd.so
+              PATH_SUFFIXES systemd
+              PATHS /usr/lib /usr/local/lib /opt/local/lib /lib /lib64
+              NO_DEFAULT_PATH)
+    
+    # If paths are still not found, raise an error
+    if(NOT SYSTEMD_INCLUDE_DIRS OR NOT SYSTEMD_LIBRARIES)
+        message(FATAL_ERROR "Systemd include directories or libraries not found. Please install the required packages or manually specify the paths.")
+    endif()
+
+    # Optionally, re-run find_package with updated paths
+    find_package(systemd REQUIRED)
+else()
+    message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
+    message(STATUS "Systemd libraries: ${SYSTEMD_LIBRARIES}")
+    message(STATUS "Systemd library dir: ${SYSTEMD_LIBRARY_DIRS}")
+endif()
+
+    message(STATUS "Finally Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
+    message(STATUS "Finally Systemd libraries: ${SYSTEMD_LIBRARIES}")
+    message(STATUS "Finally Systemd library dir: ${SYSTEMD_LIBRARY_DIRS}")
 # Include systemd headers
 include_directories(${SYSTEMD_INCLUDE_DIRS})
 link_directories(${SYSTEMD_LIBRARY_DIRS})
