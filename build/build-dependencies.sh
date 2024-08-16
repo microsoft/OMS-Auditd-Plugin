@@ -104,7 +104,7 @@ rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 
 
 # Create temporary directory
-mkdir -p $tmpdirSystemd
+tmpdirSystemd=$(mktemp -d)
 
 # Download the libsystemd source code if not already downloaded
 # curl -L https://github.com/systemd/systemd/archive/v256.4.tar.gz -o ${ArchiveDir}/systemd-256.4.tar.gz
