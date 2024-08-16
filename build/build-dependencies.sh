@@ -139,8 +139,8 @@ ninja install
 # Return to the original directory
 popd
 
-cp -r $tmpdirSystemd/install//include/* $IncludeDir/
-cp $tmpdirSystemd/install/libsystemd.so $LibDir/
+cp -r $tmpdirSystemd/install/include/* $IncludeDir/
+cp $tmpdirSystemd/install/lib/*/libsystemd.so $LibDir/
 
 echo "Copy of systemd complete"
 # Copy headers and static library to the include and lib directories
