@@ -102,6 +102,11 @@ rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 # # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir}/systemd
 # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=1 -C ${IncludeDir} systemd-256.4/src
 
+export CC="${Toolset}-gcc"
+export CXX="${Toolset}-g++"
+export AR="${Toolset}-ar"
+export STRIP="${Toolset}-strip"
+export PKG_CONFIG="${Toolset}-pkg-config"
 
 # # Create temporary directory
 tmpdirSystemd=$(mktemp -d)
@@ -126,14 +131,7 @@ mkdir -p build
 cd build
 
 echo "Configuring the build..."
-if [ -n "$Toolset" ]; then
-  meson --prefix=$tmpdirSystemd/install \
-        -CC="${Toolset}-gcc" \
-        -CXX="${Toolset}-g++" \
-        ..
-else
-  meson --prefix=$tmpdirSystemd/install ..
-fi
+meson --prefix=$tmpdirSystemd/install ..
 
 # Compile the source code
 echo "Building systemd..."
