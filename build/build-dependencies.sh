@@ -142,6 +142,7 @@ popd
 cp -r $tmpdirSystemd/install/include/* $IncludeDir/
 
 ls -la $tmpdirSystemd/install/lib/systemd
+libsystemd_path=$(find $tmpdirSystemd/install/lib -name "libsystemd.so" | head -n 1)
 cp -r $tmpdirSystemd/install/lib/systemd $LibDir/
 
 echo "Copy of systemd complete"
