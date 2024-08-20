@@ -102,21 +102,36 @@ rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 # # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir}/systemd
 # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=1 -C ${IncludeDir} systemd-256.4/src
 
+# Export necessary toolchain variables
 export CC="${Toolset}-gcc"
 export CXX="${Toolset}-g++"
 export AR="${Toolset}-ar"
 export STRIP="${Toolset}-strip"
 export PKG_CONFIG="${Toolset}-pkg-config"
+export PREFIX="/usr/${Toolset}"
+
+# Create a temporary directory for building
+tmpdirLibcap=$(mktemp -d)
+
+# Step 1: Install libcap
+echo "Installing libcap..."
+curl -L https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.58.tar.gz -o $tmpdirLibcap/libcap-2.58.tar.gz
+tar -xzf $tmpdirLibcap/libcap-2.58.tar.gz -C $tmpdirLibcap --strip-components=1
+
+cd $tmpdirLibcap
+
+# Configure and compile libcap
+make CC="${CC}" AR="${AR}" RANLIB="${Toolset}-ranlib" prefix=${PREFIX} lib=lib install
+
+# Clean up libcap temporary directory
+cd ..
+rm -rf $tmpdirLibcap
 
 # # Create temporary directory
 tmpdirSystemd=$(mktemp -d)
 
 # # Download the libsystemd source code if not already downloaded
 # # curl -L https://github.com/systemd/systemd/archive/v256.4.tar.gz -o ${ArchiveDir}/systemd-256.4.tar.gz
-
-export CFLAGS="$($PKG_CONFIG --cflags libcap 2>/dev/null)"
-export LDFLAGS="$($PKG_CONFIG --libs libcap 2>/dev/null)"
-export PKG_CONFIG_PATH="$($PKG_CONFIG --variable pc_path libcap 2>/dev/null)"
 
 # Extract the archive
 tar zxf ${ArchiveDir}/systemd-256.4.tar.gz -C $tmpdirSystemd --strip-components=1
