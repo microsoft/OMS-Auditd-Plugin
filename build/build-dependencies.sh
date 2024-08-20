@@ -126,7 +126,14 @@ mkdir -p build
 cd build
 
 echo "Configuring the build..."
-meson --prefix=$tmpdirSystemd/install ..
+if [ -n "$Toolset" ]; then
+  meson --prefix=$tmpdirSystemd/install \
+        -Dcc="${Toolset}-gcc" \
+        -Dcxx="${Toolset}-g++" \
+        ..
+else
+  meson --prefix=$tmpdirSystemd/install ..
+fi
 
 # Compile the source code
 echo "Building systemd..."
