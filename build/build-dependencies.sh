@@ -128,8 +128,8 @@ cd build
 echo "Configuring the build..."
 if [ -n "$Toolset" ]; then
   meson --prefix=$tmpdirSystemd/install \
-        -Dcc="${Toolset}-gcc" \
-        -Dcxx="${Toolset}-g++" \
+        -CC="${Toolset}-gcc" \
+        -CXX="${Toolset}-g++" \
         ..
 else
   meson --prefix=$tmpdirSystemd/install ..
