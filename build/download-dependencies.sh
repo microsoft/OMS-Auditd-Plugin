@@ -89,7 +89,7 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# CheckDownloadFile 7861d544190f938cac1b242624d78c96fe2ebbc7b72f86166e88b50451c6fa58 https://github.com/systemd/systemd/archive/v256.4.tar.gz ${DestDir}/systemd-256.4.tar.gz
-# if [ $? -ne 0 ]; then
-#   exit 1
-# fi
+CheckDownloadFile 7861d544190f938cac1b242624d78c96fe2ebbc7b72f86166e88b50451c6fa58 https://github.com/systemd/systemd/archive/v256.4.tar.gz ${DestDir}/systemd-256.4.tar.gz
+if [ $? -ne 0 ]; then
+  exit 1
+fi

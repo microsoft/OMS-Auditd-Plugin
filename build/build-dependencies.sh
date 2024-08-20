@@ -109,50 +109,52 @@ rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 # # Download the libsystemd source code if not already downloaded
 # # curl -L https://github.com/systemd/systemd/archive/v256.4.tar.gz -o ${ArchiveDir}/systemd-256.4.tar.gz
 
-# # Extract the archive
-# tar zxf ${ArchiveDir}/systemd-256.4.tar.gz -C $tmpdirSystemd --strip-components=1
+# Extract the archive
+tar zxf ${ArchiveDir}/systemd-256.4.tar.gz -C $tmpdirSystemd --strip-components=1
 
-# # Change to the extracted directory
-# pushd $tmpdirSystemd
+# Change to the extracted directory
+pushd $tmpdirSystemd
 
-# # # Configure and build the library
-# # if [ -n "$Toolset" ]; then
-# #   CC=${Toolset}-gcc CXX=${Toolset}-g++ make static
-# # else
-# #   make static
-# # fi
+# # Configure and build the library
+# if [ -n "$Toolset" ]; then
+#   CC=${Toolset}-gcc CXX=${Toolset}-g++ make static
+# else
+#   make static
+# fi
 
-# mkdir -p build
-# cd build
+mkdir -p build
+cd build
 
-# echo "Configuring the build..."
-# meson --prefix=$tmpdirSystemd/install ..
+echo "Configuring the build..."
+meson --prefix=$tmpdirSystemd/install ..
 
-# # Compile the source code
-# echo "Building systemd..."
-# ninja
+# Compile the source code
+echo "Building systemd..."
+ninja
 
-# # Install the compiled binaries
-# echo "Installing systemd..."
-# ninja install
+# Install the compiled binaries
+echo "Installing systemd..."
+ninja install
 
-# # Return to the original directory
-# popd
+# Return to the original directory
+popd
 
-# cp -r $tmpdirSystemd/install/include/* $IncludeDir/
-# cp -r $tmpdirSystemd/install/lib/systemd $LibDir/
+cp -r $tmpdirSystemd/install/include/* $IncludeDir/
 
-# echo "Copy of systemd complete"
-# # Copy headers and static library to the include and lib directories
-# # mkdir -p ${IncludeDir}/systemd
-# # ls -la $tmpdirSystemd
-# # ls -la $tmpdirSystemd/include
-# # ls -la $tmpdirSystemd/lib
-# # cp $tmpdirSystemd/include/systemd/*.h ${IncludeDir}/systemd
-# # cp $tmpdirSystemd/lib/libsystemd.a $LibDir
+ls -la $tmpdirSystemd/install/lib/systemd
+cp -r $tmpdirSystemd/install/lib/systemd $LibDir/
 
-# # Clean up temporary directory
-# rm -rf $tmpdirSystemd
+echo "Copy of systemd complete"
+# Copy headers and static library to the include and lib directories
+# mkdir -p ${IncludeDir}/systemd
+# ls -la $tmpdirSystemd
+# ls -la $tmpdirSystemd/include
+# ls -la $tmpdirSystemd/lib
+# cp $tmpdirSystemd/include/systemd/*.h ${IncludeDir}/systemd
+# cp $tmpdirSystemd/lib/libsystemd.a $LibDir
+
+# Clean up temporary directory
+rm -rf $tmpdirSystemd
 
 
 echo "Start re2 installation"
