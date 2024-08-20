@@ -141,9 +141,7 @@ popd
 
 cp -r $tmpdirSystemd/install/include/* $IncludeDir/
 
-ls -la $tmpdirSystemd/install/lib/systemd
-libsystemd_path=$(find $tmpdirSystemd/install/lib -name "libsystemd.so" | head -n 1)
-cp -r $tmpdirSystemd/install/lib/systemd $LibDir/
+cp -r $tmpdirSystemd/install/lib/*/libsystemd.so $LibDir/
 
 echo "Copy of systemd complete"
 # Copy headers and static library to the include and lib directories
