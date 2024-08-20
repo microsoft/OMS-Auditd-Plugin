@@ -127,6 +127,20 @@ make CC="${CC}" AR="${AR}" RANLIB="${Toolset}-ranlib" prefix=${PREFIX} lib=lib i
 cd ..
 rm -rf $tmpdirLibcap
 
+
+# Step 2: Install other dependencies
+echo "Installing additional dependencies..."
+
+# Install libuuid
+tmpdirLibuuid=$(mktemp -d)
+curl -L https://github.com/lddgo/libuuid/archive/refs/tags/v1.0.3.tar.gz -o $tmpdirLibuuid/libuuid-1.0.3.tar.gz
+tar -xzf $tmpdirLibuuid/libuuid-1.0.3.tar.gz -C $tmpdirLibuuid --strip-components=1
+cd $tmpdirLibuuid
+./configure --prefix=${PREFIX}
+make && make install
+cd ..
+rm -rf $tmpdirLibuuid
+
 # # Create temporary directory
 tmpdirSystemd=$(mktemp -d)
 
