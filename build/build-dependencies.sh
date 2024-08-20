@@ -114,6 +114,10 @@ tmpdirSystemd=$(mktemp -d)
 # # Download the libsystemd source code if not already downloaded
 # # curl -L https://github.com/systemd/systemd/archive/v256.4.tar.gz -o ${ArchiveDir}/systemd-256.4.tar.gz
 
+export CFLAGS="$($PKG_CONFIG --cflags libcap 2>/dev/null)"
+export LDFLAGS="$($PKG_CONFIG --libs libcap 2>/dev/null)"
+export PKG_CONFIG_PATH="$($PKG_CONFIG --variable pc_path libcap 2>/dev/null)"
+
 # Extract the archive
 tar zxf ${ArchiveDir}/systemd-256.4.tar.gz -C $tmpdirSystemd --strip-components=1
 
