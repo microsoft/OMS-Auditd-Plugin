@@ -145,7 +145,6 @@ if [ $? -ne 0 ]; then
     echo "Error downloading util-linux."
     exit 1
 fi
-
 # Extract the archive
 echo "Extracting util-linux..."
 tar -xzf "$tmpdirUtilLinux/util-linux-2.38.1.tar.gz" -C "$tmpdirUtilLinux" --strip-components=1
@@ -153,12 +152,13 @@ tar -xzf "$tmpdirUtilLinux/util-linux-2.38.1.tar.gz" -C "$tmpdirUtilLinux" --str
 # Change to the extracted directory
 cd "$tmpdirUtilLinux" || exit
 
-# Change to the libuuid directory
-cd libuuid || exit
+# Create a build directory for CMake
+mkdir -p build
+cd build || exit
 
-# Configure the build
+# Configure the build using CMake for libuuid
 echo "Configuring the build for libuuid..."
-./configure --prefix="$PREFIX"
+cmake -DCMAKE_INSTALL_PREFIX="$PREFIX" ../libuuid
 
 # Compile the source code
 echo "Building libuuid..."
@@ -166,11 +166,13 @@ make
 
 # Install the compiled binaries
 echo "Installing libuuid..."
-make install
+sudo make install
 
 # Clean up
 cd ../../..
 rm -rf "$tmpdirUtilLinux"
+
+echo "libuuid installation complete."
 
 # # Create temporary directory
 tmpdirSystemd=$(mktemp -d)
