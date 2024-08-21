@@ -231,7 +231,7 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
     Logger::Info("ret success");
 
     // Read the array of (uint32, string) structures
-    ret = sd_bus_message_enter_container(msg, SD_BUS_TYPE_ARRAY, "(us)");
+    ret = sd_bus_message_enter_container(msg, SD_BUS_TYPE_ARRAY, "(uso)");
     Logger::Info("Container call complete");
     if (ret < 0) {
         Logger::Error("Failed to enter array container: %s", strerror(-ret));
@@ -240,7 +240,7 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
     }
     Logger::Info("Container call success");
 
-    while ((ret = sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "us")) > 0) {
+    while ((ret = sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "uso")) > 0) {
         uint32_t user_id;
         const char* user_name;
 
