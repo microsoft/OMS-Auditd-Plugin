@@ -72,7 +72,6 @@ message(STATUS "CMake version: ${CMAKE_VERSION}")
 
 # Display the paths and flags found by pkg-config
 message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
-message(STATUS "Systemd libraries: ${SYSTEMD_LIBRARIES}")
 
 if(SYSTEMD_FOUND)
     message(STATUS "Found systemd. Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
@@ -129,7 +128,7 @@ target_link_libraries(auomscollect
         dl
         pthread
         rt
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
@@ -218,7 +217,7 @@ target_link_libraries(auoms
         dl
         pthread
         rt
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
@@ -273,7 +272,7 @@ target_link_libraries(auomsctl
         libre2.a
         pthread
         rt
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
@@ -344,7 +343,7 @@ if(NOT DO_STATIC_LINK)
 endif()
 
 target_link_libraries(ConfigTests ${Boost_LIBRARIES}
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(Config ${CMAKE_BINARY_DIR}/ConfigTests --log_sink=ConfigTests.log --report_sink=ConfigTests.report)
@@ -364,7 +363,7 @@ endif()
 
 target_link_libraries(EventTests ${Boost_LIBRARIES}
         pthread
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(Event ${CMAKE_BINARY_DIR}/EventTests --log_sink=EventTests.log --report_sink=EventTests.report)
@@ -381,7 +380,7 @@ if(NOT DO_STATIC_LINK)
 endif()
 
 target_link_libraries(QueueTests ${Boost_LIBRARIES}
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(Queue ${CMAKE_BINARY_DIR}/QueueTests --log_sink=QueueTests.log --report_sink=QueueTests.report)
@@ -400,7 +399,7 @@ endif()
 
 target_link_libraries(PriorityQueueTests ${Boost_LIBRARIES}
         pthread
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(PriorityQueue ${CMAKE_BINARY_DIR}/PriorityQueueTests --log_sink=PriorityQueueTests.log --report_sink=PriorityQueueTests.report)
@@ -417,7 +416,7 @@ endif()
 
 target_link_libraries(SPSCDataQueueTests ${Boost_LIBRARIES}
         pthread
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(SPSCDataQueueTests ${CMAKE_BINARY_DIR}/SPSCDataQueueTests --log_sink=SPSCDataQueueTests.log --report_sink=SPSCDataQueueTests.report)
@@ -436,7 +435,7 @@ endif()
 
 target_link_libraries(UserDBTests ${Boost_LIBRARIES}
         pthread
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(UserDB ${CMAKE_BINARY_DIR}/UserDBTests --log_sink=UserDBTests.log --report_sink=UserDBTests.report)
@@ -451,7 +450,7 @@ if(NOT DO_STATIC_LINK)
 endif()
 
 target_link_libraries(StringTests ${Boost_LIBRARIES}
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(String ${CMAKE_BINARY_DIR}/StringTests --log_sink=StringTests.log --report_sink=StringTests.report)
@@ -497,7 +496,7 @@ target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
         dl
         pthread
         rt
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=EventProcessorTests.log --report_sink=EventProcessorTests.report)
@@ -528,7 +527,7 @@ target_link_libraries(ProcessTreeTests ${Boost_LIBRARIES}
         dl
         pthread
         rt
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(EventProcessor ${CMAKE_BINARY_DIR}/ProcessTreeTests --log_sink=ProcessTreeTests.log --report_sink=ProcessTreeTests.report)
@@ -555,7 +554,7 @@ target_link_libraries(ExecveConverterTests ${Boost_LIBRARIES}
         dl
         pthread
         rt
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(ExecveConverter ${CMAKE_BINARY_DIR}/ExecveConverterTests --log_sink=ExecveConverterTests.log --report_sink=ExecveConverterTests.report)
@@ -585,7 +584,7 @@ endif()
 target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}
         libre2.a
         pthread
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(OMSEventWriter ${CMAKE_BINARY_DIR}/OMSEventWriterTests --log_sink=OMSEventWriterTests.log --report_sink=OMSEventWriterTests.report)
@@ -612,7 +611,7 @@ endif()
 target_link_libraries(FluentEventWriterTests ${Boost_LIBRARIES}
         libre2.a
         pthread
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(FluentEventWriter ${CMAKE_BINARY_DIR}/FluentEventWriterTests --log_sink=FluentEventWriterTests.log --report_sink=FluentEventWriterTests.report)
@@ -657,7 +656,7 @@ target_link_libraries(OutputInputTests
         libre2.a
         ${Boost_LIBRARIES}
         pthread
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(OutputInputTests ${CMAKE_BINARY_DIR}/OutputInputTests --log_sink=OutputInputTests.log --report_sink=OutputInputTests.report)
@@ -681,7 +680,7 @@ target_link_libraries(CmdlineRedactorTests
         libre2.a
         ${Boost_LIBRARIES}
         pthread
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(CmdlineRedactorTests ${CMAKE_BINARY_DIR}/CmdlineRedactorTests --log_sink=CmdlineRedactorTests.log --report_sink=CmdlineRedactorTests.report)
@@ -705,7 +704,7 @@ target_link_libraries(EventMatcherTests
         libre2.a
         ${Boost_LIBRARIES}
         pthread
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(EventMatcherTests ${CMAKE_BINARY_DIR}/EventMatcherTests --log_sink=EventMatcherTests.log --report_sink=EventMatcherTests.report)
@@ -730,7 +729,7 @@ target_link_libraries(EventAggregatorTests
         libre2.a
         ${Boost_LIBRARIES}
         pthread
-        ${SYSTEMD_LIBRARIES}
+        libsystemd.so
 )
 
 add_test(EventAggregatorTests ${CMAKE_BINARY_DIR}/EventAggregatorTests --log_sink=EventAggregatorTests.log --report_sink=EventAggregatorTests.report)
