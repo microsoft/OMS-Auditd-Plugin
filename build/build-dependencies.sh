@@ -102,77 +102,33 @@ rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 # # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir}/systemd
 # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=1 -C ${IncludeDir} systemd-256.4/src
 
-# Export necessary toolchain variables
-export CC="${Toolset}-gcc"
-export CXX="${Toolset}-g++"
-export AR="${Toolset}-ar"
-export STRIP="${Toolset}-strip"
-export PKG_CONFIG="${Toolset}-pkg-config"
-export PREFIX="/usr/${Toolset}"
-
 # Create a temporary directory for building
 tmpdirLibcap=$(mktemp -d)
 
 # Step 1: Install libcap
 echo "Installing libcap..."
-curl -L https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.58.tar.gz -o $tmpdirLibcap/libcap-2.58.tar.gz
-tar -xzf $tmpdirLibcap/libcap-2.58.tar.gz -C $tmpdirLibcap --strip-components=1
+curl -L https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.67.tar.gz -o $tmpdirLibcap/libcap-2.67.tar.gz
+tar -xzf $tmpdirLibcap/libcap-2.67.tar.gz -C $tmpdirLibcap --strip-components=1
 
-cd $tmpdirLibcap
+cd "$tmpdirLibcap" || exit
 
-# Configure and compile libcap
-make CC="${CC}" AR="${AR}" RANLIB="${Toolset}-ranlib" prefix=${PREFIX} lib=lib install
+export CC="${Toolset}-gcc"
+export AR="${Toolset}-ar"
+export STRIP="${Toolset}-strip"
+export RANLIB="${Toolset}-ranlib"
 
-# Clean up libcap temporary directory
-cd ..
-rm -rf $tmpdirLibcap
-
-
-# Step 2: Install other dependencies
-echo "Installing additional dependencies..."
-
-PREFIX="/usr/local"  # Change this to your desired installation path
-
-# Create a temporary directory for downloading util-linux
-tmpdirUtilLinux=$(mktemp -d)
-
-# Download the util-linux source code
-echo "Downloading util-linux version 2.38.1..."
-curl -L -o "$tmpdirUtilLinux/util-linux-2.38.1.tar.gz" "https://github.com/util-linux/util-linux/archive/refs/tags/v2.38.1.tar.gz"
-
-# Check if the download was successful
-if [ $? -ne 0 ]; then
-    echo "Error downloading util-linux."
-    exit 1
-fi
-# Extract the archive
-echo "Extracting util-linux..."
-tar -xzf "$tmpdirUtilLinux/util-linux-2.38.1.tar.gz" -C "$tmpdirUtilLinux" --strip-components=1
-
-# Change to the extracted directory
-cd "$tmpdirUtilLinux" || exit
-
-# Create a build directory for CMake
-mkdir -p build
-cd build || exit
-
-# Configure the build using CMake for libuuid
-echo "Configuring the build for libuuid..."
-cmake -DCMAKE_INSTALL_PREFIX="$PREFIX" ../libuuid
-
-# Compile the source code
-echo "Building libuuid..."
-make
+# Build and install libcap
+echo "Building libcap..."
+make CC=$CC prefix="$PREFIX" lib=lib
 
 # Install the compiled binaries
-echo "Installing libuuid..."
-sudo make install
+echo "Installing libcap..."
+sudo make prefix="$PREFIX" lib=lib install
 
 # Clean up
-cd ../../..
-rm -rf "$tmpdirUtilLinux"
+cd ..
+rm -rf "$tmpdirLibcap"
 
-echo "libuuid installation complete."
 
 # # Create temporary directory
 tmpdirSystemd=$(mktemp -d)
