@@ -213,4 +213,6 @@ ls -la ${IncludeDir}/rapidjson
 
 # ls -la ${IncludeDir}/systemd
 
+ls -la $LibDir
+
 rm -rf $tmpdir
