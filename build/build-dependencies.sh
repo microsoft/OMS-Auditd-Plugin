@@ -131,15 +131,46 @@ rm -rf $tmpdirLibcap
 # Step 2: Install other dependencies
 echo "Installing additional dependencies..."
 
-# Install libuuid
-tmpdirLibuuid=$(mktemp -d)
-curl -L https://github.com/lddgo/libuuid/archive/refs/tags/v1.0.3.tar.gz -o $tmpdirLibuuid/libuuid-1.0.3.tar.gz
-tar -xzf $tmpdirLibuuid/libuuid-1.0.3.tar.gz -C $tmpdirLibuuid --strip-components=1
-cd $tmpdirLibuuid
-./configure --prefix=${PREFIX}
-make && make install
-cd ..
-rm -rf $tmpdirLibuuid
+PREFIX="/usr/local"  # Change this to your desired installation path
+
+# Create a temporary directory for downloading util-linux
+tmpdirUtilLinux=$(mktemp -d)
+
+# Download the util-linux source code
+echo "Downloading util-linux version 2.38.1..."
+curl -L -o "$tmpdirUtilLinux/util-linux-2.38.1.tar.gz" "https://github.com/util-linux/util-linux/archive/refs/tags/v2.38.1.tar.gz"
+
+# Check if the download was successful
+if [ $? -ne 0 ]; then
+    echo "Error downloading util-linux."
+    exit 1
+fi
+
+# Extract the archive
+echo "Extracting util-linux..."
+tar -xzf "$tmpdirUtilLinux/util-linux-2.38.1.tar.gz" -C "$tmpdirUtilLinux" --strip-components=1
+
+# Change to the extracted directory
+cd "$tmpdirUtilLinux" || exit
+
+# Change to the libuuid directory
+cd libuuid || exit
+
+# Configure the build
+echo "Configuring the build for libuuid..."
+./configure --prefix="$PREFIX"
+
+# Compile the source code
+echo "Building libuuid..."
+make
+
+# Install the compiled binaries
+echo "Installing libuuid..."
+make install
+
+# Clean up
+cd ../../..
+rm -rf "$tmpdirUtilLinux"
 
 # # Create temporary directory
 tmpdirSystemd=$(mktemp -d)
