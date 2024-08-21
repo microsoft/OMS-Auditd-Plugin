@@ -170,6 +170,8 @@ cp -r $tmpdirSystemd/install/include/* $IncludeDir/
 
 cp -r $tmpdirSystemd/install/lib/*/libsystemd.so $LibDir/
 
+cp -r $tmpdirSystemd/install/lib/*/libsystemd.so /opt/x-tools/*-msft-linux-gnu/*-msft-linux-gnu/sysroot/lib/
+
 echo "Copy of systemd complete"
 # Copy headers and static library to the include and lib directories
 # mkdir -p ${IncludeDir}/systemd
