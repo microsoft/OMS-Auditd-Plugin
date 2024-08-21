@@ -102,32 +102,32 @@ rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 # # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir}/systemd
 # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=1 -C ${IncludeDir} systemd-256.4/src
 
-# Create a temporary directory for building
-tmpdirLibcap=$(mktemp -d)
+# # Create a temporary directory for building
+# tmpdirLibcap=$(mktemp -d)
 
-# Step 1: Install libcap
-echo "Installing libcap..."
-curl -L https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.67.tar.gz -o $tmpdirLibcap/libcap-2.67.tar.gz
-tar -xzf $tmpdirLibcap/libcap-2.67.tar.gz -C $tmpdirLibcap --strip-components=1
+# # Step 1: Install libcap
+# echo "Installing libcap..."
+# curl -L https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.67.tar.gz -o $tmpdirLibcap/libcap-2.67.tar.gz
+# tar -xzf $tmpdirLibcap/libcap-2.67.tar.gz -C $tmpdirLibcap --strip-components=1
 
-cd "$tmpdirLibcap" || exit
+# cd "$tmpdirLibcap" || exit
 
-export CC="${Toolset}-gcc"
-export AR="${Toolset}-ar"
-export STRIP="${Toolset}-strip"
-export RANLIB="${Toolset}-ranlib"
+# export CC="${Toolset}-gcc"
+# export AR="${Toolset}-ar"
+# export STRIP="${Toolset}-strip"
+# export RANLIB="${Toolset}-ranlib"
 
-# Build and install libcap
-echo "Building libcap..."
-make CC=$CC prefix="$PREFIX" lib=lib
+# # Build and install libcap
+# echo "Building libcap..."
+# make CC=$CC prefix="$PREFIX" lib=lib
 
-# Install the compiled binaries
-echo "Installing libcap..."
-sudo make prefix="$PREFIX" lib=lib install
+# # Install the compiled binaries
+# echo "Installing libcap..."
+# sudo make prefix="$PREFIX" lib=lib install
 
-# Clean up
-cd ..
-rm -rf "$tmpdirLibcap"
+# # Clean up
+# cd ..
+# rm -rf "$tmpdirLibcap"
 
 
 # # Create temporary directory
