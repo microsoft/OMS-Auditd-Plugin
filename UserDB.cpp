@@ -44,7 +44,7 @@ std::string UserDB::GetUserName(int uid)
     auto it_u = _users.find(uid);
     if (it_u != _users.end()) {
         Logger::Info("Matching username found in /etc/passwd file: %s", it_u->second.c_str());
-        return it->second;
+        return it_u->second;
     }
 
     return std::string();
