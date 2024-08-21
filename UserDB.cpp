@@ -116,11 +116,17 @@ void UserDB::Stop()
 
 void UserDB::ListenForUserChanges() {
     // Add match rules for user added and removed signals
+    Logger::Info("Listen for user changes: Entered");
+
     sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserNew", user_added_handler, this);
     sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserRemoved", user_removed_handler, this);
 
+    Logger::Info("Listen for user changes: Registered signals");
+
     while (!_stop) {
+        Logger::Info("Listen for user changes: In stop loop");
         int ret = sd_bus_process(bus, nullptr);
+        Logger::Info("Listen for user changes: In bus process success");
         if (ret < 0) {
             Logger::Error("Failed to process bus: %s", strerror(-ret));
             break;
@@ -130,12 +136,15 @@ void UserDB::ListenForUserChanges() {
         }
 
         // Wait for the next event
+        Logger::Info("Listen for user changes: In bus wait");
         ret = sd_bus_wait(bus, UINT64_MAX);
+        Logger::Info("Listen for user changes: In bus wait success");
         if (ret < 0) {
             Logger::Error("Failed to wait on bus: %s", strerror(-ret));
             break;
         }
     }
+    Logger::Info("Listen for user changes: Successfully out of while");
 }
 
 int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
@@ -143,7 +152,9 @@ int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error* 
     uint32_t uid;
     const char* username;
 
+    Logger::Info("Added user handler: before read");
     int ret = sd_bus_message_read(m, "us", &uid, &username);
+    Logger::Info("Added user handler: before read success");
     if (ret < 0) {
         Logger::Error("Failed to parse UserNew signal: %s", strerror(-ret));
         return ret;
@@ -158,7 +169,9 @@ int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error
     UserDB* db = static_cast<UserDB*>(userdata);
     uint32_t uid;
 
+    Logger::Info("Remove user handler: before read");
     int ret = sd_bus_message_read(m, "u", &uid);
+    Logger::Info("Remove user handler: before read success");
     if (ret < 0) {
         Logger::Error("Failed to parse UserRemoved signal: %s", strerror(-ret));
         return ret;
@@ -171,17 +184,23 @@ int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error
 
 void UserDB::update_user_list() {
     std::vector<std::pair<int, std::string>> users;
+
+    Logger::Info("In Update: Update_user_list call");
     int ret = get_user_list(users);
 
+    Logger::Info("In Update: Update_user_list call success");
+
     if (ret < 0) {
-        Logger::Error("Failed to get user list");
+        Logger::Error("In Update: Failed to get user list");
         return;
     }
 
+    Logger::Info("In Update: Creating new user_map");
     user_map.clear();
     for (const auto& user : users) {
         user_map[user.first] = user.second;
     }
+    Logger::Info("In Update: Creating new user_map success");
 }
 
 int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
@@ -189,6 +208,7 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
     sd_bus_error error = SD_BUS_ERROR_NULL;
     int ret;
 
+    Logger::Info("In calling get_user_list");
     // Call ListUsers method on login1.Manager interface
     ret = sd_bus_call_method(bus,
                              "org.freedesktop.login1",          // service name
@@ -199,38 +219,53 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
                              &msg,
                              nullptr);                          // no input arguments
 
+    Logger::Info("sd_bus call method complete");
+
     if (ret < 0) {
         Logger::Error("Failed to call ListUsers: %s", error.message);
         sd_bus_error_free(&error);
+        Logger::Info("ret not expected. Returning");
         return ret;
     }
 
+    Logger::Info("ret success");
+
     // Read the array of (uint32, string) structures
     ret = sd_bus_message_enter_container(msg, SD_BUS_TYPE_ARRAY, "(us)");
+    Logger::Info("Container call complete");
     if (ret < 0) {
         Logger::Error("Failed to enter array container: %s", strerror(-ret));
         sd_bus_message_unref(msg);
         return ret;
     }
+    Logger::Info("Container call success");
 
     while ((ret = sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "us")) > 0) {
         uint32_t user_id;
         const char* user_name;
 
+        Logger::Info("Container while loop");
         ret = sd_bus_message_read(msg, "us", &user_id, &user_name);
+        Logger::Info("Container while read");
         if (ret < 0) {
             Logger::Error("Failed to read user entry: %s", strerror(-ret));
             break;
         }
 
+        Logger::Info("Container while read success");
         users.emplace_back(static_cast<int>(user_id), user_name);
         sd_bus_message_exit_container(msg);  // Exit the struct container
     }
 
+    Logger::Info("Container while read out");
     sd_bus_message_exit_container(msg);  // Exit the array container
+
+    Logger::Info("Container while read out success");
 
     // Clean up
     sd_bus_message_unref(msg);
+
+    Logger::Info("Container clean up success");
 
     return ret < 0 ? ret : 0;
 }
