@@ -191,6 +191,7 @@ void UserDB::update_user_list() {
     Logger::Info("In Update: Update_user_list call success");
 
     if (ret < 0) {
+        Logger::Error("In Update: Failed to call method: %s", strerror(-ret));
         Logger::Error("In Update: Failed to get user list");
         return;
     }
@@ -223,6 +224,7 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
 
     if (ret < 0) {
         Logger::Error("Failed to call ListUsers: %s", error.message);
+        Logger::Error("Failed to read user entry: %s", strerror(-ret));
         sd_bus_error_free(&error);
         Logger::Info("ret not expected. Returning");
         return ret;
