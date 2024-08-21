@@ -182,6 +182,9 @@ echo "Copy of systemd complete"
 # Clean up temporary directory
 rm -rf $tmpdirSystemd
 
+echo $LD_LIBRARY_PATH
+echo $PKG_CONFIG_PATH
+echo $CMAKE_PREFIX_PATH
 
 echo "Start re2 installation"
 if [ -e ${IncludeDir}/re2 ]; then
