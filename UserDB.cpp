@@ -242,17 +242,6 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
     }
     Logger::Info("Container call success");
 
-    // Get the number of user entries in the array
-    size_t user_count = 0;
-    ret = sd_bus_message_get_array_length(msg, &user_count);
-    if (ret < 0) {
-        Logger::Info("Failed to get number of users: %s", strerror(-ret));
-        sd_bus_message_unref(msg);
-        return ret;
-    }
-
-    Logger::Info("Number of users: %zu", user_count);
-
     while ((ret_w = sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "uso")) > 0) {
         uint32_t user_id;
         const char* user_name;
