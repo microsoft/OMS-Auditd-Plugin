@@ -75,6 +75,7 @@ message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
 
 if(SYSTEMD_FOUND)
     message(STATUS "Found systemd. Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
+    message(STATUS "Found systemd. Systemd lib dirs: ${SYSTEMD_LIBRARY_DIRS}")
     include_directories(${SYSTEMD_INCLUDE_DIRS})
     link_directories(${SYSTEMD_LIBRARY_DIRS})
 else()
