@@ -255,6 +255,7 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
         }
 
         Logger::Info("Container while read success");
+        Logger::Info("User ID: %u, Username: %s", user_id, user_name);
         users.emplace_back(static_cast<int>(user_id), user_name);
         sd_bus_message_exit_container(msg);  // Exit the struct container
     }
