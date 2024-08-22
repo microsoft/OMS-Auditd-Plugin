@@ -204,12 +204,14 @@ void UserDB::update_user_list() {
     Logger::Info("In Update: Creating new user_map success");
 }
 
+
 int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
     sd_bus_message* msg = nullptr;
     sd_bus_error error = SD_BUS_ERROR_NULL;
     int ret, ret_w;
 
     Logger::Info("In calling get_user_list");
+
     // Call ListUsers method on login1.Manager interface
     ret = sd_bus_call_method(bus,
                              "org.freedesktop.login1",          // service name
@@ -242,34 +244,42 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
     }
     Logger::Info("Container call success");
 
-    while ((ret_w = sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "uso")) > 0) {
-        uint32_t user_id;
-        const char* user_name;
+    while (true) {
+        ret_w = sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "uso");
 
-        Logger::Info("Container while loop");
-        ret = sd_bus_message_read(msg, "us", &user_id, &user_name);
-        Logger::Info("Container while read");
-        if (ret < 0) {
-            Logger::Error("Failed to read user entry: %s", strerror(-ret));
-            break;
+        if (ret_w < 0) {
+            Logger::Error("Failed to enter struct container: %s", strerror(-ret_w));
+            // Log what the error might imply about the current message structure
+            sd_bus_message_unref(msg);  // Ensure proper cleanup before exit
+            return ret; // Return the error code if it is not -EPIPE
         }
 
-        Logger::Info("Container while read success");
-        Logger::Info("User ID: %u, Username: %s", user_id, user_name);
+        // Reading user data
+        uint32_t user_id;
+        const char* user_name;
+        const char* object_path;
+        ret = sd_bus_message_read(msg, "uso", &user_id, &user_name, &object_path);
+
+        if (ret < 0) {
+            Logger::Error("Failed to read user entry: %s", strerror(-ret));
+            break; // Exit on read failure
+        }
+
+        Logger::Info("User ID: %u, Username: %s, Path: %s", user_id, user_name, object_path);
         users.emplace_back(static_cast<int>(user_id), user_name);
-        sd_bus_message_exit_container(msg);  // Exit the struct container
+        sd_bus_message_exit_container(msg);
     }
 
-    Logger::Info("Container while read out");
-    sd_bus_message_exit_container(msg);  // Exit the array container
 
-    Logger::Info("Container while read out success");
+    Logger::Info("Finished reading users.");
+    sd_bus_message_exit_container(msg);  // Exit the array container
 
     // Clean up
     sd_bus_message_unref(msg);
     Logger::Info("Number of users retrieved: %zu", users.size());
-    Logger::Info("Container clean up success");
-    return ret < 0 ? ret : 0;
+
+    // Indicate successful completion
+    return users.size() > 0 ? 0 : -1; // Return 0 if users were retrieved, -1 if no users
 }
 
 int _read(int fd, void *buf, size_t buf_size)
