@@ -207,7 +207,7 @@ void UserDB::update_user_list() {
 int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
     sd_bus_message* msg = nullptr;
     sd_bus_error error = SD_BUS_ERROR_NULL;
-    int ret;
+    int ret, ret_w;
 
     Logger::Info("In calling get_user_list");
     // Call ListUsers method on login1.Manager interface
@@ -253,7 +253,7 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
 
     Logger::Info("Number of users: %zu", user_count);
 
-    while ((ret = sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "uso")) > 0) {
+    while ((ret_w = sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "uso")) > 0) {
         uint32_t user_id;
         const char* user_name;
 
