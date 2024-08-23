@@ -62,26 +62,26 @@ add_custom_command(
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-find_package(PkgConfig REQUIRED)
-if (NOT PkgConfig_FOUND)
-    message(FATAL_ERROR "pkg-config not found")
+# Manually find the systemd library
+find_library(SYSTEMD_LIBRARIES NAMES systemd libsystemd.so)
+
+if(NOT SYSTEMD_LIBRARIES)
+    message(FATAL_ERROR "libsystemd.so not found!")
+else
+    message(STATUS "Found systemd library: ${SYSTEMD_LIBRARIES}")
 endif()
-pkg_check_modules(SYSTEMD REQUIRED libsystemd)
 
-message(STATUS "CMake version: ${CMAKE_VERSION}")
+# Manually find the systemd include directories
+find_path(SYSTEMD_INCLUDE_DIRS NAMES systemd/sd-bus.h)
 
-# Display the paths and flags found by pkg-config
-message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
-
-if(SYSTEMD_FOUND)
-    message(STATUS "Found systemd. Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
-    message(STATUS "Found systemd. Systemd lib dirs: ${SYSTEMD_LIBRARY_DIRS}")
-    message(STATUS "SYSTEMD_LIBRARIES: ${SYSTEMD_LIBRARIES}")
-    include_directories(${SYSTEMD_INCLUDE_DIRS})
-    link_directories(${SYSTEMD_LIBRARY_DIRS})
-else()
-    message(FATAL_ERROR "libsystemd not found!")
+if(NOT SYSTEMD_INCLUDE_DIRS)
+    message(FATAL_ERROR "Systemd include directory not found!")
+else
+    message(STATUS "Found systemd include directory: ${SYSTEMD_INCLUDE_DIRS}")
 endif()
+
+# Set include directories for the target
+include_directories(${SYSTEMD_INCLUDE_DIRS})
 
 add_executable(auomscollect
         env_config.h
