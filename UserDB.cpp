@@ -162,7 +162,7 @@ void UserDB::update_user_map() {
     std::vector<std::pair<uint32_t, std::string>> users;
     int ret = get_user_list(users);
     if (ret < 0) {
-        std::cerr << "Failed to update user list: " << strerror(-ret) << std::endl;
+        Logger::Error("Failed to update user list: %s", strerror(-ret));
         return;
     }
 
