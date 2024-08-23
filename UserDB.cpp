@@ -118,8 +118,8 @@ void UserDB::ListenForUserChanges() {
     // Add match rules for user added and removed signals
     Logger::Info("Listen for user changes: Entered");
 
-    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserNew", user_added_handler, this);
-    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserRemoved", user_removed_handler, this);
+    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserNew", user_change_handler, this);
+    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserRemoved", user_change_handler, this);
 
     Logger::Info("Listen for user changes: Registered signals");
 
@@ -147,42 +147,34 @@ void UserDB::ListenForUserChanges() {
     Logger::Info("Listen for user changes: Successfully out of while");
 }
 
-int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+int UserDB::user_change_handler(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
     UserDB* db = static_cast<UserDB*>(userdata);
-    uint32_t uid;
-    const char* username;
 
-    Logger::Info("Added user handler: before read");
-    int ret = sd_bus_message_read(m, "us", &uid, &username);
-    Logger::Info("Added user handler: before read success");
-    if (ret < 0) {
-        Logger::Error("Failed to parse UserNew signal: %s", strerror(-ret));
-        return ret;
-    }
+    // Update user_map with the fresh user list
+    std::lock_guard<std::mutex> lock(db->_lock);
+    db->update_user_map();
 
-    Logger::Info("User added: UID=%d, Username=%s", uid, username);
-    db->user_map[uid] = username;
     return 0;
 }
 
-int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
-    UserDB* db = static_cast<UserDB*>(userdata);
-    uint32_t uid;
-
-    Logger::Info("Remove user handler: before read");
-    int ret = sd_bus_message_read(m, "u", &uid);
-    Logger::Info("Remove user handler: before read success");
+void UserDB::update_user_map() {
+    std::lock_guard<std::mutex> lock(_lock);
+    std::vector<std::pair<uint32_t, std::string>> users;
+    int ret = get_user_list(users);
     if (ret < 0) {
-        Logger::Error("Failed to parse UserRemoved signal: %s", strerror(-ret));
-        return ret;
+        std::cerr << "Failed to update user list: " << strerror(-ret) << std::endl;
+        return;
     }
 
-    Logger::Info("User removed: UID=%d", uid);
-    db->user_map.erase(uid);
-    return 0;
+    // Update user_map with the fresh user list
+    user_map.clear();
+    for (const auto& user : users) {
+        user_map[user.first] = user.second;
+    }
 }
 
 void UserDB::update_user_list() {
+    std::lock_guard<std::mutex> lock(_lock);
     std::vector<std::pair<int, std::string>> users;
 
     Logger::Info("In Update: Update_user_list call");
