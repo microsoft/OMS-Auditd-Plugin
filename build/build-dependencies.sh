@@ -212,6 +212,8 @@ cp $tmpdir/re2-2020-11-01/obj/libre2.a $LibDir
 
 ls -la ${IncludeDir}
 
+ls -la ${IncludeDir}/systemd
+
 ls -la ${IncludeDir}/re2
 
 ls -la ${IncludeDir}/rapidjson
