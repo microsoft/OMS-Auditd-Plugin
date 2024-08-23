@@ -159,7 +159,7 @@ int UserDB::user_change_handler(sd_bus_message* m, void* userdata, sd_bus_error*
 
 void UserDB::update_user_map() {
     std::lock_guard<std::mutex> lock(_lock);
-    std::vector<std::pair<uint32_t, std::string>> users;
+    std::vector<std::pair<int, std::string>> users;
     int ret = get_user_list(users);
     if (ret < 0) {
         Logger::Error("Failed to update user list: %s", strerror(-ret));
