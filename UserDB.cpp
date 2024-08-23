@@ -35,6 +35,11 @@ std::string UserDB::GetUserName(int uid)
 {
     std::lock_guard<std::mutex> lock(_lock);
 
+    Logger::Info("Current user_map contents:");
+    for (const auto& entry : user_map) {
+        Logger::Info("UID: %d, Username: %s", entry.first, entry.second.c_str());
+    }
+
     auto it = user_map.find(uid);
     if (it != user_map.end()) {
         Logger::Info("Matching username found: %s", it->second.c_str());
