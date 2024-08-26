@@ -67,7 +67,7 @@ find_library(SYSTEMD_LIBRARIES NAMES systemd libsystemd.so)
 
 if(NOT SYSTEMD_LIBRARIES)
     message(FATAL_ERROR "libsystemd.so not found!")
-else
+else()
     message(STATUS "Found systemd library: ${SYSTEMD_LIBRARIES}")
 endif()
 
@@ -76,7 +76,7 @@ find_path(SYSTEMD_INCLUDE_DIRS NAMES systemd/sd-bus.h)
 
 if(NOT SYSTEMD_INCLUDE_DIRS)
     message(FATAL_ERROR "Systemd include directory not found!")
-else
+else()
     message(STATUS "Found systemd include directory: ${SYSTEMD_INCLUDE_DIRS}")
 endif()
 
