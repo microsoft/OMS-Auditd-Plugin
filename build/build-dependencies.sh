@@ -95,46 +95,46 @@ unzip -d ${IncludeDir} ${ArchiveDir}/msgpack-c-cpp-2.0.0.zip "msgpack-c-cpp-2.0.
 mv ${IncludeDir}/msgpack-c-cpp-2.0.0/include/* ${IncludeDir}
 rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 
-# Download libgcrypt
-echo "Extracting libgcrypt..."
-tmpdirLibgcrypt=$(mktemp -d)
-tar zxf "${ArchiveDir}/libgcrypt.tar.gz" -C $tmpdirLibgcrypt --strip-components=1
+# # Download libgcrypt
+# echo "Extracting libgcrypt..."
+# tmpdirLibgcrypt=$(mktemp -d)
+# tar zxf "${ArchiveDir}/libgcrypt.tar.gz" -C $tmpdirLibgcrypt --strip-components=1
 
-pushd $tmpdirLibgcrypt
+# pushd $tmpdirLibgcrypt
 
-# Run autogen.sh to prepare the environment
-echo "Running autogen.sh..."
-./autogen.sh
+# # Run autogen.sh to prepare the environment
+# echo "Running autogen.sh..."
+# ./autogen.sh
 
-mkdir install
-# Configure the build
-echo "Configuring libgcrypt..."
-if [ -n "$Toolset" ]; then
-  CC="${Toolset}-gcc" CXX="${Toolset}-g++" ./configure --prefix="$tmpdirLibgcrypt/install"
-else
-  ./configure --prefix="$tmpdirLibgcrypt/install"
-fi
+# mkdir install
+# # Configure the build
+# echo "Configuring libgcrypt..."
+# if [ -n "$Toolset" ]; then
+#   CC="${Toolset}-gcc" CXX="${Toolset}-g++" ./configure --prefix="$tmpdirLibgcrypt/install"
+# else
+#   ./configure --prefix="$tmpdirLibgcrypt/install"
+# fi
 
-# Compile the source code
-echo "Building libgcrypt..."
-make
+# # Compile the source code
+# echo "Building libgcrypt..."
+# make
 
-# Install the compiled binaries
-echo "Installing libgcrypt..."
-make install
+# # Install the compiled binaries
+# echo "Installing libgcrypt..."
+# make install
 
-popd
+# popd
 
-# Optionally, copy headers and libraries to custom directories
-cp -r $tmpdirLibgcrypt/install/include/* "${IncludeDir}/"
-cp -r $tmpdirLibgcrypt/install/lib/* "${LibDir}/"
+# # Optionally, copy headers and libraries to custom directories
+# cp -r $tmpdirLibgcrypt/install/include/* "${IncludeDir}/"
+# cp -r $tmpdirLibgcrypt/install/lib/* "${LibDir}/"
 
-echo "libgcrypt has been successfully downloaded, built, and installed."
+# echo "libgcrypt has been successfully downloaded, built, and installed."
 
-# Cleanup
-rm -rf $tmpdirLibgcrypt
+# # Cleanup
+# rm -rf $tmpdirLibgcrypt
 
-echo "libgcrypt installation complete."
+# echo "libgcrypt installation complete."
 
 
 # Create temporary directory
