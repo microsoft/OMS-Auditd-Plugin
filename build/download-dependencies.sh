@@ -93,3 +93,5 @@ CheckDownloadFile 7861d544190f938cac1b242624d78c96fe2ebbc7b72f86166e88b50451c6fa
 if [ $? -ne 0 ]; then
   exit 1
 fi
+
+CheckDownloadFile 946f7e56f795ba2ea88b842a8c6b8f469360cda42c1d3d191f7ac7e9aa8239f8 https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.10.3.tar.gz ${DestDir}/libgcrypt.tar.gz

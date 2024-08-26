@@ -96,13 +96,9 @@ mv ${IncludeDir}/msgpack-c-cpp-2.0.0/include/* ${IncludeDir}
 rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 
 # Download libgcrypt
-echo "Downloading libgcrypt..."
-mkdir -p "${ArchiveDir}/libgcrypt"
-wget -O "${ArchiveDir}/libgcrypt/libgcrypt.tar.gz" "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.10.3.tar.gz"
-
 echo "Extracting libgcrypt..."
 tmpdirLibgcrypt=$(mktemp -d)
-tar zxf "${ArchiveDir}/libgcrypt/libgcrypt.tar.gz" -C $tmpdirLibgcrypt --strip-components=1
+tar zxf "${ArchiveDir}/libgcrypt.tar.gz" -C $tmpdirLibgcrypt --strip-components=1
 
 pushd $tmpdirLibgcrypt
 
@@ -115,7 +111,7 @@ echo "Configuring libgcrypt..."
 if [ -n "$Toolset" ]; then
   CC="${Toolset}-gcc" CXX="${Toolset}-g++" ./configure --prefix="${LibDir}/libgcrypt"
 else
-  ./configure --prefix="${LibDir}/libgcrypt"
+  ./configure --prefix="${LibDir}"
 fi
 
 # Compile the source code
