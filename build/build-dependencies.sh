@@ -109,7 +109,7 @@ echo "Running autogen.sh..."
 # Configure the build
 echo "Configuring libgcrypt..."
 if [ -n "$Toolset" ]; then
-  CC="${Toolset}-gcc" CXX="${Toolset}-g++" ./configure --prefix="${LibDir}/libgcrypt"
+  CC="${Toolset}-gcc" CXX="${Toolset}-g++" ./configure --prefix="${LibDir}"
 else
   ./configure --prefix="${LibDir}"
 fi

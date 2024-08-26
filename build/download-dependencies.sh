@@ -94,4 +94,4 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-CheckDownloadFile 946f7e56f795ba2ea88b842a8c6b8f469360cda42c1d3d191f7ac7e9aa8239f8 https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.10.3.tar.gz ${DestDir}/libgcrypt.tar.gz
+CheckDownloadFile 946f7e56f795ba2ea88b842a8c6b8f469360cda42c1d3d191f7ac7e9aa8239f8 https://github.com/gpg/libgcrypt/archive/libgcrypt-1.10.3.tar.gz ${DestDir}/libgcrypt.tar.gz
