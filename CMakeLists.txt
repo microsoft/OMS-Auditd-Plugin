@@ -136,15 +136,6 @@ else()
     message(FATAL_ERROR "Systemd package not found. Please install the required systemd development files.")
 endif()
 
-# Manually find the gcrypt library
-find_library(GCRYPT_LIBRARIES NAMES gcrypt)
-
-if(NOT GCRYPT_LIBRARIES)
-    message(FATAL_ERROR "libgcrypt.so not found!")
-else()
-    message(STATUS "Found gcrypt library: ${GCRYPT_LIBRARIES}")
-endif()
-
 # Recursively list all files under /usr/include
 file(GLOB_RECURSE all_include_files "/usr/include/*")
 
@@ -214,7 +205,6 @@ target_link_libraries(auomscollect
         pthread
         rt
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
@@ -304,7 +294,6 @@ target_link_libraries(auoms
         pthread
         rt
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
@@ -360,7 +349,6 @@ target_link_libraries(auomsctl
         pthread
         rt
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 if(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
@@ -432,7 +420,6 @@ endif()
 
 target_link_libraries(ConfigTests ${Boost_LIBRARIES}
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(Config ${CMAKE_BINARY_DIR}/ConfigTests --log_sink=ConfigTests.log --report_sink=ConfigTests.report)
@@ -453,7 +440,6 @@ endif()
 target_link_libraries(EventTests ${Boost_LIBRARIES}
         pthread
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(Event ${CMAKE_BINARY_DIR}/EventTests --log_sink=EventTests.log --report_sink=EventTests.report)
@@ -471,7 +457,6 @@ endif()
 
 target_link_libraries(QueueTests ${Boost_LIBRARIES}
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(Queue ${CMAKE_BINARY_DIR}/QueueTests --log_sink=QueueTests.log --report_sink=QueueTests.report)
@@ -491,7 +476,6 @@ endif()
 target_link_libraries(PriorityQueueTests ${Boost_LIBRARIES}
         pthread
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(PriorityQueue ${CMAKE_BINARY_DIR}/PriorityQueueTests --log_sink=PriorityQueueTests.log --report_sink=PriorityQueueTests.report)
@@ -509,7 +493,6 @@ endif()
 target_link_libraries(SPSCDataQueueTests ${Boost_LIBRARIES}
         pthread
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(SPSCDataQueueTests ${CMAKE_BINARY_DIR}/SPSCDataQueueTests --log_sink=SPSCDataQueueTests.log --report_sink=SPSCDataQueueTests.report)
@@ -529,7 +512,6 @@ endif()
 target_link_libraries(UserDBTests ${Boost_LIBRARIES}
         pthread
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(UserDB ${CMAKE_BINARY_DIR}/UserDBTests --log_sink=UserDBTests.log --report_sink=UserDBTests.report)
@@ -545,7 +527,6 @@ endif()
 
 target_link_libraries(StringTests ${Boost_LIBRARIES}
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(String ${CMAKE_BINARY_DIR}/StringTests --log_sink=StringTests.log --report_sink=StringTests.report)
@@ -592,7 +573,6 @@ target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
         pthread
         rt
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=EventProcessorTests.log --report_sink=EventProcessorTests.report)
@@ -624,7 +604,6 @@ target_link_libraries(ProcessTreeTests ${Boost_LIBRARIES}
         pthread
         rt
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(EventProcessor ${CMAKE_BINARY_DIR}/ProcessTreeTests --log_sink=ProcessTreeTests.log --report_sink=ProcessTreeTests.report)
@@ -652,7 +631,6 @@ target_link_libraries(ExecveConverterTests ${Boost_LIBRARIES}
         pthread
         rt
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(ExecveConverter ${CMAKE_BINARY_DIR}/ExecveConverterTests --log_sink=ExecveConverterTests.log --report_sink=ExecveConverterTests.report)
@@ -683,7 +661,6 @@ target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}
         libre2.a
         pthread
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(OMSEventWriter ${CMAKE_BINARY_DIR}/OMSEventWriterTests --log_sink=OMSEventWriterTests.log --report_sink=OMSEventWriterTests.report)
@@ -711,7 +688,6 @@ target_link_libraries(FluentEventWriterTests ${Boost_LIBRARIES}
         libre2.a
         pthread
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(FluentEventWriter ${CMAKE_BINARY_DIR}/FluentEventWriterTests --log_sink=FluentEventWriterTests.log --report_sink=FluentEventWriterTests.report)
@@ -757,7 +733,6 @@ target_link_libraries(OutputInputTests
         ${Boost_LIBRARIES}
         pthread
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(OutputInputTests ${CMAKE_BINARY_DIR}/OutputInputTests --log_sink=OutputInputTests.log --report_sink=OutputInputTests.report)
@@ -782,7 +757,6 @@ target_link_libraries(CmdlineRedactorTests
         ${Boost_LIBRARIES}
         pthread
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(CmdlineRedactorTests ${CMAKE_BINARY_DIR}/CmdlineRedactorTests --log_sink=CmdlineRedactorTests.log --report_sink=CmdlineRedactorTests.report)
@@ -807,7 +781,6 @@ target_link_libraries(EventMatcherTests
         ${Boost_LIBRARIES}
         pthread
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(EventMatcherTests ${CMAKE_BINARY_DIR}/EventMatcherTests --log_sink=EventMatcherTests.log --report_sink=EventMatcherTests.report)
@@ -833,7 +806,6 @@ target_link_libraries(EventAggregatorTests
         ${Boost_LIBRARIES}
         pthread
         ${SYSTEMD_LIBRARIES}
-        ${GCRYPT_LIBRARIES}
 )
 
 add_test(EventAggregatorTests ${CMAKE_BINARY_DIR}/EventAggregatorTests --log_sink=EventAggregatorTests.log --report_sink=EventAggregatorTests.report)
