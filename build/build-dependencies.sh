@@ -95,59 +95,59 @@ unzip -d ${IncludeDir} ${ArchiveDir}/msgpack-c-cpp-2.0.0.zip "msgpack-c-cpp-2.0.
 mv ${IncludeDir}/msgpack-c-cpp-2.0.0/include/* ${IncludeDir}
 rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 
-# if [ -e ${IncludeDir}/systemd ]; then
-#   rm -rf ${IncludeDir}/systemd
-# fi
-# mkdir -p ${IncludeDir}/systemd
-# # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir}/systemd
-# tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=1 -C ${IncludeDir} systemd-256.4/src
+# Download libgcrypt
+echo "Downloading libgcrypt..."
+mkdir -p "${ArchiveDir}/libgcrypt"
+wget -O "${ArchiveDir}/libgcrypt/libgcrypt.tar.gz" "https://gnupg.org/ftp/gcrypt/libgcrypt/libgcrypt-1.10.3.tar.gz"
 
-# # Create a temporary directory for building
-# tmpdirLibcap=$(mktemp -d)
+echo "Extracting libgcrypt..."
+tmpdirLibgcrypt=$(mktemp -d)
+tar zxf "${ArchiveDir}/libgcrypt/libgcrypt.tar.gz" -C $tmpdirLibgcrypt --strip-components=1
 
-# # Step 1: Install libcap
-# echo "Installing libcap..."
-# curl -L https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.67.tar.gz -o $tmpdirLibcap/libcap-2.67.tar.gz
-# tar -xzf $tmpdirLibcap/libcap-2.67.tar.gz -C $tmpdirLibcap --strip-components=1
+pushd $tmpdirLibgcrypt
 
-# cd "$tmpdirLibcap" || exit
+# Run autogen.sh to prepare the environment
+echo "Running autogen.sh..."
+./autogen.sh
 
-# export CC="${Toolset}-gcc"
-# export AR="${Toolset}-ar"
-# export STRIP="${Toolset}-strip"
-# export RANLIB="${Toolset}-ranlib"
+# Configure the build
+echo "Configuring libgcrypt..."
+if [ -n "$Toolset" ]; then
+  CC="${Toolset}-gcc" CXX="${Toolset}-g++" ./configure --prefix="${LibDir}/libgcrypt"
+else
+  ./configure --prefix="${LibDir}/libgcrypt"
+fi
 
-# # Build and install libcap
-# echo "Building libcap..."
-# make CC=$CC prefix="$PREFIX" lib=lib
+# Compile the source code
+echo "Building libgcrypt..."
+make
 
-# # Install the compiled binaries
-# echo "Installing libcap..."
-# sudo make prefix="$PREFIX" lib=lib install
+# Install the compiled binaries
+echo "Installing libgcrypt..."
+make install
 
-# # Clean up
-# cd ..
-# rm -rf "$tmpdirLibcap"
+popd
+
+# Optionally, copy headers and libraries to custom directories
+cp -r $tmpdirLibgcrypt/install/include/* "${IncludeDir}/"
+cp -r $tmpdirLibgcrypt/install/lib/* "${LibDir}/"
+
+echo "libgcrypt has been successfully downloaded, built, and installed."
+
+# Cleanup
+rm -rf $tmpdirLibgcrypt
+
+echo "libgcrypt installation complete."
 
 
-# # Create temporary directory
+# Create temporary directory
 tmpdirSystemd=$(mktemp -d)
-
-# # Download the libsystemd source code if not already downloaded
-# # curl -L https://github.com/systemd/systemd/archive/v256.4.tar.gz -o ${ArchiveDir}/systemd-256.4.tar.gz
 
 # Extract the archive
 tar zxf ${ArchiveDir}/systemd-256.4.tar.gz -C $tmpdirSystemd --strip-components=1
 
 # Change to the extracted directory
 pushd $tmpdirSystemd
-
-# # Configure and build the library
-# if [ -n "$Toolset" ]; then
-#   CC=${Toolset}-gcc CXX=${Toolset}-g++ make static
-# else
-#   make static
-# fi
 
 mkdir -p build
 cd build
@@ -167,32 +167,6 @@ ninja install
 popd
 
 
-wget -O libgcrypt.tar.gz "https://github.com/gpg/libgcrypt/archive/libgcrypt-1.10.3.tar.gz"
-tmpdirLibgcrypt=$(mktemp -d)
-tar zxf libgcrypt.tar.gz -C $tmpdirLibgcrypt --strip-components=1
-
-# Build libgcrypt
-echo "Building libgcrypt..."
-pushd $tmpdirLibgcrypt
-
-# Assume direct compilation commands or makefile exists
-# Create a build directory
-mkdir -p build
-cd build
-
-# Hypothetical build commands assuming a direct compilation setup
-gcc ../src/*.c -o libgcrypt.so -shared -fPIC
-
-# Install the compiled binaries
-echo "Installing libgcrypt..."
-cp libgcrypt.so "$LibDir"
-cp ../src/*.h "$IncludeDir"
-
-# Return to the original directory and cleanup
-popd
-rm -rf $tmpdirLibgcrypt
-
-
 cp -r $tmpdirSystemd/install/include/* $IncludeDir/
 
 cp -r $tmpdirSystemd/install/lib/*/libsystemd.so $LibDir/
@@ -200,20 +174,9 @@ cp -r $tmpdirSystemd/install/lib/*/libsystemd.so $LibDir/
 cp -r $tmpdirSystemd/install/lib/*/libsystemd.so /opt/x-tools/*-msft-linux-gnu/*-msft-linux-gnu/sysroot/lib/
 
 echo "Copy of systemd complete"
-# Copy headers and static library to the include and lib directories
-# mkdir -p ${IncludeDir}/systemd
-# ls -la $tmpdirSystemd
-# ls -la $tmpdirSystemd/include
-# ls -la $tmpdirSystemd/lib
-# cp $tmpdirSystemd/include/systemd/*.h ${IncludeDir}/systemd
-# cp $tmpdirSystemd/lib/libsystemd.a $LibDir
 
 # Clean up temporary directory
 rm -rf $tmpdirSystemd
-
-echo $LD_LIBRARY_PATH
-echo $PKG_CONFIG_PATH
-echo $CMAKE_PREFIX_PATH
 
 echo "Start re2 installation"
 if [ -e ${IncludeDir}/re2 ]; then
@@ -244,8 +207,6 @@ ls -la ${IncludeDir}/systemd
 ls -la ${IncludeDir}/re2
 
 ls -la ${IncludeDir}/rapidjson
-
-# ls -la ${IncludeDir}/systemd
 
 ls -la $LibDir
 
