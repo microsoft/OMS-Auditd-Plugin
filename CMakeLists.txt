@@ -62,26 +62,100 @@ add_custom_command(
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-# Manually find the systemd library
-find_library(SYSTEMD_LIBRARIES NAMES systemd libsystemd.so)
+function(find_package_systemd)
+    # Define possible search paths for systemd headers and libraries
+    set(SYSTEMD_SEARCH_PATHS
+        # Standard locations for headers
+        /usr/include
+        /usr/local/include
+        /opt/local/include
+        /usr/lib/x86_64-linux-gnu
+        /usr/lib/i386-linux-gnu
+        /usr/lib64
+        /usr/lib
+        /lib64
+        /lib
+        /usr/local/lib/x86_64-linux-gnu
+        /usr/local/lib/i386-linux-gnu
+        /opt/local/lib
+        /usr/local/include/systemd
+        /usr/include/systemd
+        /usr/lib/systemd
+        /usr/local/lib/systemd
+        /lib/systemd
+        /opt/local/lib/systemd
+        /usr/lib/pkgconfig
+        /usr/local/lib/pkgconfig
+        /opt/local/lib/pkgconfig
+        /usr/share/pkgconfig
+        /usr/local/share/pkgconfig
+        /opt/local/share/pkgconfig
+    )
 
-if(NOT SYSTEMD_LIBRARIES)
-    message(FATAL_ERROR "libsystemd.so not found!")
+    # Find the systemd include directory
+    find_path(SYSTEMD_INCLUDE_DIR
+              NAMES systemd/sd-bus.h
+              PATHS ${SYSTEMD_SEARCH_PATHS}
+              NO_DEFAULT_PATH)
+
+    # Find the systemd library
+    find_library(SYSTEMD_LIBRARY
+                 NAMES systemd
+                 PATHS ${SYSTEMD_SEARCH_PATHS}
+                 NO_DEFAULT_PATH)
+
+    # If the library was not found in the usual locations, print the paths checked
+    if(NOT SYSTEMD_LIBRARY)
+        message(STATUS "Systemd library not found in the usual locations. Paths checked:")
+        foreach(path ${SYSTEMD_SEARCH_PATHS})
+            message(STATUS "    ${path}")
+        endforeach()
+    endif()
+
+    # Check if both the include directory and the library were found
+    if(SYSTEMD_INCLUDE_DIR AND SYSTEMD_LIBRARY)
+        set(SYSTEMD_FOUND TRUE PARENT_SCOPE)
+        set(SYSTEMD_INCLUDE_DIRS ${SYSTEMD_INCLUDE_DIR} PARENT_SCOPE)
+        set(SYSTEMD_LIBRARIES ${SYSTEMD_LIBRARY} PARENT_SCOPE)
+    else()
+        set(SYSTEMD_FOUND FALSE PARENT_SCOPE)
+    endif()
+endfunction()
+
+# Call the function to find systemd
+find_package_systemd()
+
+# Handle the result of the systemd search
+if(SYSTEMD_FOUND)
+    message(STATUS "Systemd include dirs: ${SYSTEMD_INCLUDE_DIRS}")
+    message(STATUS "Systemd libraries: ${SYSTEMD_LIBRARIES}")
+
+    # Include systemd headers
+    include_directories(${SYSTEMD_INCLUDE_DIRS})
 else()
-    message(STATUS "Found systemd library: ${SYSTEMD_LIBRARIES}")
+    message(FATAL_ERROR "Systemd package not found. Please install the required systemd development files.")
 endif()
 
-# Manually find the systemd include directories
-find_path(SYSTEMD_INCLUDE_DIRS NAMES systemd/sd-bus.h)
+# Recursively list all files under /usr/include
+file(GLOB_RECURSE all_include_files "/usr/include/*")
 
-if(NOT SYSTEMD_INCLUDE_DIRS)
-    message(FATAL_ERROR "Systemd include directory not found!")
-else()
-    message(STATUS "Found systemd include directory: ${SYSTEMD_INCLUDE_DIRS}")
-endif()
+# Print only files that contain 'systemd' in the path
+foreach(file ${all_include_files})
+    if("${file}" MATCHES "systemd")
+        message(STATUS "Found systemd-related file: ${file}")
+    endif()
+endforeach()
 
-# Set include directories for the target
-include_directories(${SYSTEMD_INCLUDE_DIRS})
+# Specify the include directory
+set(INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+
+# Gather all files in the include directory
+file(GLOB INCLUDE_FILES "${INCLUDE_DIR}/*")
+
+# Print each file in the include directory
+foreach(FILE ${INCLUDE_FILES})
+    message(STATUS "Found include file: ${FILE}")
+endforeach()
 
 add_executable(auomscollect
         env_config.h
