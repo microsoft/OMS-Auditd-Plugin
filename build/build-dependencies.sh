@@ -166,6 +166,33 @@ ninja install
 # Return to the original directory
 popd
 
+
+wget -O libgcrypt.tar.gz "https://github.com/gpg/libgcrypt/archive/libgcrypt-1.10.3.tar.gz"
+tmpdirLibgcrypt=$(mktemp -d)
+tar zxf libgcrypt.tar.gz -C $tmpdirLibgcrypt --strip-components=1
+
+# Build libgcrypt
+echo "Building libgcrypt..."
+pushd $tmpdirLibgcrypt
+
+# Assume direct compilation commands or makefile exists
+# Create a build directory
+mkdir -p build
+cd build
+
+# Hypothetical build commands assuming a direct compilation setup
+gcc ../src/*.c -o libgcrypt.so -shared -fPIC
+
+# Install the compiled binaries
+echo "Installing libgcrypt..."
+cp libgcrypt.so "$LibDir"
+cp ../src/*.h "$IncludeDir"
+
+# Return to the original directory and cleanup
+popd
+rm -rf $tmpdirLibgcrypt
+
+
 cp -r $tmpdirSystemd/install/include/* $IncludeDir/
 
 cp -r $tmpdirSystemd/install/lib/*/libsystemd.so $LibDir/
