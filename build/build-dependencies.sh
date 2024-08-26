@@ -106,12 +106,13 @@ pushd $tmpdirLibgcrypt
 echo "Running autogen.sh..."
 ./autogen.sh
 
+mkdir install
 # Configure the build
 echo "Configuring libgcrypt..."
 if [ -n "$Toolset" ]; then
-  CC="${Toolset}-gcc" CXX="${Toolset}-g++" ./configure --prefix="${LibDir}"
+  CC="${Toolset}-gcc" CXX="${Toolset}-g++" ./configure --prefix="$tmpdirLibgcrypt/install"
 else
-  ./configure --prefix="${LibDir}"
+  ./configure --prefix="$tmpdirLibgcrypt/install"
 fi
 
 # Compile the source code
