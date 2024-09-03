@@ -95,100 +95,6 @@ unzip -d ${IncludeDir} ${ArchiveDir}/msgpack-c-cpp-2.0.0.zip "msgpack-c-cpp-2.0.
 mv ${IncludeDir}/msgpack-c-cpp-2.0.0/include/* ${IncludeDir}
 rm -rf ${IncludeDir}/msgpack-c-cpp-2.0.0
 
-# if [ -e ${IncludeDir}/systemd ]; then
-#   rm -rf ${IncludeDir}/systemd
-# fi
-# mkdir -p ${IncludeDir}/systemd
-# # tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=2 -C ${IncludeDir}/systemd
-# tar zxf ${ArchiveDir}/systemd-256.4.tar.gz --strip-components=1 -C ${IncludeDir} systemd-256.4/src
-
-# # Create a temporary directory for building
-# tmpdirLibcap=$(mktemp -d)
-
-# # Step 1: Install libcap
-# echo "Installing libcap..."
-# curl -L https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.67.tar.gz -o $tmpdirLibcap/libcap-2.67.tar.gz
-# tar -xzf $tmpdirLibcap/libcap-2.67.tar.gz -C $tmpdirLibcap --strip-components=1
-
-# cd "$tmpdirLibcap" || exit
-
-# export CC="${Toolset}-gcc"
-# export AR="${Toolset}-ar"
-# export STRIP="${Toolset}-strip"
-# export RANLIB="${Toolset}-ranlib"
-
-# # Build and install libcap
-# echo "Building libcap..."
-# make CC=$CC prefix="$PREFIX" lib=lib
-
-# # Install the compiled binaries
-# echo "Installing libcap..."
-# sudo make prefix="$PREFIX" lib=lib install
-
-# # Clean up
-# cd ..
-# rm -rf "$tmpdirLibcap"
-
-
-# # # Create temporary directory
-# tmpdirSystemd=$(mktemp -d)
-
-# # # Download the libsystemd source code if not already downloaded
-# # # curl -L https://github.com/systemd/systemd/archive/v256.4.tar.gz -o ${ArchiveDir}/systemd-256.4.tar.gz
-
-# # Extract the archive
-# tar zxf ${ArchiveDir}/systemd-256.4.tar.gz -C $tmpdirSystemd --strip-components=1
-
-# # Change to the extracted directory
-# pushd $tmpdirSystemd
-
-# # # Configure and build the library
-# # if [ -n "$Toolset" ]; then
-# #   CC=${Toolset}-gcc CXX=${Toolset}-g++ make static
-# # else
-# #   make static
-# # fi
-
-# mkdir -p build
-# cd build
-
-# echo "Configuring the build..."
-# meson --prefix=$tmpdirSystemd/install ..
-
-# # Compile the source code
-# echo "Building systemd..."
-# ninja
-
-# # Install the compiled binaries
-# echo "Installing systemd..."
-# ninja install
-
-# # Return to the original directory
-# popd
-
-# cp -r $tmpdirSystemd/install/include/* $IncludeDir/
-
-# cp -r $tmpdirSystemd/install/lib/*/libsystemd.so $LibDir/
-
-# cp -r $tmpdirSystemd/install/lib/*/libsystemd.so /opt/x-tools/*-msft-linux-gnu/*-msft-linux-gnu/sysroot/lib/
-
-# echo "Copy of systemd complete"
-# # Copy headers and static library to the include and lib directories
-# # mkdir -p ${IncludeDir}/systemd
-# # ls -la $tmpdirSystemd
-# # ls -la $tmpdirSystemd/include
-# # ls -la $tmpdirSystemd/lib
-# # cp $tmpdirSystemd/include/systemd/*.h ${IncludeDir}/systemd
-# # cp $tmpdirSystemd/lib/libsystemd.a $LibDir
-
-# # Clean up temporary directory
-# rm -rf $tmpdirSystemd
-
-# echo $LD_LIBRARY_PATH
-# echo $PKG_CONFIG_PATH
-# echo $CMAKE_PREFIX_PATH
-
-echo "Start re2 installation"
 if [ -e ${IncludeDir}/re2 ]; then
   rm -rf ${IncludeDir}/re2
 fi
@@ -198,8 +104,6 @@ mkdir -p ${IncludeDir}/re2
 tmpdir=$(mktemp -d)
 
 unzip -q -d $tmpdir ${ArchiveDir}/re2-2020-11-01.zip
-
-echo "Start gcc build for re"
 pushd $tmpdir/re2-2020-11-01
 if [ -n "$Toolset" ]; then
   CC=${Toolset}-gcc CXX=${Toolset}-g++ make static
@@ -209,15 +113,5 @@ fi
 popd
 cp $tmpdir/re2-2020-11-01/re2/{filtered_re2.h,re2.h,set.h,stringpiece.h} ${IncludeDir}/re2
 cp $tmpdir/re2-2020-11-01/obj/libre2.a $LibDir
-
-ls -la ${IncludeDir}
-
-ls -la ${IncludeDir}/re2
-
-ls -la ${IncludeDir}/rapidjson
-
-# ls -la ${IncludeDir}/systemd
-
-ls -la $LibDir
 
 rm -rf $tmpdir
