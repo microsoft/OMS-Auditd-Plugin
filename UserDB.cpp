@@ -37,13 +37,11 @@ std::string UserDB::GetUserName(int uid)
 
     auto it = user_map.find(uid);
     if (it != user_map.end()) {
-        Logger::Info("Matching username found: %s", it->second.c_str());
         return it->second;
     }
 
     auto it_u = _users.find(uid);
     if (it_u != _users.end()) {
-        Logger::Info("Matching username found in /etc/passwd file: %s", it_u->second.c_str());
         return it_u->second;
     }
 
@@ -116,17 +114,12 @@ void UserDB::Stop()
 
 void UserDB::ListenForUserChanges() {
     // Add match rules for user added and removed signals
-    Logger::Info("Listen for user changes: Entered");
 
     sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserNew", user_added_handler, this);
     sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserRemoved", user_removed_handler, this);
 
-    Logger::Info("Listen for user changes: Registered signals");
-
     while (!_stop) {
-        Logger::Info("Listen for user changes: In stop loop");
         int ret = sd_bus_process(bus, nullptr);
-        Logger::Info("Listen for user changes: In bus process success");
         if (ret < 0) {
             Logger::Error("Failed to process bus: %s", strerror(-ret));
             break;
@@ -136,15 +129,12 @@ void UserDB::ListenForUserChanges() {
         }
 
         // Wait for the next event
-        Logger::Info("Listen for user changes: In bus wait");
         ret = sd_bus_wait(bus, UINT64_MAX);
-        Logger::Info("Listen for user changes: In bus wait success");
         if (ret < 0) {
             Logger::Error("Failed to wait on bus: %s", strerror(-ret));
             break;
         }
     }
-    Logger::Info("Listen for user changes: Successfully out of while");
 }
 
 int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
@@ -152,15 +142,12 @@ int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error* 
     uint32_t uid;
     const char* username;
 
-    Logger::Info("Added user handler: before read");
     int ret = sd_bus_message_read(m, "us", &uid, &username);
-    Logger::Info("Added user handler: before read success");
     if (ret < 0) {
         Logger::Error("Failed to parse UserNew signal: %s", strerror(-ret));
         return ret;
     }
 
-    Logger::Info("User added: UID=%d, Username=%s", uid, username);
     db->user_map[uid] = username;
     return 0;
 }
@@ -169,15 +156,12 @@ int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error
     UserDB* db = static_cast<UserDB*>(userdata);
     uint32_t uid;
 
-    Logger::Info("Remove user handler: before read");
     int ret = sd_bus_message_read(m, "u", &uid);
-    Logger::Info("Remove user handler: before read success");
     if (ret < 0) {
         Logger::Error("Failed to parse UserRemoved signal: %s", strerror(-ret));
         return ret;
     }
 
-    Logger::Info("User removed: UID=%d", uid);
     db->user_map.erase(uid);
     return 0;
 }
@@ -185,23 +169,18 @@ int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error
 void UserDB::update_user_list() {
     std::vector<std::pair<int, std::string>> users;
 
-    Logger::Info("In Update: Update_user_list call");
     int ret = get_user_list(users);
 
-    Logger::Info("In Update: Update_user_list call success");
 
     if (ret < 0) {
         Logger::Error("In Update: Failed to call method: %s", strerror(-ret));
-        Logger::Error("In Update: Failed to get user list");
         return;
     }
 
-    Logger::Info("In Update: Creating new user_map");
     user_map.clear();
     for (const auto& user : users) {
         user_map[user.first] = user.second;
     }
-    Logger::Info("In Update: Creating new user_map success");
 }
 
 
@@ -209,8 +188,6 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
     sd_bus_message* msg = nullptr;
     sd_bus_error error = SD_BUS_ERROR_NULL;
     int ret, ret_w;
-
-    Logger::Info("In calling get_user_list");
 
     // Call ListUsers method on login1.Manager interface
     ret = sd_bus_call_method(bus,
@@ -222,27 +199,20 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
                              &msg,
                              nullptr);                          // no input arguments
 
-    Logger::Info("sd_bus call method complete");
 
     if (ret < 0) {
-        Logger::Error("Failed to call ListUsers: %s", error.message);
         Logger::Error("Failed to read user entry: %s", strerror(-ret));
         sd_bus_error_free(&error);
-        Logger::Info("ret not expected. Returning");
         return ret;
     }
 
-    Logger::Info("ret success");
-
     // Read the array of (uint32, string) structures
     ret = sd_bus_message_enter_container(msg, SD_BUS_TYPE_ARRAY, "(uso)");
-    Logger::Info("Container call complete");
     if (ret < 0) {
         Logger::Error("Failed to enter array container: %s", strerror(-ret));
         sd_bus_message_unref(msg);
         return ret;
     }
-    Logger::Info("Container call success");
 
     while (true) {
         ret_w = sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "uso");
@@ -265,18 +235,15 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
             break; // Exit on read failure
         }
 
-        Logger::Info("User ID: %u, Username: %s, Path: %s", user_id, user_name, object_path);
         users.emplace_back(static_cast<int>(user_id), user_name);
         sd_bus_message_exit_container(msg);
     }
 
 
-    Logger::Info("Finished reading users.");
     sd_bus_message_exit_container(msg);  // Exit the array container
 
     // Clean up
     sd_bus_message_unref(msg);
-    Logger::Info("Number of users retrieved: %zu", users.size());
 
     // Indicate successful completion
     return users.size() > 0 ? 0 : -1; // Return 0 if users were retrieved, -1 if no users
