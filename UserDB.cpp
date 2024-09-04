@@ -78,7 +78,7 @@ void UserDB::Start()
         int ret = sd_bus_open_system(&bus);
         if (ret < 0) {
             Logger::Error("Failed to connect to system bus: %s", strerror(-ret));
-            return;
+            throw std::runtime_error("Failed to connect to system bus: " + std::string(strerror(-ret)));
         }
 
         // Initialize the user list
@@ -114,7 +114,7 @@ void UserDB::Start()
         if (listener_future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
             Logger::Error("Listener initialization timed out after 30 seconds");
             listener_thread.detach(); // Detach the thread to avoid a crash
-            return;
+            throw std::runtime_error("Listener initialization timed out");
         }
     }
 }
