@@ -23,6 +23,7 @@
 #include <thread>
 #include <vector>
 #include <systemd/sd-bus.h>
+#include <future>
 
 
 class UserDB {
