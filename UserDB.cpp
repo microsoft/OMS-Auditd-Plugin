@@ -20,6 +20,10 @@
 
 #include <cstring>
 #include <fstream>
+#include <cstdio>
+#include <sstream>
+#include <array>
+#include <pwd.h>
 
 extern "C" {
 #include <unistd.h>
@@ -31,9 +35,14 @@ std::string UserDB::GetUserName(int uid)
 {
     std::lock_guard<std::mutex> lock(_lock);
 
-    auto it = _users.find(uid);
-    if (it != _users.end()) {
+    auto it = user_map.find(uid);
+    if (it != user_map.end()) {
         return it->second;
+    }
+
+    auto it_u = _users.find(uid);
+    if (it_u != _users.end()) {
+        return it_u->second;
     }
 
     return std::string();
@@ -65,6 +74,48 @@ void UserDB::Start()
         std::thread update_thread([this](){ this->update_task(); });
         _inotify_thread = std::move(inotify_thread);
         _update_thread = std::move(update_thread);
+
+        int ret = sd_bus_open_system(&bus);
+        if (ret < 0) {
+            Logger::Error("Failed to connect to system bus: %s", strerror(-ret));
+            throw std::runtime_error("Failed to connect to system bus: " + std::string(strerror(-ret)));
+        }
+
+        // Initialize the user list
+        update_user_list();
+
+        // Create a promise/future pair
+        std::promise<void> listener_promise;
+        std::future<void> listener_future = listener_promise.get_future();
+
+        // Start the listener thread for user change signals
+        listener_thread = std::thread([this, &listener_promise]() {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            listener_promise.set_value();  // Signal that the listener is ready
+
+            // Start listening for user changes
+            ListenForUserChanges();
+        });
+
+        const auto max_wait_time = std::chrono::seconds(30);
+        const auto check_interval = std::chrono::seconds(5);
+        auto start_time = std::chrono::steady_clock::now();
+
+        // Check every 5 secs if the listener is initialized
+        while (std::chrono::steady_clock::now() - start_time < max_wait_time) {
+            if (listener_future.wait_for(check_interval) == std::future_status::ready) {
+                // Listener is initialized
+                break;
+            }
+            Logger::Info("Waiting for listener initialization...");
+        }
+
+        // Return if max timeout exceeded
+        if (listener_future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            Logger::Error("Listener initialization timed out after 30 seconds");
+            listener_thread.detach(); // Detach the thread to avoid a crash
+            throw std::runtime_error("Listener initialization timed out");
+        }
     }
 }
 
@@ -80,9 +131,151 @@ void UserDB::Stop()
         lock.unlock();
         _inotify_thread.join();
         _update_thread.join();
+
+        if (listener_thread.joinable()) {
+            listener_thread.join();
+        }
+        sd_bus_unref(bus);
+        bus = nullptr;
     }
 }
 
+void UserDB::ListenForUserChanges() {
+    // Add match rules for user added and removed signals
+
+    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserNew", user_added_handler, this);
+    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserRemoved", user_removed_handler, this);
+
+    while (!_stop) {
+        int ret = sd_bus_process(bus, nullptr);
+        if (ret < 0) {
+            Logger::Error("Failed to process bus: %s", strerror(-ret));
+            break;
+        }
+        if (ret > 0) {
+            continue; // Continue to process any further pending events
+        }
+
+        // Wait for the next event
+        ret = sd_bus_wait(bus, UINT64_MAX);
+        if (ret < 0) {
+            Logger::Error("Failed to wait on bus: %s", strerror(-ret));
+            break;
+        }
+    }
+}
+
+int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
+    UserDB* db = static_cast<UserDB*>(userdata);
+    uint32_t uid;
+    const char* username;
+
+    int ret = sd_bus_message_read(m, "us", &uid, &username);
+    if (ret < 0) {
+        Logger::Error("Failed to parse UserNew signal: %s", strerror(-ret));
+        return ret;
+    }
+
+    db->user_map[uid] = username;
+    return 0;
+}
+
+int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
+    UserDB* db = static_cast<UserDB*>(userdata);
+    uint32_t uid;
+
+    int ret = sd_bus_message_read(m, "u", &uid);
+    if (ret < 0) {
+        Logger::Error("Failed to parse UserRemoved signal: %s", strerror(-ret));
+        return ret;
+    }
+
+    db->user_map.erase(uid);
+    return 0;
+}
+
+void UserDB::update_user_list() {
+    std::vector<std::pair<int, std::string>> users;
+
+    int ret = get_user_list(users);
+
+
+    if (ret < 0) {
+        Logger::Error("In Update: Failed to call method: %s", strerror(-ret));
+        return;
+    }
+
+    user_map.clear();
+    for (const auto& user : users) {
+        user_map[user.first] = user.second;
+    }
+}
+
+
+int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
+    sd_bus_message* msg = nullptr;
+    sd_bus_error error = SD_BUS_ERROR_NULL;
+    int ret, ret_w;
+
+    // Call ListUsers method on login1.Manager interface
+    ret = sd_bus_call_method(bus,
+                             "org.freedesktop.login1",          // service name
+                             "/org/freedesktop/login1",         // object path
+                             "org.freedesktop.login1.Manager",  // interface name
+                             "ListUsers",                       // method name
+                             &error,
+                             &msg,
+                             nullptr);                          // no input arguments
+
+
+    if (ret < 0) {
+        Logger::Error("Failed to read user entry: %s", strerror(-ret));
+        sd_bus_error_free(&error);
+        return ret;
+    }
+
+    // Read the array of (uint32, string) structures
+    ret = sd_bus_message_enter_container(msg, SD_BUS_TYPE_ARRAY, "(uso)");
+    if (ret < 0) {
+        Logger::Error("Failed to enter array container: %s", strerror(-ret));
+        sd_bus_message_unref(msg);
+        return ret;
+    }
+
+    while (true) {
+        ret_w = sd_bus_message_enter_container(msg, SD_BUS_TYPE_STRUCT, "uso");
+
+        if (ret_w < 0) {
+            Logger::Error("Failed to enter struct container: %s", strerror(-ret_w));
+            // Log what the error might imply about the current message structure
+            sd_bus_message_unref(msg);  // Ensure proper cleanup before exit
+            return ret; // Return the error code if it is not -EPIPE
+        }
+
+        // Reading user data
+        uint32_t user_id;
+        const char* user_name;
+        const char* object_path;
+        ret = sd_bus_message_read(msg, "uso", &user_id, &user_name, &object_path);
+
+        if (ret < 0) {
+            Logger::Error("Failed to read user entry: %s", strerror(-ret));
+            break; // Exit on read failure
+        }
+
+        users.emplace_back(static_cast<int>(user_id), user_name);
+        sd_bus_message_exit_container(msg);
+    }
+
+
+    sd_bus_message_exit_container(msg);  // Exit the array container
+
+    // Clean up
+    sd_bus_message_unref(msg);
+
+    // Indicate successful completion
+    return users.size() > 0 ? 0 : -1; // Return 0 if users were retrieved, -1 if no users
+}
 
 int _read(int fd, void *buf, size_t buf_size)
 {
