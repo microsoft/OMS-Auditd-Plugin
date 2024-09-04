@@ -78,16 +78,44 @@ void UserDB::Start()
         int ret = sd_bus_open_system(&bus);
         if (ret < 0) {
             Logger::Error("Failed to connect to system bus: %s", strerror(-ret));
+            throw std::runtime_error("Failed to connect to system bus: " + std::string(strerror(-ret)));
         }
 
         // Initialize the user list
         update_user_list();
 
-        // Start the listener thread for user change signals
-        listener_thread = std::thread(&UserDB::ListenForUserChanges, this);
+        // Create a promise/future pair
+        std::promise<void> listener_promise;
+        std::future<void> listener_future = listener_promise.get_future();
 
-        // Wait for a short period to allow the listener to initialize and capture signals
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        // Start the listener thread for user change signals
+        listener_thread = std::thread([this, &listener_promise]() {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            listener_promise.set_value();  // Signal that the listener is ready
+
+            // Start listening for user changes
+            ListenForUserChanges();
+        });
+
+        const auto max_wait_time = std::chrono::seconds(30);
+        const auto check_interval = std::chrono::seconds(5);
+        auto start_time = std::chrono::steady_clock::now();
+
+        // Check every 5 secs if the listener is initialized
+        while (std::chrono::steady_clock::now() - start_time < max_wait_time) {
+            if (listener_future.wait_for(check_interval) == std::future_status::ready) {
+                // Listener is initialized
+                break;
+            }
+            Logger::Info("Waiting for listener initialization...");
+        }
+
+        // Return if max timeout exceeded
+        if (listener_future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            Logger::Error("Listener initialization timed out after 30 seconds");
+            listener_thread.detach(); // Detach the thread to avoid a crash
+            throw std::runtime_error("Listener initialization timed out");
+        }
     }
 }
 
@@ -137,7 +165,7 @@ void UserDB::ListenForUserChanges() {
     }
 }
 
-int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
     UserDB* db = static_cast<UserDB*>(userdata);
     uint32_t uid;
     const char* username;
@@ -152,7 +180,7 @@ int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error* 
     return 0;
 }
 
-int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error* ret_error) {
+int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
     UserDB* db = static_cast<UserDB*>(userdata);
     uint32_t uid;
 
