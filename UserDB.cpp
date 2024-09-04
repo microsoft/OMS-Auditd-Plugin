@@ -165,7 +165,7 @@ void UserDB::ListenForUserChanges() {
     }
 }
 
-int UserDB::user_added_handler(sd_bus_message* m, void* userdata) {
+int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
     UserDB* db = static_cast<UserDB*>(userdata);
     uint32_t uid;
     const char* username;
@@ -180,7 +180,7 @@ int UserDB::user_added_handler(sd_bus_message* m, void* userdata) {
     return 0;
 }
 
-int UserDB::user_removed_handler(sd_bus_message* m, void* userdata) {
+int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
     UserDB* db = static_cast<UserDB*>(userdata);
     uint32_t uid;
 
