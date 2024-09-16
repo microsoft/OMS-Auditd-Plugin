@@ -1435,3 +1435,271 @@ BOOST_AUTO_TEST_CASE( basic_time_serial_drop ) {
     BOOST_REQUIRE_EQUAL(std::get<1>(ret), 1);
     BOOST_REQUIRE_EQUAL(std::get<2>(ret), true);
 }
+
+BOOST_AUTO_TEST_CASE( test_aggregation_with_extended_fields ) {
+    auto in_allocator = std::make_shared<TestEventQueue>();
+    auto prioritizer = DefaultPrioritizer::Create(0);
+    auto in_builder = std::make_shared<EventBuilder>(std::dynamic_pointer_cast<IEventBuilderAllocator>(in_allocator), prioritizer);
+
+    auto out_allocator = std::make_shared<TestEventQueue>();
+    auto out_builder = std::make_shared<EventBuilder>(std::dynamic_pointer_cast<IEventBuilderAllocator>(out_allocator), prioritizer);
+
+    // Build input event data with extended fields
+    for (int i = 0; i < 5; ++i) {
+        char test_str[16];
+        snprintf(test_str, sizeof(test_str), "test_%d", i);
+
+        in_builder->BeginEvent(i, 0, i, 1);
+        in_builder->BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_EXECVE), "AUOMS_EXECVE", "", 5 + i);
+        in_builder->AddField("syscall", "59", "execve", field_type_t::SYSCALL);
+        in_builder->AddField("pid", std::to_string(100 + i).c_str(), nullptr, field_type_t::UNCLASSIFIED);
+        in_builder->AddField("ppid", "1", nullptr, field_type_t::UNCLASSIFIED);
+        in_builder->AddField("user", "1000", "test_user", field_type_t::UID);
+        in_builder->AddField("cmdline", test_str, nullptr, field_type_t::UNESCAPED);
+        in_builder->AddField("effective_user", "euid", nullptr, field_type_t::UNCLASSIFIED);
+        in_builder->EndRecord();
+        if (in_builder->EndEvent() != 1) {
+            BOOST_FAIL("EndEvent failed");
+        }
+    }
+
+    // Aggregation rule JSON matching extended fields
+    std::string agg_rule_json = R"json({
+        "match_rule": {
+            "record_types": ["AUOMS_EXECVE"],
+            "field_rules": [
+                {
+                    "name": "syscall",
+                    "op": "eq",
+                    "value": "execve"
+                },
+                {
+                    "name": "cmdline",
+                    "op": "re",
+                    "value": "test_.*"
+                }
+            ]
+        },
+        "aggregation_fields": {
+            "pid": {},
+            "ppid": {},
+            "user": {},
+            "effective_user": {},
+            "cmdline": {}
+        },
+        "max_count": 3,
+        "max_size": 2048
+    })json";
+
+    std::vector<std::shared_ptr<AggregationRule>> rules;
+    rules.emplace_back(AggregationRule::FromJSON(agg_rule_json));
+
+    auto agg = std::make_shared<EventAggregator>();
+    agg->SetRules(rules);
+
+    std::function<std::pair<long int, bool>(const Event&)> ignore_fn = [&](const Event& event) -> std::pair<int64_t, bool> {
+        return std::make_pair(-1, false);
+    };
+
+    // Process the events and check the result
+    for (int i = 0; i < 5; ++i) {
+        auto added = agg->AddEvent(in_allocator->GetEvent(i));
+        BOOST_REQUIRE_EQUAL(added, true);
+        auto ret = agg->HandleEvent(ignore_fn);
+        BOOST_REQUIRE_EQUAL(std::get<0>(ret), false);
+    }
+
+    // After 3 events, it should have aggregated and output the event
+    BOOST_REQUIRE_EQUAL(agg->NumReadyAggregates(), 1);
+    agg->HandleEvent([&](const Event& event) -> std::pair<int64_t, bool> {
+        diff_event(0, out_allocator->GetEvent(), event);
+        return std::make_pair(1, true);
+    });
+
+    BOOST_REQUIRE_EQUAL(out_allocator->GetEventCount(), 1);
+}
+
+BOOST_AUTO_TEST_CASE( test_large_input_events ) {
+    auto in_allocator = std::make_shared<TestEventQueue>();
+    auto prioritizer = DefaultPrioritizer::Create(0);
+    auto in_builder = std::make_shared<EventBuilder>(std::dynamic_pointer_cast<IEventBuilderAllocator>(in_allocator), prioritizer);
+
+    // Create large events close to the max_size limit
+    for (int i = 0; i < 2; ++i) {
+        in_builder->BeginEvent(i, 0, i, 1);
+        in_builder->BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_EXECVE), "AUOMS_EXECVE", "", 10);
+        for (int j = 0; j < 10; ++j) {
+            in_builder->AddField(("field" + std::to_string(j)).c_str(), "value", nullptr, field_type_t::UNCLASSIFIED);
+        }
+        in_builder->EndRecord();
+        if (in_builder->EndEvent() != 1) {
+            BOOST_FAIL("EndEvent failed");
+        }
+    }
+
+    // Aggregation rule with max_size constraint
+    std::string agg_rule_json = R"json({
+        "match_rule": { "record_types": ["AUOMS_EXECVE"] },
+        "aggregation_fields": { "field0": {} },
+        "max_size": 512
+    })json";
+
+    std::vector<std::shared_ptr<AggregationRule>> rules;
+    rules.emplace_back(AggregationRule::FromJSON(agg_rule_json));
+
+    auto agg = std::make_shared<EventAggregator>();
+    agg->SetRules(rules);
+
+    for (int i = 0; i < 2; ++i) {
+        auto added = agg->AddEvent(in_allocator->GetEvent(i));
+        BOOST_REQUIRE_EQUAL(added, true);
+    }
+
+    // Ensure max_size is respected
+    BOOST_REQUIRE_EQUAL(agg->NumReadyAggregates(), 1);
+}
+
+BOOST_AUTO_TEST_CASE( test_aggregation_with_missing_fields ) {
+    auto in_allocator = std::make_shared<TestEventQueue>();
+    auto prioritizer = DefaultPrioritizer::Create(0);
+    auto in_builder = std::make_shared<EventBuilder>(std::dynamic_pointer_cast<IEventBuilderAllocator>(in_allocator), prioritizer);
+
+    // Build input events where some fields are missing
+    for (int i = 0; i < 3; ++i) {
+        in_builder->BeginEvent(i, 0, i, 1);
+        in_builder->BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_EXECVE), "AUOMS_EXECVE", "", 3 + i);
+        in_builder->AddField("syscall", "59", "execve", field_type_t::SYSCALL);
+        in_builder->AddField("pid", std::to_string(100 + i).c_str(), nullptr, field_type_t::UNCLASSIFIED);
+        in_builder->EndRecord();
+        if (in_builder->EndEvent() != 1) {
+            BOOST_FAIL("EndEvent failed");
+        }
+    }
+
+    // Aggregation rule without all fields
+    std::string agg_rule_json = R"json({
+        "match_rule": {
+            "record_types": ["AUOMS_EXECVE"],
+            "field_rules": [
+                { "name": "syscall", "op": "eq", "value": "execve" }
+            ]
+        },
+        "aggregation_fields": { "pid": {} },
+        "max_count": 3
+    })json";
+
+    std::vector<std::shared_ptr<AggregationRule>> rules;
+    rules.emplace_back(AggregationRule::FromJSON(agg_rule_json));
+
+    auto agg = std::make_shared<EventAggregator>();
+    agg->SetRules(rules);
+
+    // Add events and ensure aggregation still works
+    for (int i = 0; i < 3; ++i) {
+        auto added = agg->AddEvent(in_allocator->GetEvent(i));
+        BOOST_REQUIRE_EQUAL(added, true);
+        auto ret = agg->HandleEvent([](const Event&) { return std::make_pair(-1, false); });
+        BOOST_REQUIRE_EQUAL(std::get<0>(ret), false);
+    }
+
+BOOST_AUTO_TEST_CASE( test_field_modes_raw_interp_drop ) {
+    // Initialize allocators and builders for input and output events
+    auto in_allocator = std::make_shared<TestEventQueue>();
+    auto prioritizer = DefaultPrioritizer::Create(0);
+    auto in_builder = std::make_shared<EventBuilder>(std::dynamic_pointer_cast<IEventBuilderAllocator>(in_allocator), prioritizer);
+
+    auto out_allocator = std::make_shared<TestEventQueue>();
+    auto out_builder = std::make_shared<EventBuilder>(std::dynamic_pointer_cast<IEventBuilderAllocator>(out_allocator), prioritizer);
+
+    // Build the input events with various fields
+    for (int i = 0; i < 4; ++i) {
+        in_builder->BeginEvent(i, 0, i, 1);
+        in_builder->BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_EXECVE), "AUOMS_EXECVE", "", 7);
+        in_builder->AddField("syscall", "59", "execve", field_type_t::SYSCALL);
+        in_builder->AddField("pid", std::to_string(100 + i), nullptr, field_type_t::UNCLASSIFIED); // PIDs differ in events
+        in_builder->AddField("user", std::to_string(1000 + i), "user_" + std::to_string(i), field_type_t::UID);
+        in_builder->AddField("cmdline", "cmd_" + std::to_string(i), nullptr, field_type_t::UNESCAPED);
+        in_builder->AddField("group", std::to_string(2000 + i), "group_" + std::to_string(i), field_type_t::GID);
+        in_builder->EndRecord();
+        if (in_builder->EndEvent() != 1) {
+            BOOST_FAIL("EndEvent failed");
+        }
+    }
+
+    // Define the aggregation rules with field modes
+    std::string agg_rule_json = R"json({
+        "match_rule": {
+            "record_types": ["AUOMS_EXECVE"],
+            "field_rules": [
+                {
+                    "name": "syscall",
+                    "op": "eq",
+                    "value": "execve"
+                }
+            ]
+        },
+        "aggregation_fields": {
+            "pid": {
+                "mode": "raw",
+                "output_name": "raw_pid"
+            },
+            "user": {
+                "mode": "interp",
+                "output_name": "interp_user"
+            },
+            "cmdline": {
+                "mode": "drop"
+            }
+        },
+        "max_count": 3
+    })json";
+
+    // Create aggregation rule and assign it to the EventAggregator
+    std::vector<std::shared_ptr<AggregationRule>> rules;
+    rules.emplace_back(AggregationRule::FromJSON(agg_rule_json));
+    auto agg = std::make_shared<EventAggregator>();
+    agg->SetRules(rules);
+
+    // Define custom handling functions
+    std::function<std::pair<long int, bool>(const Event&)> ignore_fn = [&](const Event& event) -> std::pair<int64_t, bool> {
+        return std::make_pair(-1, false); // Do nothing, just return
+    };
+
+    std::function<std::pair<long int, bool>(const Event&)> check_aggregated_event = [&](const Event& event) -> std::pair<int64_t, bool> {
+        // Check if aggregated event has the correct fields
+        BOOST_CHECK(event.NumRecords() == 1);
+        auto record = event.RecordAt(0);
+
+        // Verify aggregation fields are processed correctly
+        auto raw_pid = record.GetFieldByName("raw_pid");
+        BOOST_CHECK(raw_pid != nullptr);
+        BOOST_CHECK(raw_pid->RawValue() == "[\"100\",\"101\",\"102\"]"); // Raw mode for pid
+
+        auto interp_user = record.GetFieldByName("interp_user");
+        BOOST_CHECK(interp_user != nullptr);
+        BOOST_CHECK(interp_user->InterpValue() == "[\"user_0\",\"user_1\",\"user_2\"]"); // Interp mode for user
+
+        auto cmdline = record.GetFieldByName("cmdline");
+        BOOST_CHECK(cmdline == nullptr); // Dropped field cmdline
+
+        return std::make_pair(1, true); // Successfully processed
+    };
+
+    // Add the first three events and handle them
+    for (int i = 0; i < 3; ++i) {
+        auto added = agg->AddEvent(in_allocator->GetEvent(i));
+        BOOST_REQUIRE_EQUAL(added, true); // Ensure the event was added
+        auto ret = agg->HandleEvent(ignore_fn); // Check if it triggers the aggregation
+        BOOST_REQUIRE_EQUAL(std::get<0>(ret), false);
+    }
+
+    // Add the fourth event and trigger the aggregation
+    auto added = agg->AddEvent(in_allocator->GetEvent(3));
+    BOOST_REQUIRE_EQUAL(added, true); // Ensure the event was added
+
+    // Check the aggregated event
+    auto ret = agg->HandleEvent(check_aggregated_event);
+    BOOST_REQUIRE_EQUAL(std::get<0>(ret), true);
+    BOOST_REQUIRE_EQUAL(std::get<1>(ret), 1);
+    BOOST_REQUIRE_EQUAL(std::get<2>(ret), true);
+}
