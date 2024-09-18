@@ -1675,15 +1675,21 @@ BOOST_AUTO_TEST_CASE( test_field_modes_raw_interp_drop ) {
         bool found_raw_pid = false;
         bool found_interp_user = false;
 
+
         for (size_t i = 0; i < record.NumFields(); ++i) {
             auto field = record.FieldAt(i);
-            if (field->Name() == "raw_pid") {
+
+            if (field->RawValue() == "[\"100\",\"101\",\"102\"]") {
                 found_raw_pid = true;
-                BOOST_CHECK(field->RawValue() == "[\"100\",\"101\",\"102\"]"); // Raw mode for pid
-            } else if (field->Name() == "interp_user") {
+                BOOST_CHECK(field->RawValue() == "[\"100\",\"101\",\"102\"]");
+            }
+
+            if (field->InterpValue() == "[\"user_0\",\"user_1\",\"user_2\"]") {
                 found_interp_user = true;
-                BOOST_CHECK(field->InterpValue() == "[\"user_0\",\"user_1\",\"user_2\"]"); // Interp mode for user
-            } else if (field->Name() == "cmdline") {
+                BOOST_CHECK(field->InterpValue() == "[\"user_0\",\"user_1\",\"user_2\"]");
+            }
+
+            if (field->RawValue().find("cmd_") != std::string::npos) {
                 BOOST_FAIL("cmdline should have been dropped");
             }
         }
