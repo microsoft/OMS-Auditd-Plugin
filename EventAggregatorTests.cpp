@@ -1601,6 +1601,7 @@ BOOST_AUTO_TEST_CASE( test_aggregation_with_missing_fields ) {
         auto ret = agg->HandleEvent([](const Event&) { return std::make_pair(-1, false); });
         BOOST_REQUIRE_EQUAL(std::get<0>(ret), false);
     }
+}
 
 BOOST_AUTO_TEST_CASE( test_field_modes_raw_interp_drop ) {
     // Initialize allocators and builders for input and output events
