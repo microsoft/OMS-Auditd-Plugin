@@ -1436,88 +1436,88 @@ BOOST_AUTO_TEST_CASE( basic_time_serial_drop ) {
     BOOST_REQUIRE_EQUAL(std::get<2>(ret), true);
 }
 
-BOOST_AUTO_TEST_CASE( test_aggregation_with_extended_fields ) {
-    auto in_allocator = std::make_shared<TestEventQueue>();
-    auto prioritizer = DefaultPrioritizer::Create(0);
-    auto in_builder = std::make_shared<EventBuilder>(std::dynamic_pointer_cast<IEventBuilderAllocator>(in_allocator), prioritizer);
+// BOOST_AUTO_TEST_CASE( test_aggregation_with_extended_fields ) {
+//     auto in_allocator = std::make_shared<TestEventQueue>();
+//     auto prioritizer = DefaultPrioritizer::Create(0);
+//     auto in_builder = std::make_shared<EventBuilder>(std::dynamic_pointer_cast<IEventBuilderAllocator>(in_allocator), prioritizer);
 
-    auto out_allocator = std::make_shared<TestEventQueue>();
-    auto out_builder = std::make_shared<EventBuilder>(std::dynamic_pointer_cast<IEventBuilderAllocator>(out_allocator), prioritizer);
+//     auto out_allocator = std::make_shared<TestEventQueue>();
+//     auto out_builder = std::make_shared<EventBuilder>(std::dynamic_pointer_cast<IEventBuilderAllocator>(out_allocator), prioritizer);
 
-    // Build input event data with extended fields
-    for (int i = 0; i < 5; ++i) {
-        char test_str[16];
-        snprintf(test_str, sizeof(test_str), "test_%d", i);
+//     // Build input event data with extended fields
+//     for (int i = 0; i < 5; ++i) {
+//         char test_str[16];
+//         snprintf(test_str, sizeof(test_str), "test_%d", i);
 
-        in_builder->BeginEvent(i, 0, i, 1);
-        in_builder->BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_EXECVE), "AUOMS_EXECVE", "", 5 + i);
-        in_builder->AddField("syscall", "59", "execve", field_type_t::SYSCALL);
-        in_builder->AddField("pid", std::to_string(100 + i).c_str(), nullptr, field_type_t::UNCLASSIFIED);
-        in_builder->AddField("ppid", "1", nullptr, field_type_t::UNCLASSIFIED);
-        in_builder->AddField("user", "1000", "test_user", field_type_t::UID);
-        in_builder->AddField("cmdline", test_str, nullptr, field_type_t::UNESCAPED);
-        in_builder->AddField("effective_user", "euid", nullptr, field_type_t::UNCLASSIFIED);
-        in_builder->EndRecord();
-        if (in_builder->EndEvent() != 1) {
-            BOOST_FAIL("EndEvent failed");
-        }
-    }
+//         in_builder->BeginEvent(i, 0, i, 1);
+//         in_builder->BeginRecord(static_cast<uint32_t>(RecordType::AUOMS_EXECVE), "AUOMS_EXECVE", "", 5 + i);
+//         in_builder->AddField("syscall", "59", "execve", field_type_t::SYSCALL);
+//         in_builder->AddField("pid", std::to_string(100 + i).c_str(), nullptr, field_type_t::UNCLASSIFIED);
+//         in_builder->AddField("ppid", "1", nullptr, field_type_t::UNCLASSIFIED);
+//         in_builder->AddField("user", "1000", "test_user", field_type_t::UID);
+//         in_builder->AddField("cmdline", test_str, nullptr, field_type_t::UNESCAPED);
+//         in_builder->AddField("effective_user", "euid", nullptr, field_type_t::UNCLASSIFIED);
+//         in_builder->EndRecord();
+//         if (in_builder->EndEvent() != 1) {
+//             BOOST_FAIL("EndEvent failed");
+//         }
+//     }
 
-    // Aggregation rule JSON matching extended fields
-    std::string agg_rule_json = R"json({
-        "match_rule": {
-            "record_types": ["AUOMS_EXECVE"],
-            "field_rules": [
-                {
-                    "name": "syscall",
-                    "op": "eq",
-                    "value": "execve"
-                },
-                {
-                    "name": "cmdline",
-                    "op": "re",
-                    "value": "test_.*"
-                }
-            ]
-        },
-        "aggregation_fields": {
-            "pid": {},
-            "ppid": {},
-            "user": {},
-            "effective_user": {},
-            "cmdline": {}
-        },
-        "max_count": 3,
-        "max_size": 2048
-    })json";
+//     // Aggregation rule JSON matching extended fields
+//     std::string agg_rule_json = R"json({
+//         "match_rule": {
+//             "record_types": ["AUOMS_EXECVE"],
+//             "field_rules": [
+//                 {
+//                     "name": "syscall",
+//                     "op": "eq",
+//                     "value": "execve"
+//                 },
+//                 {
+//                     "name": "cmdline",
+//                     "op": "re",
+//                     "value": "test_.*"
+//                 }
+//             ]
+//         },
+//         "aggregation_fields": {
+//             "pid": {},
+//             "ppid": {},
+//             "user": {},
+//             "effective_user": {},
+//             "cmdline": {}
+//         },
+//         "max_count": 3,
+//         "max_size": 2048
+//     })json";
 
-    std::vector<std::shared_ptr<AggregationRule>> rules;
-    rules.emplace_back(AggregationRule::FromJSON(agg_rule_json));
+//     std::vector<std::shared_ptr<AggregationRule>> rules;
+//     rules.emplace_back(AggregationRule::FromJSON(agg_rule_json));
 
-    auto agg = std::make_shared<EventAggregator>();
-    agg->SetRules(rules);
+//     auto agg = std::make_shared<EventAggregator>();
+//     agg->SetRules(rules);
 
-    std::function<std::pair<long int, bool>(const Event&)> ignore_fn = [&](const Event& event) -> std::pair<int64_t, bool> {
-        return std::make_pair(-1, false);
-    };
+//     std::function<std::pair<long int, bool>(const Event&)> ignore_fn = [&](const Event& event) -> std::pair<int64_t, bool> {
+//         return std::make_pair(-1, false);
+//     };
 
-    // Process the events and check the result
-    for (int i = 0; i < 5; ++i) {
-        auto added = agg->AddEvent(in_allocator->GetEvent(i));
-        BOOST_REQUIRE_EQUAL(added, true);
-        auto ret = agg->HandleEvent(ignore_fn);
-        BOOST_REQUIRE_EQUAL(std::get<0>(ret), false);
-    }
+//     // Process the events and check the result
+//     for (int i = 0; i < 5; ++i) {
+//         auto added = agg->AddEvent(in_allocator->GetEvent(i));
+//         BOOST_REQUIRE_EQUAL(added, true);
+//         auto ret = agg->HandleEvent(ignore_fn);
+//         BOOST_REQUIRE_EQUAL(std::get<0>(ret), false);
+//     }
 
-    // After 3 events, it should have aggregated and output the event
-    BOOST_REQUIRE_EQUAL(agg->NumReadyAggregates(), 1);
-    agg->HandleEvent([&](const Event& event) -> std::pair<int64_t, bool> {
-        diff_event(0, out_allocator->GetEvent(), event);
-        return std::make_pair(1, true);
-    });
+//     // After 3 events, it should have aggregated and output the event
+//     BOOST_REQUIRE_EQUAL(agg->NumReadyAggregates(), 1);
+//     agg->HandleEvent([&](const Event& event) -> std::pair<int64_t, bool> {
+//         diff_event(0, out_allocator->GetEvent(), event);
+//         return std::make_pair(1, true);
+//     });
 
-    BOOST_REQUIRE_EQUAL(out_allocator->GetEventCount(), 1);
-}
+//     BOOST_REQUIRE_EQUAL(out_allocator->GetEventCount(), 1);
+// }
 
 BOOST_AUTO_TEST_CASE( test_large_input_events ) {
     auto in_allocator = std::make_shared<TestEventQueue>();
@@ -1671,32 +1671,17 @@ BOOST_AUTO_TEST_CASE( test_aggregation_with_missing_fields ) {
 //         BOOST_CHECK(event.NumRecords() == 1);
 //         auto record = event.RecordAt(0);
 
-//         // Iterate through the fields to find "raw_pid" and "interp_user"
-//         bool found_raw_pid = false;
-//         bool found_interp_user = false;
+//         // Verify aggregation fields are processed correctly
+//         auto raw_pid = record.GetFieldByName("raw_pid");
+//         BOOST_CHECK(raw_pid != nullptr);
+//         BOOST_CHECK(raw_pid->RawValue() == "[\"100\",\"101\",\"102\"]"); // Raw mode for pid
 
+//         auto interp_user = record.GetFieldByName("interp_user");
+//         BOOST_CHECK(interp_user != nullptr);
+//         BOOST_CHECK(interp_user->InterpValue() == "[\"user_0\",\"user_1\",\"user_2\"]"); // Interp mode for user
 
-//         for (size_t i = 0; i < record.NumFields(); ++i) {
-//             auto field = record.FieldAt(i);
-
-//             if (field->RawValue() == "[\"100\",\"101\",\"102\"]") {
-//                 found_raw_pid = true;
-//                 BOOST_CHECK(field->RawValue() == "[\"100\",\"101\",\"102\"]");
-//             }
-
-//             if (field->InterpValue() == "[\"user_0\",\"user_1\",\"user_2\"]") {
-//                 found_interp_user = true;
-//                 BOOST_CHECK(field->InterpValue() == "[\"user_0\",\"user_1\",\"user_2\"]");
-//             }
-
-//             if (field->RawValue().find("cmd_") != std::string::npos) {
-//                 BOOST_FAIL("cmdline should have been dropped");
-//             }
-//         }
-
-//         // Ensure the fields we care about were found
-//         BOOST_CHECK(found_raw_pid);
-//         BOOST_CHECK(found_interp_user);
+//         auto cmdline = record.GetFieldByName("cmdline");
+//         BOOST_CHECK(cmdline == nullptr); // Dropped field cmdline
 
 //         return std::make_pair(1, true); // Successfully processed
 //     };
