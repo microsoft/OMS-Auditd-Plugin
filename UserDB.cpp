@@ -179,13 +179,23 @@ void UserDB::ListenForUserChanges() {
 
 int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
     Logger::Info("In User add");
-    update_user_list()
+    UserDB* user_db_instance = static_cast<UserDB*>(userdata);
+    if (user_db_instance) {
+        user_db_instance->update_user_list();
+    } else {
+        Logger::Error("user_added_handler: Failed to cast userdata to UserDB instance add handler");
+    }
     return 0;
 }
 
 int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
     Logger::Info("In User remove");
-    update_user_list()
+    UserDB* user_db_instance = static_cast<UserDB*>(userdata);
+    if (user_db_instance) {
+        user_db_instance->update_user_list();
+    } else {
+        Logger::Error("user_added_handler: Failed to cast userdata to UserDB instance in remove handler");
+    }
     return 0;
 }
 
