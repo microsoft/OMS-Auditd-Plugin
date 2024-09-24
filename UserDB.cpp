@@ -149,8 +149,8 @@ void UserDB::ListenForUserChanges() {
     // Add match rules for user added and removed signals
 
     Logger::Info("Listen for user changes: Entered");
-    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserNew", user_added_handler, this);
-    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserRemoved", user_removed_handler, this);
+    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserNew", user_change_handler, this);
+    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserRemoved", user_change_handler, this);
 
     Logger::Info("Listen for user changes: Registered signals");
     while (!_stop) {
@@ -177,24 +177,13 @@ void UserDB::ListenForUserChanges() {
     Logger::Info("Listen for user changes: Successfully out of while");
 }
 
-int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
+int UserDB::user_change_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
     Logger::Info("In User add");
     UserDB* user_db_instance = static_cast<UserDB*>(userdata);
     if (user_db_instance) {
         user_db_instance->update_user_list();
     } else {
-        Logger::Error("user_added_handler: Failed to cast userdata to UserDB instance add handler");
-    }
-    return 0;
-}
-
-int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
-    Logger::Info("In User remove");
-    UserDB* user_db_instance = static_cast<UserDB*>(userdata);
-    if (user_db_instance) {
-        user_db_instance->update_user_list();
-    } else {
-        Logger::Error("user_added_handler: Failed to cast userdata to UserDB instance in remove handler");
+        Logger::Error("user_change_handler: Failed to cast userdata to UserDB instance change handler");
     }
     return 0;
 }
