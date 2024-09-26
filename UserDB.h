@@ -53,8 +53,7 @@ private:
     void ListenForUserChanges();
     int get_user_list(std::vector<std::pair<int, std::string>>& users);
     void update_user_list();
-    static int user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error*);
-    static int user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error*);
+    static int user_change_handler(sd_bus_message* m, void* userdata, sd_bus_error*);
 
     sd_bus* bus;
     std::unordered_map<int, std::string> user_map;

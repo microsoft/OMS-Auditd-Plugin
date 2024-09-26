@@ -143,8 +143,8 @@ void UserDB::Stop()
 void UserDB::ListenForUserChanges() {
     // Add match rules for user added and removed signals
 
-    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserNew", user_added_handler, this);
-    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserRemoved", user_removed_handler, this);
+    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserNew", user_change_handler, this);
+    sd_bus_match_signal(bus, nullptr, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager", "UserRemoved", user_change_handler, this);
 
     while (!_stop) {
         int ret = sd_bus_process(bus, nullptr);
@@ -165,32 +165,13 @@ void UserDB::ListenForUserChanges() {
     }
 }
 
-int UserDB::user_added_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
-    UserDB* db = static_cast<UserDB*>(userdata);
-    uint32_t uid;
-    const char* username;
-
-    int ret = sd_bus_message_read(m, "us", &uid, &username);
-    if (ret < 0) {
-        Logger::Error("Failed to parse UserNew signal: %s", strerror(-ret));
-        return ret;
+int UserDB::user_change_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
+    UserDB* user_db_instance = static_cast<UserDB*>(userdata);
+    if (user_db_instance) {
+        user_db_instance->update_user_list();
+    } else {
+        Logger::Error("user_change_handler: Failed to cast userdata to UserDB instance change handler");
     }
-
-    db->user_map[uid] = username;
-    return 0;
-}
-
-int UserDB::user_removed_handler(sd_bus_message* m, void* userdata, sd_bus_error*) {
-    UserDB* db = static_cast<UserDB*>(userdata);
-    uint32_t uid;
-
-    int ret = sd_bus_message_read(m, "u", &uid);
-    if (ret < 0) {
-        Logger::Error("Failed to parse UserRemoved signal: %s", strerror(-ret));
-        return ret;
-    }
-
-    db->user_map.erase(uid);
     return 0;
 }
 
@@ -198,7 +179,6 @@ void UserDB::update_user_list() {
     std::vector<std::pair<int, std::string>> users;
 
     int ret = get_user_list(users);
-
 
     if (ret < 0) {
         Logger::Error("In Update: Failed to call method: %s", strerror(-ret));
@@ -266,7 +246,6 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
         users.emplace_back(static_cast<int>(user_id), user_name);
         sd_bus_message_exit_container(msg);
     }
-
 
     sd_bus_message_exit_container(msg);  // Exit the array container
 
