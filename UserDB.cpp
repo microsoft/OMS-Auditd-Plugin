@@ -209,6 +209,7 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
 
 
     if (ret < 0) {
+        Logger::Error("Failed to read user entry: %s", strerror(-ret));
         sd_bus_error_free(&error);
         return ret;
     }
