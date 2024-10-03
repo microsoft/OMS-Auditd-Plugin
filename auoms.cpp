@@ -187,6 +187,8 @@ int main(int argc, char**argv) {
         backlog_wait_time = static_cast<uint32_t>(config.GetUint64("backlog_wait_time"));
     }
 
+
+
     std::string input_socket_path = run_dir + "/input.socket";
     std::string status_socket_path = run_dir + "/status.socket";
 
@@ -202,6 +204,22 @@ int main(int argc, char**argv) {
 
     if (config.HasKey("save_dir")) {
         save_dir = config.GetString("save_dir");
+    }
+
+    if (config.HasKey("test_var1")) {
+        Logger::Error("-------------------- testvar1");
+    }
+
+    if (config.HasKey("test_var2")) {
+        Logger::Error("-------------------- testvar2");
+    }
+
+    if (config.HasKey("test_var3")) {
+        Logger::Error("-------------------- testvar3");
+    }
+
+    if (config.HasKey("test_var4")) {
+        Logger::Error("-------------------- testvar4");
     }
 
     int num_priorities = 8;

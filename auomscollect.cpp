@@ -499,6 +499,27 @@ int main(int argc, char**argv) {
     if (config.HasKey("default_event_priority")) {
         default_priority = static_cast<uint16_t>(config.GetUint64("default_event_priority"));
     }
+
+    if (config.HasKey("save_dir")) {
+        save_dir = config.GetString("save_dir");
+    }
+
+    if (config.HasKey("test_var1")) {
+        Logger::Error("-------------------- ctl testvar1");
+    }
+
+    if (config.HasKey("test_var2")) {
+        Logger::Error("-------------------- ctl testvar2");
+    }
+
+    if (config.HasKey("test_var3")) {
+        Logger::Error("-------------------- ctl testvar3");
+    }
+
+    if (config.HasKey("test_var4")) {
+        Logger::Error("-------------------- ctl testvar4");
+    }
+
     if (default_priority > num_priorities-1) {
         default_priority = num_priorities-1;
     }
