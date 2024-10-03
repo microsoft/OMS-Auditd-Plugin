@@ -159,19 +159,19 @@ bool Output::Load(std::unique_ptr<Config>& config) {
         AggregationRule::RulesFromJSON(config->GetJSON("aggregation_rules"), _aggregation_rules);
     }
 
-    if (config.HasKey("test_var1")) {
+    if (config->HasKey("test_var1")) {
         Logger::Error("-------------------- output testvar1");
     }
 
-    if (config.HasKey("test_var2")) {
+    if (config->HasKey("test_var2")) {
         Logger::Error("-------------------- output testvar2");
     }
 
-    if (config.HasKey("test_var3")) {
+    if (config->HasKey("test_var3")) {
         Logger::Error("-------------------- output testvar3");
     }
 
-    if (config.HasKey("test_var4")) {
+    if (config->HasKey("test_var4")) {
         Logger::Error("-------------------- output testvar4");
     }
 
