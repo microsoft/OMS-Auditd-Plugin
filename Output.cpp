@@ -156,6 +156,7 @@ bool Output::Load(std::unique_ptr<Config>& config) {
     }
 
     if (config->HasKey("aggregation_rules")) {
+        Logger:Error("--------------------- output found aggr rules");
         AggregationRule::RulesFromJSON(config->GetJSON("aggregation_rules"), _aggregation_rules);
     }
 
