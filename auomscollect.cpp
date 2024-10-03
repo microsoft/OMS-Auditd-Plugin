@@ -500,10 +500,6 @@ int main(int argc, char**argv) {
         default_priority = static_cast<uint16_t>(config.GetUint64("default_event_priority"));
     }
 
-    if (config.HasKey("save_dir")) {
-        save_dir = config.GetString("save_dir");
-    }
-
     if (config.HasKey("test_var1")) {
         Logger::Error("-------------------- ctl testvar1");
     }
