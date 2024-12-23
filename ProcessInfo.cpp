@@ -369,6 +369,64 @@ int ProcessInfo::read_and_parse_status(int pid) {
     return 0;
 }
 
+int ProcessInfo::read_and_parse_cgroup(int pid) {
+    std::array<char, 64> path;
+    std::array<char, 2048> data;
+
+    snprintf(path.data(), path.size(), "/proc/%d/cgroup", pid);
+
+    int fd = ::open(path.data(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        if (errno != ENOENT && errno != ESRCH) {
+            std::cerr << "Failed to open /proc/" << pid << "/cgroup: " << strerror(errno) << std::endl;
+        }
+        return -1;
+    }
+
+    auto nr = ::read(fd, data.data(), data.size());
+    if (nr <= 0) {
+        close(fd);
+        if (nr < 0 && errno != ENOENT && errno != ESRCH) {
+            std::cerr << "Failed to read /proc/" << pid << "/cgroup: " << strerror(errno) << std::endl;
+        }
+        return -1;
+    }
+    close(fd);
+
+    char *ptr = data.data();
+    char *end = ptr + nr;
+
+    const char *containerd_prefix = "/containerd-";
+    const size_t containerd_prefix_len = strlen(containerd_prefix);
+    const char *docker_prefix = "/docker/";
+    const size_t docker_prefix_len = strlen(docker_prefix);
+
+    while (ptr < end) {
+        char *line_end = strchr(ptr, '\n');
+        if (line_end == nullptr) {
+            line_end = end;
+        }
+
+        // Check for containerd format
+        char *containerd_pos = strstr(ptr, containerd_prefix);
+        if (containerd_pos != nullptr && containerd_pos < line_end) {
+            _container_id = std::string(containerd_pos + containerd_prefix_len, 12); // Extract the first 12 characters of the container ID
+            return 0;
+        }
+
+        // Check for Docker format
+        char *docker_pos = strstr(ptr, docker_prefix);
+        if (docker_pos != nullptr && docker_pos < line_end) {
+            _container_id = std::string(docker_pos + docker_prefix_len, 12); // Extract the first 12 characters of the container ID
+            return 0;
+        }
+
+        ptr = line_end + 1;
+    }
+
+    return 1;
+}
+
 bool ProcessInfo::read(int pid) {
     std::array<char, 64> path;
 
@@ -386,6 +444,14 @@ bool ProcessInfo::read(int pid) {
     if (pret != 0) {
         if (pret > 0) {
             Logger::Warn("Failed to parse /proc/%d/status", pid);
+        }
+        return false;
+    }
+
+    pret = read_and_parse_cgroup(pid);
+    if (pret != 0) {
+        if (pret > 0) {
+            Logger::Warn("Failed to parse /proc/%d/cgroup", pid);
         }
         return false;
     }
@@ -471,6 +537,7 @@ void ProcessInfo::clear() {
     _cmdline.clear();
     _cmdline_truncated = false;
     _starttime_str.clear();
+    _container_id.clear();
 }
 
 std::unique_ptr<ProcessInfo> ProcessInfo::Open(int cmdline_size_limit) {

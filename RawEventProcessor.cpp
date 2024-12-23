@@ -1003,6 +1003,10 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
         return false;
     }
 
+    if (!add_str_field("containerid"sv, pinfo->container_id(), field_type_t::UNESCAPED)) {
+        return false;
+    }
+
     pinfo->format_cmdline(_cmdline);
 
     _cmdline_redactor->ApplyRules(_cmdline, _tmp_val);
