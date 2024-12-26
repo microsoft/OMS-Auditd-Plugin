@@ -707,6 +707,12 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                 exe = exe.substr(1, exe.length() - 2);
             }
             p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, _cmdline);
+            if (p->containerid().empty()) {
+            auto p_temp = _processTree->GetInfoForPid(_pid);
+                if (p_temp) {
+                    p->_containerid = p_temp->containerid();
+                }
+            }
         } else if (!_syscall.empty()) {
             p = _processTree->GetInfoForPid(_pid);
         }
@@ -1002,11 +1008,7 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
     if (!add_str_field("exe"sv, pinfo->exe(), field_type_t::UNESCAPED)) {
         return false;
     }
-
-    if (!add_str_field("containerid"sv, pinfo->container_id(), field_type_t::UNESCAPED)) {
-        return false;
-    }
-
+    
     pinfo->format_cmdline(_cmdline);
 
     _cmdline_redactor->ApplyRules(_cmdline, _tmp_val);

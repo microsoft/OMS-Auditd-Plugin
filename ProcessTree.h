@@ -178,6 +178,7 @@ protected:
     std::string _exe;
     std::string _containerid;
     std::string _containeridfromhostprocess;
+    std::string _cgroupContainerId;
     std::string _cmdline;
     std::bitset<FILTER_BITSET_SIZE> _flags;
     bool _exited;

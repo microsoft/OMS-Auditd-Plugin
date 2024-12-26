@@ -497,6 +497,10 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
                 struct Ancestor anc = {process->_ppid, parentproc->_exe};
                 process->_ancestors.emplace_back(anc);
             }
+            // If container ID is still empty, set it to be the cgroup container ID
+            if (process->_containerid.empty()) {
+                process->_containerid = process->_cgroupContainerId;                
+            }
             _processes[pid] = process;
             ApplyFlags(process);
         }
@@ -660,6 +664,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
     process->_gid = pinfo->gid();
     process->_ppid = pinfo->ppid();
     process->_exe = pinfo->exe();
+    process->_cgroupContainerId = pinfo->container_id();
     pinfo->format_cmdline(process->_cmdline);
     process->_containeridfromhostprocess = ExtractContainerId(process->_exe, process->_cmdline);
     return process;
