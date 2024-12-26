@@ -707,12 +707,6 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                 exe = exe.substr(1, exe.length() - 2);
             }
             p = _processTree->AddProcess(ProcessTreeSource_execve, _pid, _ppid, uid, gid, exe, _cmdline);
-            if (p->containerid().empty()) {
-            auto p_temp = _processTree->GetInfoForPid(_pid);
-                if (p_temp) {
-                    p->_containerid = p_temp->containerid();
-                }
-            }
         } else if (!_syscall.empty()) {
             p = _processTree->GetInfoForPid(_pid);
         }

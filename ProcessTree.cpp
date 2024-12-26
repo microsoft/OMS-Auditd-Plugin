@@ -427,6 +427,14 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
         _processes[pid] = process;
     }
 
+    // Call ReadProcEntry to ensure container ID is set if it's still empty
+    if (process->_containerid.empty()) {
+        auto p_temp = ReadProcEntry(pid);
+        if (p_temp) {
+            process->_containerid = p_temp->_cgroupContainerId;
+        }
+    }
+
     return process;
 }
 
