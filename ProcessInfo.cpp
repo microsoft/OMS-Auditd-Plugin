@@ -378,7 +378,7 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
     int fd = ::open(path.data(), O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
         if (errno != ENOENT && errno != ESRCH) {
-            std::cerr << "Failed to open /proc/" << pid << "/cgroup: " << strerror(errno) << std::endl;
+            Logger::Warn("Failed to open /proc/%d/cgroup: %s", pid, strerror(errno));
         }
         return -1;
     }
@@ -387,7 +387,7 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
     if (nr <= 0) {
         close(fd);
         if (nr < 0 && errno != ENOENT && errno != ESRCH) {
-            std::cerr << "Failed to read /proc/" << pid << "/cgroup: " << strerror(errno) << std::endl;
+            Logger::Warn("Failed to read /proc/%d/cgroup: %s", pid, strerror(errno));
         }
         return -1;
     }
