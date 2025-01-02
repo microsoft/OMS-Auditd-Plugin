@@ -396,6 +396,8 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
     char *ptr = data.data();
     char *end = ptr + nr;
 
+    Logger::Debug("Read /proc/%d/cgroup: %.*s", pid, nr, data.data());
+
     const char *containerd_prefix = "/containerd-";
     const size_t containerd_prefix_len = strlen(containerd_prefix);
     const char *docker_prefix = "/docker/";
@@ -408,6 +410,8 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
         if (line_end == nullptr) {
             line_end = end;
         }
+
+        Logger::Info("Processing line: %.*s", static_cast<int>(line_end - ptr), ptr);
 
         // Check for containerd format
         char *containerd_pos = strstr(ptr, containerd_prefix);
@@ -430,11 +434,14 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
         if (system_docker_pos != nullptr && system_docker_pos < line_end) {
             _container_id = std::string(system_docker_pos + system_docker_prefix_len, 12); // Extract the first 12 characters of the container ID
             Logger::Info("Read Container id (3) from cgroup for /proc/%d/cgroup: %s", pid, _container_id);
+            Logger::Warn("Read Container id (3) from cgroup for /proc/%d/cgroup: %s", pid, _container_id);
             return 0;
         }
 
         ptr = line_end + 1;
     }
+    
+    Logger::Warn("No container ID found in /proc/%d/cgroup", pid);
 
     return 1;
 }
@@ -460,6 +467,8 @@ bool ProcessInfo::read(int pid) {
         return false;
     }
 
+    Logger::Info("Read cgroup for %d", pid);
+    Logger::Warn("Read cgroup for %d", pid);
     pret = read_and_parse_cgroup(pid);
     if (pret != 0) {
         if (pret > 0) {
