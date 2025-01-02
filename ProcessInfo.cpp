@@ -396,8 +396,6 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
     char *ptr = data.data();
     char *end = ptr + nr;
 
-    Logger::Debug("Read /proc/%d/cgroup: %.*s", pid, nr, data.data());
-
     const char *containerd_prefix = "/containerd-";
     const size_t containerd_prefix_len = strlen(containerd_prefix);
     const char *docker_prefix = "/docker/";
