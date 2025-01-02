@@ -400,6 +400,8 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
     const size_t containerd_prefix_len = strlen(containerd_prefix);
     const char *docker_prefix = "/docker/";
     const size_t docker_prefix_len = strlen(docker_prefix);
+    const char *system_docker_prefix = "/system.slice/docker-";
+    const size_t system_docker_prefix_len = strlen(system_docker_prefix);
 
     while (ptr < end) {
         char *line_end = strchr(ptr, '\n');
@@ -411,6 +413,7 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
         char *containerd_pos = strstr(ptr, containerd_prefix);
         if (containerd_pos != nullptr && containerd_pos < line_end) {
             _container_id = std::string(containerd_pos + containerd_prefix_len, 12); // Extract the first 12 characters of the container ID
+            Logger::Info("Read Container id (1) from cgroup for /proc/%d/cgroup: %s", pid, _container_id);
             return 0;
         }
 
@@ -418,6 +421,15 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
         char *docker_pos = strstr(ptr, docker_prefix);
         if (docker_pos != nullptr && docker_pos < line_end) {
             _container_id = std::string(docker_pos + docker_prefix_len, 12); // Extract the first 12 characters of the container ID
+            Logger::Info("Read Container id (2) from cgroup for /proc/%d/cgroup: %s", pid, _container_id);
+            return 0;
+        }
+
+        // Check for system.slice Docker format
+        char *system_docker_pos = strstr(ptr, system_docker_prefix);
+        if (system_docker_pos != nullptr && system_docker_pos < line_end) {
+            _container_id = std::string(system_docker_pos + system_docker_prefix_len, 12); // Extract the first 12 characters of the container ID
+            Logger::Info("Read Container id (3) from cgroup for /proc/%d/cgroup: %s", pid, _container_id);
             return 0;
         }
 
