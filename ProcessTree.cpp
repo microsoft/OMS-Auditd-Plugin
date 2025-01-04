@@ -698,7 +698,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
     pinfo->format_cmdline(process->_cmdline);
     process->_containeridfromhostprocess = ExtractContainerId(process->_exe, process->_cmdline);
 
-    Log::Info("ReadProcEntry: irit pid=%d _cgroupContainerId=%s _containeridfromhostprocess=%s", pid, process->_cgroupContainerId.c_str(), process->_containeridfromhostprocess.c_str());
+    Logger::Info("ReadProcEntry: irit pid=%d _cgroupContainerId=%s _containeridfromhostprocess=%s", pid, process->_cgroupContainerId.c_str(), process->_containeridfromhostprocess.c_str());
 
     return process;
 }
