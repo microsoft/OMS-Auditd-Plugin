@@ -409,8 +409,6 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
             line_end = end;
         }
 
-        Logger::Info("Processing line: %.*s", static_cast<int>(line_end - ptr), ptr);
-
         // Check for containerd format
         char *containerd_pos = strstr(ptr, containerd_prefix);
         if (containerd_pos != nullptr && containerd_pos < line_end) {
@@ -432,14 +430,11 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
         if (system_docker_pos != nullptr && system_docker_pos < line_end) {
             _container_id = std::string(system_docker_pos + system_docker_prefix_len, 12); // Extract the first 12 characters of the container ID
             Logger::Info("Read Container id (3) from cgroup for /proc/%d/cgroup: %s", pid, _container_id.c_str());
-            Logger::Warn("Read Container id (3) from cgroup for /proc/%d/cgroup: %s", pid, _container_id.c_str());
             return 0;
         }
 
         ptr = line_end + 1;
     }
-
-    Logger::Warn("No container ID found in /proc/%d/cgroup", pid);
 
     return 1;
 }
@@ -466,11 +461,13 @@ bool ProcessInfo::read(int pid) {
     }
 
     Logger::Info("Read cgroup for %d", pid);
-    Logger::Warn("Read cgroup for %d", pid);
     pret = read_and_parse_cgroup(pid);
     if (pret != 0) {
         if (pret > 0) {
             Logger::Warn("Failed to parse /proc/%d/cgroup", pid);
+        }
+        else{
+            Logger::Warn("Wrong cgroup format for /proc/%d/cgroup", pid);
         }
         return false;
     }
