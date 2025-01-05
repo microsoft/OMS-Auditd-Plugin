@@ -334,7 +334,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
     std::shared_ptr<ProcessTreeItem> process;
 
-    std::string containerid = ExtractContainerId(exe, cmdline);       
+    std::string containerid = ExtractContainerId(exe, cmdline);
 
     auto it = _processes.find(pid);
     if (it != _processes.end()) {
@@ -502,7 +502,6 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
                 } else {
                     process->_containerid = parentproc->_containerid;
                 }
-
                 process->_ancestors = parentproc->_ancestors;
                 struct Ancestor anc = {process->_ppid, parentproc->_exe};
                 process->_ancestors.emplace_back(anc);
@@ -679,7 +678,6 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
     process->_cgroupContainerId = pinfo->container_id();
     pinfo->format_cmdline(process->_cmdline);
     process->_containeridfromhostprocess = ExtractContainerId(process->_exe, process->_cmdline);
-
     return process;
 }
 
