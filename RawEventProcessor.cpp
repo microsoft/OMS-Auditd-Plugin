@@ -701,8 +701,6 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
 
     std::string containerid;
 
-    Logger::Info("IB Processing syscall event: syscall=%s pid=%d ppid=%d uid=%d gid=%d exe=%s", _syscall.c_str(), _pid, _ppid, uid, gid, exe.c_str());
-
     if (_processTree) {
         if (!_syscall.empty() && starts_with(_syscall, "execve")) {
             if (!exe.empty() && exe.front() == '"' && exe.back() == '"') {
