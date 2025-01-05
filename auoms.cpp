@@ -273,7 +273,7 @@ int main(int argc, char**argv) {
         virt_limit = config.GetUint64("virt_limit");
     }
 
-    bool use_syslog = true;
+    bool use_syslog = false;
     if (config.HasKey("use_syslog")) {
         use_syslog = config.GetBool("use_syslog");
     }

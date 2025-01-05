@@ -336,7 +336,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
 
     std::string containerid = ExtractContainerId(exe, cmdline);
     
-    Logger::Info("AddProcess: pid=%d containerId=%s cmdline=%s", pid, containerid.c_str(), cmdline.c_str());
+    Logger::Info("IB AddProcess: pid=%d containerId=%s cmdline=%s", pid, containerid.c_str(), cmdline.c_str());
 
     auto it = _processes.find(pid);
     if (it != _processes.end()) {
@@ -349,7 +349,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
             process->_exe = exe;
             process->_cmdline = cmdline;
             process->_containeridfromhostprocess = containerid;
-            Logger::Info("1 irit _pid=%d, _containeridfromhostprocess=%s", process->_pid, process->_containeridfromhostprocess.c_str());
+            Logger::Info("1 IB _pid=%d, _containeridfromhostprocess=%s", process->_pid, process->_containeridfromhostprocess.c_str());
         }
         if (ppid != process->_ppid) {
             auto it2 = _processes.find(process->_ppid);
@@ -372,7 +372,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
                         process->_containerid = parentproc->_containerid;
                     }
 
-                Logger::Info("2 irit _pid=%d, _containerid=%s", process->_pid, process->_containerid.c_str());
+                Logger::Info("2 IB _pid=%d, _containerid=%s", process->_pid, process->_containerid.c_str());
 
                 }
                 process->_ancestors = parentproc->_ancestors;
@@ -402,7 +402,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
                             p->_containerid = process->_containerid;
                         }
 
-                        Logger::Info("3 irit _pid=%d, _containerid=%s", process->_pid, process->_containerid.c_str());
+                        Logger::Info("3 IB _pid=%d, _containerid=%s", process->_pid, process->_containerid.c_str());
                     }
                     p->_ancestors = process->_ancestors;
                     struct Ancestor anc = {pid, exe};
@@ -428,7 +428,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
                     process->_containerid = parentproc->_containerid;
                 }
 
-                Logger::Info("4 irit _pid=%d, _containerid=%s", process->_pid, process->_containerid.c_str());
+                Logger::Info("4 IB _pid=%d, _containerid=%s", process->_pid, process->_containerid.c_str());
             }
             process->_ancestors = parentproc->_ancestors;
             struct Ancestor anc = {ppid, parentproc->_exe};
@@ -445,7 +445,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
             process->_containerid = p_temp->_cgroupContainerId;
         }
 
-        Logger::Info("5 irit _pid=%d, _containerid=%s", process->_pid, process->_containerid.c_str());
+        Logger::Info("5 IB _pid=%d, _containerid=%s", process->_pid, process->_containerid.c_str());
     }
 
     return process;
@@ -515,7 +515,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
                     process->_containerid = parentproc->_containerid;
                 }
 
-                Logger::Info("6 irit _pid=%d, _containerid=%s", process->_pid, process->_containerid.c_str());
+                Logger::Info("6 IB _pid=%d, _containerid=%s", process->_pid, process->_containerid.c_str());
                 process->_ancestors = parentproc->_ancestors;
                 struct Ancestor anc = {process->_ppid, parentproc->_exe};
                 process->_ancestors.emplace_back(anc);
@@ -578,7 +578,7 @@ void ProcessTree::PopulateTree()
         process->_containeridfromhostprocess = ExtractContainerId(exe, cmdline);
         _processes[pid] = process;
 
-        Logger::Info("7 irit _pid=%d, _containeridfromhostprocess=%s", process->_pid, process->_containeridfromhostprocess.c_str());
+        Logger::Info("7 IB _pid=%d, _containeridfromhostprocess=%s", process->_pid, process->_containeridfromhostprocess.c_str());
 
     }
 
@@ -615,7 +615,7 @@ void ProcessTree::PopulateTree()
         if( !(process->_containeridfromhostprocess).empty()) {
             SetContainerId(process, process->_containeridfromhostprocess);
 
-            Logger::Info("Populate containerid 8 irit _pid=%d, _containeridfromhostprocess=%s", process->_pid, process->_containeridfromhostprocess.c_str());
+            Logger::Info("Populate containerid 8 IB _pid=%d, _containeridfromhostprocess=%s", process->_pid, process->_containeridfromhostprocess.c_str());
         }
     }
 }
@@ -685,10 +685,14 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
 {
     std::shared_ptr<ProcessTreeItem> process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_procfs, pid);
 
+    Logger::Info("ReadProcEntry: IB pid=%d Before OpenPid", pid);
+
     auto pinfo = ProcessInfo::OpenPid(pid, CMDLINE_SIZE_LIMIT);
     if (!pinfo) {
         return nullptr;
     }
+
+    Logger::Info("ReadProcEntry: IB pid=%d After OpenPid", pid);
 
     process->_uid = pinfo->uid();
     process->_gid = pinfo->gid();
@@ -698,7 +702,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
     pinfo->format_cmdline(process->_cmdline);
     process->_containeridfromhostprocess = ExtractContainerId(process->_exe, process->_cmdline);
 
-    Logger::Info("ReadProcEntry: irit pid=%d _cgroupContainerId=%s _containeridfromhostprocess=%s", pid, process->_cgroupContainerId.c_str(), process->_containeridfromhostprocess.c_str());
+    Logger::Info("ReadProcEntry: IB pid=%d _cgroupContainerId=%s _containeridfromhostprocess=%s", pid, process->_cgroupContainerId.c_str(), process->_containeridfromhostprocess.c_str());
 
     return process;
 }
