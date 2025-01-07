@@ -382,7 +382,7 @@ int ProcessInfo::ExtractCGroupContainerId(const std::string& content) {
 
     while ((line_end = strchr(ptr, '\n')) != nullptr) {
         // Check for containerd format
-        char *containerd_pos = strstr(ptr, containerd_prefix);
+        const char *containerd_pos = strstr(ptr, containerd_prefix);
         if (containerd_pos != nullptr && containerd_pos < line_end) {
             if (containerd_pos + containerd_prefix_len + 12 <= line_end) {
                 _container_id = std::string(containerd_pos + containerd_prefix_len, 12); // Extract the first 12 characters of the container ID
@@ -391,7 +391,7 @@ int ProcessInfo::ExtractCGroupContainerId(const std::string& content) {
         }
 
         // Check for Docker format
-        char *docker_pos = strstr(ptr, docker_prefix);
+        const char *docker_pos = strstr(ptr, docker_prefix);
         if (docker_pos != nullptr && docker_pos < line_end) {
             if (docker_pos + docker_prefix_len + 12 <= line_end) {
                 _container_id = std::string(docker_pos + docker_prefix_len, 12); // Extract the first 12 characters of the container ID
@@ -400,7 +400,7 @@ int ProcessInfo::ExtractCGroupContainerId(const std::string& content) {
         }
 
         // Check for system.slice Docker format
-        char *system_docker_pos = strstr(ptr, system_docker_prefix);
+        const char *system_docker_pos = strstr(ptr, system_docker_prefix);
         if (system_docker_pos != nullptr && system_docker_pos < line_end) {
             if (system_docker_pos + system_docker_prefix_len + 12 <= line_end) {
                 _container_id = std::string(system_docker_pos + system_docker_prefix_len, 12); // Extract the first 12 characters of the container ID
