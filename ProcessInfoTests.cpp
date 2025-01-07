@@ -39,17 +39,17 @@ BOOST_AUTO_TEST_CASE(container_id_extraction_test) {
     // Test containerd format
     std::string containerd_line = "some text /containerd-ebe83cd204c5 more text\n";
     BOOST_CHECK_EQUAL(ProcessInfoTests::ExtractCGroupContainerId(*processInfo, containerd_line), 0);
-    BOOST_CHECK_EQUAL(processInfo.container_id(), "ebe83cd204c5");
+    BOOST_CHECK_EQUAL(processInfo->container_id(), "ebe83cd204c5");
 
     // Test Docker format
     std::string docker_line = "some text /docker/ebe83cd204c5 more text\n";
     BOOST_CHECK_EQUAL(ProcessInfoTests::ExtractCGroupContainerId(*processInfo, docker_line), 0);
-    BOOST_CHECK_EQUAL(processInfo.container_id(), "ebe83cd204c5");
+    BOOST_CHECK_EQUAL(processInfo->container_id(), "ebe83cd204c5");
 
     // Test system.slice Docker format
     std::string system_docker_line = "some text /system.slice/docker-ebe83cd204c5 more text\n";
     BOOST_CHECK_EQUAL(ProcessInfoTests::ExtractCGroupContainerId(*processInfo, system_docker_line), 0);
-    BOOST_CHECK_EQUAL(processInfo.container_id(), "ebe83cd204c5");
+    BOOST_CHECK_EQUAL(processInfo->container_id(), "ebe83cd204c5");
 
     // Test invalid format
     std::string invalid_line = "some text without container id\n";
