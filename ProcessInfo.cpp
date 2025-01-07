@@ -369,6 +369,51 @@ int ProcessInfo::read_and_parse_status(int pid) {
     return 0;
 }
 
+int ProcessInfo::ExtractCGroupContainerId(const std::string& content) {
+    const char* ptr = content.c_str();
+    const char* line_end = nullptr;
+
+    const char *containerd_prefix = "/containerd-";
+    const size_t containerd_prefix_len = strlen(containerd_prefix);
+    const char *docker_prefix = "/docker/";
+    const size_t docker_prefix_len = strlen(docker_prefix);
+    const char *system_docker_prefix = "/system.slice/docker-";
+    const size_t system_docker_prefix_len = strlen(system_docker_prefix);
+
+    while ((line_end = strchr(ptr, '\n')) != nullptr) {
+        // Check for containerd format
+        char *containerd_pos = strstr(ptr, containerd_prefix);
+        if (containerd_pos != nullptr && containerd_pos < line_end) {
+            if (containerd_pos + containerd_prefix_len + 12 <= line_end) {
+                _container_id = std::string(containerd_pos + containerd_prefix_len, 12); // Extract the first 12 characters of the container ID
+                return 0;
+            }
+        }
+
+        // Check for Docker format
+        char *docker_pos = strstr(ptr, docker_prefix);
+        if (docker_pos != nullptr && docker_pos < line_end) {
+            if (docker_pos + docker_prefix_len + 12 <= line_end) {
+                _container_id = std::string(docker_pos + docker_prefix_len, 12); // Extract the first 12 characters of the container ID
+                return 0;
+            }
+        }
+
+        // Check for system.slice Docker format
+        char *system_docker_pos = strstr(ptr, system_docker_prefix);
+        if (system_docker_pos != nullptr && system_docker_pos < line_end) {
+            if (system_docker_pos + system_docker_prefix_len + 12 <= line_end) {
+                _container_id = std::string(system_docker_pos + system_docker_prefix_len, 12); // Extract the first 12 characters of the container ID
+                return 0;
+            }
+        }
+
+        ptr = line_end + 1;
+    }
+
+    return 1;
+}
+
 int ProcessInfo::read_and_parse_cgroup(int pid) {
     std::array<char, 64> path;
     std::array<char, 2048> data;
@@ -393,47 +438,8 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
     }
     close(fd);
 
-    char *ptr = data.data();
-    char *end = ptr + nr;
-
-    const char *containerd_prefix = "/containerd-";
-    const size_t containerd_prefix_len = strlen(containerd_prefix);
-    const char *docker_prefix = "/docker/";
-    const size_t docker_prefix_len = strlen(docker_prefix);
-    const char *system_docker_prefix = "/system.slice/docker-";
-    const size_t system_docker_prefix_len = strlen(system_docker_prefix);
-
-    while (ptr < end) {
-        char *line_end = strchr(ptr, '\n');
-        if (line_end == nullptr) {
-            line_end = end;
-        }
-
-        // Check for containerd format
-        char *containerd_pos = strstr(ptr, containerd_prefix);
-        if (containerd_pos != nullptr && containerd_pos < line_end) {
-            _container_id = std::string(containerd_pos + containerd_prefix_len, 12); // Extract the first 12 characters of the container ID
-            return 0;
-        }
-
-        // Check for Docker format
-        char *docker_pos = strstr(ptr, docker_prefix);
-        if (docker_pos != nullptr && docker_pos < line_end) {
-            _container_id = std::string(docker_pos + docker_prefix_len, 12); // Extract the first 12 characters of the container ID
-            return 0;
-        }
-
-        // Check for system.slice Docker format
-        char *system_docker_pos = strstr(ptr, system_docker_prefix);
-        if (system_docker_pos != nullptr && system_docker_pos < line_end) {
-            _container_id = std::string(system_docker_pos + system_docker_prefix_len, 12); // Extract the first 12 characters of the container ID
-            return 0;
-        }
-
-        ptr = line_end + 1;
-    }
-
-    return 1;
+    std::string content(data.data(), nr);
+    return ExtractCGroupContainerId(content);
 }
 
 bool ProcessInfo::read(int pid) {

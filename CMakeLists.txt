@@ -465,6 +465,7 @@ add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=Event
 add_executable(ProcessTreeTests
         auoms_version.h
         ProcessTreeTests.cpp
+        ProcessInfoTests.cpp
         Event.cpp
         Signals.cpp
         Logger.cpp
