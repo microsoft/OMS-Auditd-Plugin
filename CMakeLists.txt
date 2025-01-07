@@ -478,7 +478,13 @@ add_executable(ProcessInfoTests
     StringUtils.cpp
     ExecveConverter.cpp
 )
-target_link_libraries(ProcessInfoTests Boost::unit_test_framework)
+
+target_link_libraries(ProcessInfoTests ${Boost_LIBRARIES}
+    libre2.a
+    dl
+    pthread
+    rt
+)
 
 if(NOT DO_STATIC_LINK)
   target_compile_definitions(ProcessInfoTests PUBLIC BOOST_TEST_DYN_LINK=1)
