@@ -56,6 +56,10 @@ public:
     std::string starttime();
 
     inline bool is_cmdline_truncated() { return _cmdline_truncated; }
+    
+protected:
+    int ExtractCGroupContainerId(const std::string& content);
+
 
 private:
     explicit ProcessInfo(void* dp, int cmdline_size_limit);
@@ -92,6 +96,9 @@ private:
     std::string _starttime_str;
     bool _cmdline_truncated;
     std::string _container_id;
+
+    // Declare the test class as a friend
+    friend class ProcessInfoTests;
 };
 
 #endif //AUOMS_PROCESS_INFO_H
