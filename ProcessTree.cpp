@@ -335,9 +335,11 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     std::shared_ptr<ProcessTreeItem> process;
 
     std::string containerid = ExtractContainerId(exe, cmdline);         
+    std::string cgroupContainerid;
 
     if (containerid.empty()) {
-        auto p_temp = ReadProcEntry(pid);        
+        auto p_temp = ReadProcEntry(pid);      
+        cgroupContainerid = p_temp->_cgroupContainerId;  
     } 
 
     auto it = _processes.find(pid);
@@ -451,8 +453,12 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     // started by a web service or another system service that does not pass the container
     // ID through the command line arguments.
     if (process->_containerid.empty()) { 
-        Logger::Debug("IB updating containerid %s from cgroup for process %d ", process->_cgroupContainerId.c_str(), pid);     
-        process->_containerid = process->_cgroupContainerId;
+        Logger::Debug("IB updating containerid %s from cgroup for process %d, temp cgroupContainerid: %s ", process->_cgroupContainerId.c_str(), pid, cgroupContainerid);     
+        if (!cgroupContainerid.empty()) {
+            process->_containerid = cgroupContainerid;
+        } else if (!(process->_cgroupContainerId).empty()) {
+            process->_containerid = process->_cgroupContainerId;
+        }        
     }
 
     return process;
@@ -690,6 +696,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
     Logger::Debug("IB Reading proc entry for %d", pid);
     auto pinfo = ProcessInfo::OpenPid(pid, CMDLINE_SIZE_LIMIT);
     if (!pinfo) {
+        Logger::Error("IB Failed to open proc entry for %d", pid);
         return nullptr;
     }
 
@@ -698,7 +705,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
     process->_ppid = pinfo->ppid();
     process->_exe = pinfo->exe();
     process->_cgroupContainerId = pinfo->container_id();
-    Logger::Debug("CGroup container id for %d is %s", pid, process->_cgroupContainerId.c_str());
+    Logger::Debug("IB CGroup container id for %d is %s", pid, process->_cgroupContainerId.c_str());
 
     pinfo->format_cmdline(process->_cmdline);
     process->_containeridfromhostprocess = ExtractContainerId(process->_exe, process->_cmdline);

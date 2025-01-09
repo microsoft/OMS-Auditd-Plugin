@@ -52,9 +52,9 @@ void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
     auto rec = event.begin();
     auto rtype = static_cast<RecordType>(rec.RecordType());
 
-    if (rtype == RecordType::EXECVE)
+    if (rtype == RecordType::EXECVE || rtype == RecordType::SYSCALL)
     {
-        Logger::Debug("IB RawEventProcessor: ProcessData: EXECVE event");
+        Logger::Debug("IB RawEventProcessor: ProcessData: %d event", rtype);
         _pid = get_pid_from_event(event);
         if (_pid != -1) {
             if (_processTree) {  
