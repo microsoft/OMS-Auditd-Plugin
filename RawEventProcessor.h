@@ -50,6 +50,7 @@ private:
     bool add_gid_field(const std::string_view& name, int gid, field_type_t ft);
     bool add_str_field(const std::string_view& name, const std::string_view& val, field_type_t ft);
     bool generate_proc_event(ProcessInfo* pinfo, uint64_t sec, uint32_t nsec);
+    int GetPidFromEvent(const Event& event);
 
     std::shared_ptr<EventBuilder> _builder;
     std::shared_ptr<UserDB> _user_db;

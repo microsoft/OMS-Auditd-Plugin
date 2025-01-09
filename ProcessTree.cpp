@@ -335,14 +335,14 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     std::shared_ptr<ProcessTreeItem> process;
 
     std::string containerid = ExtractContainerId(exe, cmdline);     
-    std::string cgroupContainerid;
+    /*std::string cgroupContainerid;
 
     if (containerid.empty()) {
         auto p_temp = ReadProcEntry(pid);
         if (p_temp) {
             cgroupContainerid = p_temp->_cgroupContainerId;
         } 
-    }  
+    } */ 
 
     auto it = _processes.find(pid);
     if (it != _processes.end()) {
@@ -396,7 +396,6 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
                 auto p = it2->second;
                 if (p->_exec_propagation > 0) {
                     {
-                        Logger::Debug("IB _exec_propagation Updating process %d", c);
                         std::lock_guard<std::mutex> _lock(process->_mutex);
                         p->_source = source;
                         p->_exe = exe;
@@ -425,7 +424,6 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
             auto parentproc = it2->second;
             parentproc->_children.emplace_back(pid);
             {
-                Logger::Debug("IB parentproc->_children.emplace_back Updating process %d containerid", pid);
                 std::lock_guard<std::mutex> _lock(process->_mutex);
                 if (!(parentproc->_containeridfromhostprocess).empty()) {
                     process->_containerid = parentproc->_containeridfromhostprocess;
@@ -458,7 +456,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     // ID through the command line arguments.
     if (process->_containerid.empty()) { 
         Logger::Debug("IB updating containerid from cgroup for process %d", pid);     
-        process->_containerid = cgroupContainerid;       
+        process->_containerid = process->_cgroupContainerId;
     }
 
     return process;
@@ -534,6 +532,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
 
             // If container ID is still empty, set it to be the cgroup container ID
             if (process->_containerid.empty()) {
+                Logger::Debug("IB In GetInfoForPid. Updating containerid from cgroup for process %d", pid);
                 process->_containerid = process->_cgroupContainerId;                
             }
 
@@ -701,6 +700,8 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
     process->_ppid = pinfo->ppid();
     process->_exe = pinfo->exe();
     process->_cgroupContainerId = pinfo->container_id();
+    Logger::Debug("CGroup container id for %d is %s", pid, process->_cgroupContainerId.c_str());
+
     pinfo->format_cmdline(process->_cmdline);
     process->_containeridfromhostprocess = ExtractContainerId(process->_exe, process->_cmdline);
     return process;
