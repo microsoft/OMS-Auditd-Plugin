@@ -50,26 +50,17 @@ void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
     }
 
     auto rec = event.begin();
-    auto rtype = static_cast<RecordType>(rec.RecordType());
-
-    if (rtype == RecordType::EXECVE || rtype == RecordType::SYSCALL)
-    {
-        Logger::Debug("IB RawEventProcessor: ProcessData: %d event", rtype);
-        _pid = get_pid_from_event(event);
-        if (_pid != -1) {
-            if (_processTree) {  
-                Logger::Debug("IB RawEventProcessor: ProcessData: GetInfoForPid: %d", _pid); 
-                _processTree->GetInfoForPid(_pid);
-            }
-        }
-        else
-        {
-            Logger::Error("IB RawEventProcessor: ProcessData: EXECVE event without PID");
-        }
-    }
+    auto rtype = static_cast<RecordType>(rec.RecordType());    
 
     if (rtype == RecordType::SYSCALL || rtype == RecordType::EXECVE || rtype == RecordType::CWD || rtype == RecordType::PATH ||
                 rtype == RecordType::SOCKADDR || rtype == RecordType::INTEGRITY_RULE) {
+        _pid = get_pid_from_event(event);
+        if (_pid != -1) {
+            if (_processTree) {  
+                _processTree->ReadProcEntry(_pid);
+            }
+        }
+
         if (!process_syscall_event(event)) {
             process_event(event);
         }
@@ -81,7 +72,6 @@ void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
 int RawEventProcessor::get_pid_from_event(const Event& event) {
     for (auto& rec : event) {
         auto pid_field = rec.FieldByName("pid");
-        Logger::Debug("IB RawEventProcessor: get_pid_from_event: pid_field: %s", pid_field.RawValuePtr());
         if (pid_field) {
             const char* pid_value = pid_field.RawValuePtr();
             if (pid_value) {
