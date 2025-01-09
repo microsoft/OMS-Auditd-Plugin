@@ -334,15 +334,11 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
     std::shared_ptr<ProcessTreeItem> process;
 
-    std::string containerid = ExtractContainerId(exe, cmdline);     
-    /*std::string cgroupContainerid;
+    std::string containerid = ExtractContainerId(exe, cmdline);         
 
     if (containerid.empty()) {
-        auto p_temp = ReadProcEntry(pid);
-        if (p_temp) {
-            cgroupContainerid = p_temp->_cgroupContainerId;
-        } 
-    } */ 
+        auto p_temp = ReadProcEntry(pid);        
+    } 
 
     auto it = _processes.find(pid);
     if (it != _processes.end()) {
@@ -455,7 +451,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     // started by a web service or another system service that does not pass the container
     // ID through the command line arguments.
     if (process->_containerid.empty()) { 
-        Logger::Debug("IB updating containerid from cgroup for process %d", pid);     
+        Logger::Debug("IB updating containerid %s from cgroup for process %d ", process->_cgroupContainerId.c_str(), pid);     
         process->_containerid = process->_cgroupContainerId;
     }
 
@@ -508,6 +504,7 @@ void ProcessTree::Clean()
 
 std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
 {
+    Logger::Debug("IB In GetInfoForPid. pid: %d", pid);
     std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
     auto it = _processes.find(pid);
     if (it != _processes.end() && it->second->_source != ProcessTreeSource_pnotify) {
@@ -690,6 +687,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
 {
     std::shared_ptr<ProcessTreeItem> process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_procfs, pid);
 
+    Logger::Debug("IB Reading proc entry for %d", pid);
     auto pinfo = ProcessInfo::OpenPid(pid, CMDLINE_SIZE_LIMIT);
     if (!pinfo) {
         return nullptr;
