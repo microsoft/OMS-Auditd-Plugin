@@ -369,6 +369,79 @@ int ProcessInfo::read_and_parse_status(int pid) {
     return 0;
 }
 
+int ProcessInfo::ExtractCGroupContainerId(const std::string& content) {
+    const char* ptr = content.c_str();
+    const char* line_end = nullptr;
+
+    const char *containerd_prefix = "/containerd-";
+    const size_t containerd_prefix_len = strlen(containerd_prefix);
+    const char *docker_prefix = "/docker/";
+    const size_t docker_prefix_len = strlen(docker_prefix);
+    const char *system_docker_prefix = "/system.slice/docker-";
+    const size_t system_docker_prefix_len = strlen(system_docker_prefix);
+
+    while ((line_end = strchr(ptr, '\n')) != nullptr) {
+        // Check for containerd format
+        const char *containerd_pos = strstr(ptr, containerd_prefix);
+        if (containerd_pos != nullptr && containerd_pos < line_end) {
+            if (containerd_pos + containerd_prefix_len + 12 <= line_end) {
+                _container_id = std::string(containerd_pos + containerd_prefix_len, 12); // Extract the first 12 characters of the container ID
+                return 0;
+            }
+        }
+
+        // Check for Docker format
+        const char *docker_pos = strstr(ptr, docker_prefix);
+        if (docker_pos != nullptr && docker_pos < line_end) {
+            if (docker_pos + docker_prefix_len + 12 <= line_end) {
+                _container_id = std::string(docker_pos + docker_prefix_len, 12); // Extract the first 12 characters of the container ID
+                return 0;
+            }
+        }
+
+        // Check for system.slice Docker format
+        const char *system_docker_pos = strstr(ptr, system_docker_prefix);
+        if (system_docker_pos != nullptr && system_docker_pos < line_end) {
+            if (system_docker_pos + system_docker_prefix_len + 12 <= line_end) {
+                _container_id = std::string(system_docker_pos + system_docker_prefix_len, 12); // Extract the first 12 characters of the container ID
+                return 0;
+            }
+        }
+
+        ptr = line_end + 1;
+    }
+
+    return 1;
+}
+
+int ProcessInfo::read_and_parse_cgroup(int pid) {
+    std::array<char, 64> path;
+    std::array<char, 2048> data;
+
+    snprintf(path.data(), path.size(), "/proc/%d/cgroup", pid);
+
+    int fd = ::open(path.data(), O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        if (errno != ENOENT && errno != ESRCH) {
+            Logger::Warn("Failed to open /proc/%d/cgroup: %s", pid, strerror(errno));
+        }
+        return -1;
+    }
+
+    auto nr = ::read(fd, data.data(), data.size());
+    if (nr <= 0) {
+        close(fd);
+        if (nr < 0 && errno != ENOENT && errno != ESRCH) {
+            Logger::Warn("Failed to read /proc/%d/cgroup: %s", pid, strerror(errno));
+        }
+        return -1;
+    }
+    close(fd);
+
+    std::string content(data.data(), nr);
+    return ExtractCGroupContainerId(content);
+}
+
 bool ProcessInfo::read(int pid) {
     std::array<char, 64> path;
 
@@ -386,6 +459,17 @@ bool ProcessInfo::read(int pid) {
     if (pret != 0) {
         if (pret > 0) {
             Logger::Warn("Failed to parse /proc/%d/status", pid);
+        }
+        return false;
+    }
+
+    pret = read_and_parse_cgroup(pid);
+    if (pret != 0) {
+        if (pret > 0) {
+            Logger::Warn("Failed to parse /proc/%d/cgroup", pid);
+        }
+        else{
+            Logger::Warn("Wrong cgroup format for /proc/%d/cgroup", pid);
         }
         return false;
     }
@@ -471,6 +555,7 @@ void ProcessInfo::clear() {
     _cmdline.clear();
     _cmdline_truncated = false;
     _starttime_str.clear();
+    _container_id.clear();
 }
 
 std::unique_ptr<ProcessInfo> ProcessInfo::Open(int cmdline_size_limit) {

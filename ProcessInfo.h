@@ -45,6 +45,7 @@ public:
     inline int egid()  { return _egid; }
     inline int sgid()  { return _sgid; }
     inline int fsgid() { return _fsgid; }
+    inline std::string_view container_id() { return std::string_view(_container_id.data(), _container_id.size()); }
 
     inline std::string_view comm() { return std::string_view(_comm.data(), _comm_size); }
     inline std::string exe() { return _exe; }
@@ -55,12 +56,17 @@ public:
     std::string starttime();
 
     inline bool is_cmdline_truncated() { return _cmdline_truncated; }
+    
+protected:
+    int ExtractCGroupContainerId(const std::string& content);
+
 
 private:
     explicit ProcessInfo(void* dp, int cmdline_size_limit);
 
     int read_and_parse_stat(int pid);
     int read_and_parse_status(int pid);
+    int read_and_parse_cgroup(int pid);
 
     bool read(int pid);
     void clear();
@@ -89,6 +95,10 @@ private:
     std::vector<uint8_t> _cmdline;
     std::string _starttime_str;
     bool _cmdline_truncated;
+    std::string _container_id;
+
+    // Declare the test class as a friend
+    friend class ProcessInfoTests;
 };
 
 #endif //AUOMS_PROCESS_INFO_H

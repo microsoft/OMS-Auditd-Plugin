@@ -335,6 +335,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     std::shared_ptr<ProcessTreeItem> process;
 
     std::string containerid = ExtractContainerId(exe, cmdline);
+
     auto it = _processes.find(pid);
     if (it != _processes.end()) {
         process = it->second;
@@ -426,6 +427,27 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
         ApplyFlags(process);
         _processes[pid] = process;
     }
+    
+    // The purpose of extracting the container ID from cgroup is to accurately identify
+    // the container in which a process is running. This is particularly important for
+    // monitoring and logging purposes in containerized environments, where applications
+    // are packaged and run in containers. By testing the extraction logic with various
+    // cgroup formats, we aim to ensure that the container ID is correctly identified in
+    // all scenarios.
+    // This method complements the existing logic that extracts the container ID from the
+    // command line arguments by providing an additional, more reliable source of information.
+    // This is especially relevant when the container ID is not found through the existing
+    // logic, which can happen when there is no parent process or when the parent process
+    // does not have the container ID set. This situation can occur in various scenarios,
+    // such as when a process is the root process of a container or when the process is
+    // started by a web service or another system service that does not pass the container
+    // ID through the command line arguments.
+    if (process->_containerid.empty()) {
+        auto p_temp = ReadProcEntry(pid);
+        if (p_temp) {
+            process->_containerid = p_temp->_cgroupContainerId;
+        }
+    }
 
     return process;
 }
@@ -497,6 +519,12 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
                 struct Ancestor anc = {process->_ppid, parentproc->_exe};
                 process->_ancestors.emplace_back(anc);
             }
+
+            // If container ID is still empty, set it to be the cgroup container ID
+            if (process->_containerid.empty()) {
+                process->_containerid = process->_cgroupContainerId;                
+            }
+
             _processes[pid] = process;
             ApplyFlags(process);
         }
@@ -660,6 +688,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
     process->_gid = pinfo->gid();
     process->_ppid = pinfo->ppid();
     process->_exe = pinfo->exe();
+    process->_cgroupContainerId = pinfo->container_id();
     pinfo->format_cmdline(process->_cmdline);
     process->_containeridfromhostprocess = ExtractContainerId(process->_exe, process->_cmdline);
     return process;
