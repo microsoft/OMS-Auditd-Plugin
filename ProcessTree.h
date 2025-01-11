@@ -230,7 +230,7 @@ public:
     void ShowTree();
     void ShowProcess(std::shared_ptr<ProcessTreeItem> p);
     static std::string ExtractContainerId(const std::string& exe, const std::string& cmdline);
-    std::string ExtractContainerIdFromCgroup(const int pid)
+    std::string ExtractContainerIdFromCgroup(const int pid);
 
 protected:
     void on_stopping() override;
