@@ -224,14 +224,13 @@ public:
     std::shared_ptr<ProcessTreeItem> AddProcess(enum ProcessTreeSource source, int pid, int ppid, int uid, int gid, const std::string& exe, const std::string& cmdline);
     void Clean();
     std::shared_ptr<ProcessTreeItem> GetInfoForPid(int pid);
-    std::shared_ptr<ProcessTreeItem> ReadProcEntry(int pid);
 
     void PopulateTree();
     void UpdateFlags();
     void ShowTree();
     void ShowProcess(std::shared_ptr<ProcessTreeItem> p);
     static std::string ExtractContainerId(const std::string& exe, const std::string& cmdline);
-
+    std::string ExtractContainerIdFromCgroup(const int pid)
 
 protected:
     void on_stopping() override;
@@ -243,6 +242,7 @@ private:
     void RemovePid(int pid);
     void ApplyFlags(const std::shared_ptr<ProcessTreeItem>& process);
     void SetContainerId(const std::shared_ptr<ProcessTreeItem>& p, const std::string& containerid);
+    std::shared_ptr<ProcessTreeItem> ReadProcEntry(int pid);
 
     std::shared_ptr<UserDB> _user_db;
     std::shared_ptr<FiltersEngine> _filtersEngine;

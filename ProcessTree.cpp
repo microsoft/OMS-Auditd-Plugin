@@ -337,9 +337,8 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     std::string containerid = ExtractContainerId(exe, cmdline);         
     std::string cgroupContainerid;
 
-    if (containerid.empty()) {
-        auto p_temp = ReadProcEntry(pid);      
-        cgroupContainerid = p_temp->_cgroupContainerId;  
+    if (containerid.empty()) { 
+        cgroupContainerid = ExtractContainerIdFromCgroup(pid);
     } 
 
     auto it = _processes.find(pid);
@@ -649,6 +648,20 @@ void ProcessTree::SetContainerId(const std::shared_ptr<ProcessTreeItem>& p, cons
             SetContainerId(cp, containerid);
         }
     }
+}
+
+std::string ProcessTree::ExtractContainerIdFromCgroup(const int pid)
+{
+    std::string containerid = "";
+    auto pinfo = ProcessInfo::OpenPid(pid, CMDLINE_SIZE_LIMIT);
+    if (!pinfo) {
+        Logger::Error("IB Failed to open proc entry for %d", pid);
+        return containerid;
+    }
+
+    containerid = pinfo->container_id();
+    Logger::Debug("IB (2) CGroup container id for %d is %s", pid, containerid.c_str());
+    return containerid;
 }
 
 std::string ProcessTree::ExtractContainerId(const std::string& exe, const std::string& cmdline)
