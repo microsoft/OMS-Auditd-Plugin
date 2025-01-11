@@ -54,12 +54,13 @@ void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
 
     if (rtype == RecordType::SYSCALL || rtype == RecordType::EXECVE || rtype == RecordType::CWD || rtype == RecordType::PATH ||
                 rtype == RecordType::SOCKADDR || rtype == RecordType::INTEGRITY_RULE) {
-        /*_pid = get_pid_from_event(event);
+        _pid = get_pid_from_event(event);
         if (_pid != -1) {
             if (_processTree) {  
-                _processTree->ReadProcEntry(_pid);
+                auto contId = _processTree->ExtractContainerIdFromCgroup(_pid);
+                Logger::Debug("IB RawEventProcessor: ProcessData for %d: ContainerId: %s", _pid, contId.c_str());
             }
-        }*/
+        }
 
         if (!process_syscall_event(event)) {
             process_event(event);

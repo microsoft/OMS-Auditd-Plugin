@@ -345,7 +345,6 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     if (it != _processes.end()) {
         process = it->second;
         {
-            Logger::Debug("IB Updating process %d", pid);
             std::lock_guard<std::mutex> _lock(process->_mutex);
             process->_source = source;
             process->_uid = uid;
@@ -355,7 +354,6 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
             process->_containeridfromhostprocess = containerid;
         }
         if (ppid != process->_ppid) {
-            Logger::Debug("IB Updating process %d ppid from %d to %d", pid, process->_ppid, ppid);
             auto it2 = _processes.find(process->_ppid);
             if (it2 != _processes.end()) {
                 auto oldparent = it2->second;
@@ -366,11 +364,9 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
             }
             it2 = _processes.find(ppid);
             if (it2 != _processes.end()) {
-                Logger::Debug("IB Updating process %d ppid %d", pid, ppid);
                 auto parentproc = it2->second;
                 parentproc->_children.emplace_back(pid);
                 {
-                    Logger::Debug("IB Updating process %d containerid", pid);
                     std::lock_guard<std::mutex> _lock(process->_mutex);
                     if (!(parentproc->_containeridfromhostprocess).empty()) {
                         process->_containerid = parentproc->_containeridfromhostprocess;
@@ -451,8 +447,8 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     // such as when a process is the root process of a container or when the process is
     // started by a web service or another system service that does not pass the container
     // ID through the command line arguments.
+    Logger::Info("IB Updating containerid %s from cgroup for process %d, _cgroupContainerId %s, temp cgroupContainerid: %s ", process->_containerid.c_str(), pid, process->_cgroupContainerId.c_str(), cgroupContainerid.c_str());
     if (process->_containerid.empty()) { 
-        Logger::Debug("IB updating containerid %s from cgroup for process %d, temp cgroupContainerid: %s ", process->_cgroupContainerId.c_str(), pid, cgroupContainerid);     
         if (!cgroupContainerid.empty()) {
             process->_containerid = cgroupContainerid;
         } else if (!(process->_cgroupContainerId).empty()) {
@@ -655,7 +651,7 @@ std::string ProcessTree::ExtractContainerIdFromCgroup(const int pid)
     std::string containerid = "";
     auto pinfo = ProcessInfo::OpenPid(pid, CMDLINE_SIZE_LIMIT);
     if (!pinfo) {
-        Logger::Error("IB Failed to open proc entry for %d", pid);
+        Logger::Error("IB Failed to open proc entry for %d (ExtractContainerIdFromCgroup)", pid);
         return containerid;
     }
 
@@ -706,12 +702,13 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
 {
     std::shared_ptr<ProcessTreeItem> process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_procfs, pid);
 
-    Logger::Debug("IB Reading proc entry for %d", pid);
+    Logger::Debug("IB Reading proc entry for %d before OpenPid", pid);
     auto pinfo = ProcessInfo::OpenPid(pid, CMDLINE_SIZE_LIMIT);
     if (!pinfo) {
-        Logger::Error("IB Failed to open proc entry for %d", pid);
+        Logger::Error("IB Failed to open proc entry for %d (ReadProcEntry)", pid);
         return nullptr;
     }
+    Logger::Info("IB Reading proc entry for %d after OpenPid", pid);
 
     process->_uid = pinfo->uid();
     process->_gid = pinfo->gid();
