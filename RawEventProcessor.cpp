@@ -57,8 +57,7 @@ void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
         _pid = get_pid_from_event(event);
         if (_pid != -1) {
             if (_processTree) {  
-                auto contId = _processTree->ExtractContainerIdFromCgroup(_pid);
-                Logger::Debug("IB RawEventProcessor: ProcessData for %d: ContainerId: %s", _pid, contId.c_str());
+                auto contId = _processTree->ExtractContainerIdFromCgroup(_pid);                
             }
         }
 

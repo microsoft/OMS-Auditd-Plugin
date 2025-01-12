@@ -448,6 +448,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     // started by a web service or another system service that does not pass the container
     // ID through the command line arguments.
     Logger::Info("IB Updating containerid %s from cgroup for process %d, _cgroupContainerId %s, temp cgroupContainerid: %s ", process->_containerid.c_str(), pid, process->_cgroupContainerId.c_str(), cgroupContainerid.c_str());
+    auto __cgroupContainerid = ExtractContainerIdFromCgroup(pid);
     if (process->_containerid.empty()) { 
         if (!cgroupContainerid.empty()) {
             process->_containerid = cgroupContainerid;
@@ -656,7 +657,7 @@ std::string ProcessTree::ExtractContainerIdFromCgroup(const int pid)
     }
 
     containerid = pinfo->container_id();
-    Logger::Debug("IB (2) CGroup container id for %d is %s", pid, containerid.c_str());
+    Logger::Debug("IB CGroup container id for %d is %s", pid, containerid.c_str());
     return containerid;
 }
 
