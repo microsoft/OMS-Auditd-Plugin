@@ -447,7 +447,18 @@ bool ProcessInfo::read(int pid) {
 
     snprintf(path.data(), path.size(), "/proc/%d/exe", pid);
 
-    int pret = read_and_parse_stat(pid);
+    int pret = read_and_parse_cgroup(pid);
+    if (pret != 0) {
+        if (pret > 0) {
+            Logger::Warn("Failed to parse /proc/%d/cgroup", pid);
+        }
+        else{
+            Logger::Warn("Wrong cgroup format for /proc/%d/cgroup", pid);
+        }
+        return false;
+    }
+
+    pret = read_and_parse_stat(pid);
     if (pret != 0) {
         if (pret > 0) {
             Logger::Warn("Failed to parse /proc/%d/stat", pid);
@@ -459,17 +470,6 @@ bool ProcessInfo::read(int pid) {
     if (pret != 0) {
         if (pret > 0) {
             Logger::Warn("Failed to parse /proc/%d/status", pid);
-        }
-        return false;
-    }
-
-    pret = read_and_parse_cgroup(pid);
-    if (pret != 0) {
-        if (pret > 0) {
-            Logger::Warn("Failed to parse /proc/%d/cgroup", pid);
-        }
-        else{
-            Logger::Warn("Wrong cgroup format for /proc/%d/cgroup", pid);
         }
         return false;
     }

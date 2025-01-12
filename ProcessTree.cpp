@@ -334,7 +334,12 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
     std::shared_ptr<ProcessTreeItem> process;
 
-    std::string containerid = ExtractContainerId(exe, cmdline);
+    std::string containerid = ExtractContainerId(exe, cmdline);         
+    std::string cgroupContainerid;
+
+    if (containerid.empty()) { 
+        cgroupContainerid = ExtractContainerIdFromCgroup(pid);
+    } 
 
     auto it = _processes.find(pid);
     if (it != _processes.end()) {
@@ -442,11 +447,14 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
     // such as when a process is the root process of a container or when the process is
     // started by a web service or another system service that does not pass the container
     // ID through the command line arguments.
-    if (process->_containerid.empty()) {
-        auto p_temp = ReadProcEntry(pid);
-        if (p_temp) {
-            process->_containerid = p_temp->_cgroupContainerId;
-        }
+    Logger::Info("IB Updating containerid %s from cgroup for process %d, _cgroupContainerId %s, temp cgroupContainerid: %s ", process->_containerid.c_str(), pid, process->_cgroupContainerId.c_str(), cgroupContainerid.c_str());
+    auto __cgroupContainerid = ExtractContainerIdFromCgroup(pid);
+    if (process->_containerid.empty()) { 
+        if (!cgroupContainerid.empty()) {
+            process->_containerid = cgroupContainerid;
+        } else if (!(process->_cgroupContainerId).empty()) {
+            process->_containerid = process->_cgroupContainerId;
+        }        
     }
 
     return process;
@@ -498,6 +506,7 @@ void ProcessTree::Clean()
 
 std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
 {
+    Logger::Debug("IB In GetInfoForPid. pid: %d", pid);
     std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
     auto it = _processes.find(pid);
     if (it != _processes.end() && it->second->_source != ProcessTreeSource_pnotify) {
@@ -522,6 +531,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
 
             // If container ID is still empty, set it to be the cgroup container ID
             if (process->_containerid.empty()) {
+                Logger::Debug("IB In GetInfoForPid. Updating containerid from cgroup for process %d", pid);
                 process->_containerid = process->_cgroupContainerId;                
             }
 
@@ -637,6 +647,20 @@ void ProcessTree::SetContainerId(const std::shared_ptr<ProcessTreeItem>& p, cons
     }
 }
 
+std::string ProcessTree::ExtractContainerIdFromCgroup(const int pid)
+{
+    std::string containerid = "";
+    auto pinfo = ProcessInfo::OpenPid(pid, CMDLINE_SIZE_LIMIT);
+    if (!pinfo) {
+        Logger::Error("IB Failed to open proc entry for %d (ExtractContainerIdFromCgroup)", pid);
+        return containerid;
+    }
+
+    containerid = pinfo->container_id();
+    Logger::Debug("IB CGroup container id for %d is %s", pid, containerid.c_str());
+    return containerid;
+}
+
 std::string ProcessTree::ExtractContainerId(const std::string& exe, const std::string& cmdline)
 {
     // cmdline example: 
@@ -679,16 +703,21 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::ReadProcEntry(int pid)
 {
     std::shared_ptr<ProcessTreeItem> process = std::make_shared<ProcessTreeItem>(ProcessTreeSource_procfs, pid);
 
+    Logger::Debug("IB Reading proc entry for %d before OpenPid", pid);
     auto pinfo = ProcessInfo::OpenPid(pid, CMDLINE_SIZE_LIMIT);
     if (!pinfo) {
+        Logger::Error("IB Failed to open proc entry for %d (ReadProcEntry)", pid);
         return nullptr;
     }
+    Logger::Info("IB Reading proc entry for %d after OpenPid", pid);
 
     process->_uid = pinfo->uid();
     process->_gid = pinfo->gid();
     process->_ppid = pinfo->ppid();
     process->_exe = pinfo->exe();
     process->_cgroupContainerId = pinfo->container_id();
+    Logger::Debug("IB CGroup container id for %d is %s", pid, process->_cgroupContainerId.c_str());
+
     pinfo->format_cmdline(process->_cmdline);
     process->_containeridfromhostprocess = ExtractContainerId(process->_exe, process->_cmdline);
     return process;
