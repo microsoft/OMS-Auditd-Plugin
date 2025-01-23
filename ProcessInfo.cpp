@@ -414,7 +414,7 @@ int ProcessInfo::ExtractCGroupContainerId(const std::string& content) {
         const char *complex_format_pos = strstr(ptr, complex_docker_service_prefix);
         if (complex_format_pos != nullptr && complex_format_pos < line_end) {
             const char *id_start = strrchr(ptr, '/') + 1;
-            if (id_start != nullptr && id_start < line_end && (line_end - id_start) >= 12) {
+            if (id_start != nullptr) {
                 _container_id = std::string(id_start, 12); // Extract the container ID from the end of the line
                 return 0;
             }
