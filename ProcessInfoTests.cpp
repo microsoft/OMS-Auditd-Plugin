@@ -51,6 +51,11 @@ BOOST_AUTO_TEST_CASE(container_id_extraction_test) {
     BOOST_CHECK_EQUAL(ProcessInfoTests::ExtractCGroupContainerId(*processInfo, system_docker_line), 0);
     BOOST_CHECK_EQUAL(processInfo->container_id(), "ebe83cd204c5");
 
+    // Test system.slice complex Docker format
+    std::string complex_format_line = "12:devices:/system.slice/docker.service/antares/customer/site/lwasv2-php-test/9c088fd6_lwasv2-php-test\n";
+    BOOST_CHECK_EQUAL(ProcessInfoTests::ExtractCGroupContainerId(*processInfo, complex_format_line), 0);
+    BOOST_CHECK_EQUAL(processInfo->container_id(), "9c088fd6_lwa");
+
     // Test invalid format
     std::string invalid_line = "some text without container id\n";
     BOOST_CHECK_NE(ProcessInfoTests::ExtractCGroupContainerId(*processInfo, invalid_line), 0);
