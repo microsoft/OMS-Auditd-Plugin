@@ -411,7 +411,7 @@ int ProcessInfo::ExtractCGroupContainerId(const std::string& content) {
         }
 
         // Check for complex docker format
-        const char *complex_format_pos = strstr(ptr, new_format_prefix);
+        const char *complex_format_pos = strstr(ptr, complex_docker_service_prefix);
         if (complex_format_pos != nullptr && complex_format_pos < line_end) {
             const char *id_start = strrchr(ptr, '/') + 1;
             if (id_start != nullptr && id_start < line_end && (line_end - id_start) >= 12) {
