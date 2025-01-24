@@ -379,6 +379,8 @@ int ProcessInfo::ExtractCGroupContainerId(const std::string& content) {
     const size_t docker_prefix_len = strlen(docker_prefix);
     const char *system_docker_prefix = "/system.slice/docker-";
     const size_t system_docker_prefix_len = strlen(system_docker_prefix);
+    const char *complex_docker_service_prefix = "/system.slice/docker.service/";
+
 
     while ((line_end = strchr(ptr, '\n')) != nullptr) {
         // Check for containerd format
@@ -405,6 +407,26 @@ int ProcessInfo::ExtractCGroupContainerId(const std::string& content) {
             if (system_docker_pos + system_docker_prefix_len + 12 <= line_end) {
                 _container_id = std::string(system_docker_pos + system_docker_prefix_len, 12); // Extract the first 12 characters of the container ID
                 return 0;
+            }
+        }
+
+        // Check for complex docker format
+        const char *complex_format_pos = strstr(ptr, complex_docker_service_prefix);
+        if (complex_format_pos != nullptr && complex_format_pos < line_end) {
+             // Search for '/' before line_end
+            const char *id_start = nullptr;
+            for (const char *p = line_end; p >= complex_format_pos; --p) {
+                if (*p == '/') {
+                    id_start = p + 1;
+                    break;
+                }
+            }
+            if (id_start != nullptr) {                            
+                // make sure we have 12 characters left in the line before i read them
+                if (line_end > id_start && id_start + 12 <= line_end) { 
+                    _container_id = std::string(id_start, 12); // Extract the container ID from the end of the line                      
+                    return 0;
+                }
             }
         }
 
