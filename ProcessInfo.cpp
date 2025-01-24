@@ -410,11 +410,9 @@ int ProcessInfo::ExtractCGroupContainerId(const std::string& content) {
             }
         }
 
-        Logger::Info("Before checking complex format: %s", ptr);
         // Check for complex docker format
         const char *complex_format_pos = strstr(ptr, complex_docker_service_prefix);
         if (complex_format_pos != nullptr && complex_format_pos < line_end) {
-            Logger::Info("Complex format found: %s", complex_format_pos);
              // Search for '/' before line_end
             const char *id_start = nullptr;
             for (const char *p = line_end; p >= complex_format_pos; --p) {
@@ -423,16 +421,13 @@ int ProcessInfo::ExtractCGroupContainerId(const std::string& content) {
                     break;
                 }
             }
-            Logger::Info("ID start: %s", id_start);
             if (id_start != nullptr) {                            
                 // make sure we have 12 characters left in the line before i read them
                 if (line_end > id_start && id_start + 12 <= line_end) { 
                     _container_id = std::string(id_start, 12); // Extract the container ID from the end of the line                      
-                    Logger::Info("Container ID: %s", _container_id.c_str());
                     return 0;
                 }
             }
-            Logger::Warn("Invalid complex format: %s", ptr);
         }
 
         ptr = line_end + 1;
