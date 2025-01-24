@@ -496,9 +496,6 @@ bool ProcessInfo::read(int pid) {
         }
         return false;
     }
-    else{
-        Logger::Info("Container ID: %s", _container_id.c_str());
-    }
 
     auto exe_status = read_link(path.data(), _exe);
     if (exe_status < 0) {
