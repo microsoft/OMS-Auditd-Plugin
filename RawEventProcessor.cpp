@@ -50,16 +50,38 @@ void RawEventProcessor::ProcessData(const void* data, size_t data_len) {
     }
 
     auto rec = event.begin();
-    auto rtype = static_cast<RecordType>(rec.RecordType());
+    auto rtype = static_cast<RecordType>(rec.RecordType());    
 
     if (rtype == RecordType::SYSCALL || rtype == RecordType::EXECVE || rtype == RecordType::CWD || rtype == RecordType::PATH ||
                 rtype == RecordType::SOCKADDR || rtype == RecordType::INTEGRITY_RULE) {
+        _pid = get_pid_from_event(event);
+        if (_pid != -1) {
+            if (_processTree) {  
+                auto contId = _processTree->ExtractContainerIdFromCgroup(_pid);                
+            }
+        }
+
         if (!process_syscall_event(event)) {
             process_event(event);
         }
     } else {
         process_event(event);
     }
+}
+
+int RawEventProcessor::get_pid_from_event(const Event& event) {
+    for (auto& rec : event) {
+        auto pid_field = rec.FieldByName("pid");
+        if (pid_field) {
+            const char* pid_value = pid_field.RawValuePtr();
+            if (pid_value) {
+                Logger::Debug("IB RawEventProcessor: get_pid_from_event: pid_value: %s", pid_value);
+                return atoi(pid_value);
+            }
+        }
+    }
+    // Return -1 if PID is not found
+    return -1;
 }
 
 void RawEventProcessor::process_event(const Event& event) {
