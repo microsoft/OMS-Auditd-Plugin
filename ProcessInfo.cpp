@@ -485,16 +485,9 @@ bool ProcessInfo::read(int pid) {
         return false;
     }
 
-    pret = read_and_parse_cgroup(pid);
-    if (pret != 0) {
-        if (pret > 0) {
-            Logger::Warn("Failed to parse /proc/%d/cgroup", pid);
-        }
-        else{
-            Logger::Warn("Wrong cgroup format for /proc/%d/cgroup", pid);
-        }
-        return false;
-    }
+    // Try to read the cgroup file to get the container ID
+    // Its not a critical error if this fails
+    read_and_parse_cgroup(pid);    
 
     auto exe_status = read_link(path.data(), _exe);
     if (exe_status < 0) {
