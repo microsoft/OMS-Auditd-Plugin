@@ -18,6 +18,7 @@
 #include "CGroups.h"
 #include "FileUtils.h"
 #include "StringUtils.h"
+#include "RunMode.h"
 
 #include <system_error>
 
@@ -120,14 +121,25 @@ void CGroupCPU::SetCFSQuotaUS(uint64_t val) {
 }
 
 std::shared_ptr<CGroupCPU> CGroups::OpenCPU(const std::string& name) {
-    if (!PathExists(CGROUP_CPU_ROOT)) {
-        throw std::runtime_error(std::string("Cgroups mount is missing: ") + CGROUP_CPU_ROOT);
-    }
-
     std::string path = CGROUP_CPU_ROOT;
 
+    RunMode& runMode = RunMode.getInstance();
+    if (runMode.ExecuteInContainer()) {
+        const std::string hostMountPath = runMode.GetHostMountPath();
+        if (!hostMountPath.empty()) {
+            path = hostMountPath;
+            path += "/";
+            path += CGROUP_CPU_ROOT;
+        }
+    }
+
+    if (!PathExists(path)) {
+        throw std::runtime_error(std::string("Cgroups mount is missing: ") + path);
+    }
+
     if (!name.empty() && name != "/") {
-        path = std::string(CGROUP_CPU_ROOT) + "/" + name;
+        path += "/";
+        path += name;
     }
 
     if (!PathExists(path)) {

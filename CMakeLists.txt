@@ -100,6 +100,7 @@ add_executable(auomscollect
         SchedPriority.cpp
         EventMatcher.cpp
         EventAggregator.cpp
+        RunMode.cpp
 )
 
 target_compile_options(auomscollect PRIVATE "-Werror")
@@ -188,6 +189,7 @@ add_executable(auoms
         CmdlineRedactor.cpp
         EventMatcher.cpp
         EventAggregator.cpp
+        RunMode.cpp
 )
 
 target_compile_options(auoms PRIVATE "-Werror")
