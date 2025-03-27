@@ -38,6 +38,7 @@
 #include "ProcMetrics.h"
 #include "FileUtils.h"
 #include "CPULimits.h"
+#include "RunMode.h"
 
 #include <iostream>
 #include <fstream>
@@ -128,6 +129,12 @@ int main(int argc, char**argv) {
             Logger::Error("%s", ex.what());
             exit(1);
         }
+    }
+
+    RunMode& runMode = RunMode::GetInstance();
+    if (!runMode.Configure(config)) {
+        Logger::Error("Failed to configure RunMode");
+        exit(1);
     }
 
     std::string auditd_path = AUDITD_BIN;

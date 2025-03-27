@@ -17,6 +17,8 @@
 #ifndef AUOMS_RUNMODE_H
 #define AUOMS_RUNMODE_H
 
+#include "Config.h"
+
 #include <mutex>
 
 class RunMode {
@@ -24,11 +26,12 @@ class RunMode {
         RunMode(const RunMode&) = delete;
         RunMode& operator=(const RunMode&) = delete;
 
-        static RunMode& getInstance() {
+        static RunMode& GetInstance() {
             static RunMode instance;
-            instance.Configure();
             return instance;
         }
+
+        bool Configure(const Config& config);
 
         bool ExecuteInContainer() {
             return _executeInContainer;
@@ -44,8 +47,6 @@ class RunMode {
         : _executeInContainer(false),
           _hostMountPath("") {
         }
-
-        void Configure();
 
         ~RunMode() {
         }

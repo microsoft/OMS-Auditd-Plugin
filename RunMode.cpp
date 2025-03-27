@@ -16,19 +16,16 @@
 
 #include "RunMode.h"
 
-#include "Config.h"
-
 bool RunMode::_configured = false;
 std::mutex RunMode::_mutex;
 
 #define KEY_CONTAINER_MODE_ENABLED "container_mode.enabled"
 #define KEY_CONTAINER_HOST_MOUNT_PATH "container_mode.host_mount_path"
 
-void
-RunMode::Configure() {
+bool
+RunMode::Configure(const Config& config) {
     std::lock_guard<std::mutex> lock(_mutex);
     if (!_configured) {
-        Config config;
         bool containerMode = false;
         std::string hostMountPath;
         if (config.HasKey(KEY_CONTAINER_MODE_ENABLED)) {
@@ -43,4 +40,5 @@ RunMode::Configure() {
         _hostMountPath = hostMountPath;
         _configured = true;
     }
+    return _configured;
 }
