@@ -123,7 +123,7 @@ void CGroupCPU::SetCFSQuotaUS(uint64_t val) {
 std::shared_ptr<CGroupCPU> CGroups::OpenCPU(const std::string& name) {
     std::string path = CGROUP_CPU_ROOT;
 
-    RunMode& runMode = RunMode.getInstance();
+    RunMode& runMode = RunMode::getInstance();
     if (runMode.ExecuteInContainer()) {
         const std::string hostMountPath = runMode.GetHostMountPath();
         if (!hostMountPath.empty()) {
