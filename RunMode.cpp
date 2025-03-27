@@ -30,7 +30,7 @@ RunMode::Configure() {
     if (!_configured) {
         Config config;
         bool containerMode = false;
-        string hostMountPath;
+        std::string hostMountPath;
         if (config.HasKey(KEY_CONTAINER_MODE_ENABLED)) {
             containerMode = config.GetBool(KEY_CONTAINER_MODE_ENABLED);
             if (containerMode) {
