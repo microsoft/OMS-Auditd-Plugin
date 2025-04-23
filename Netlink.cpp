@@ -25,7 +25,7 @@
 #include <fcntl.h>
 #include <poll.h>
 
-#ifndef SOL_NETLINIK
+#ifndef SOL_NETLINK
 // This isn't defined in older socket.h include files.
 #define SOL_NETLINK	270
 #endif
