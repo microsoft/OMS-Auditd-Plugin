@@ -36,6 +36,10 @@
 #define SOL_NETLINK	270
 #endif
 
+#ifndef NLMSG_MAX_SIZE
+#define NLMSG_MAX_SIZE 16384
+#endif
+
 //constexpr int CLEAN_PROCESS_TIMEOUT = 300;
 //constexpr int CLEAN_PROCESS_INTERVAL = 300;
 constexpr int CLEAN_PROCESS_TIMEOUT = 5;
@@ -48,9 +52,15 @@ bool ProcessNotify::InitProcSocket()
     struct sockaddr_nl s_addr;
     struct __attribute__ ((aligned(NLMSG_ALIGNTO))) {
         struct nlmsghdr header;
-        struct __attribute__ ((__packed__)) {
-            struct cn_msg connector;
-            enum proc_cn_mcast_op mode;
+        union {
+            uint8_t buf[sizeof(struct cn_msg) + sizeof(enum proc_cn_mcast_op)];
+            struct __attribute__ ((__packed__)) {
+                struct cn_msg connector;
+                union {
+                    uint8_t payload[sizeof(enum proc_cn_mcast_op)];
+                    enum proc_cn_mcast_op mode;
+                };
+            };
         };
     } message;
 
@@ -103,7 +113,7 @@ bool ProcessNotify::InitProcSocket()
                     NLMSG_LENGTH (0) + offsetof (struct cn_msg, data)
                             + offsetof (struct proc_event, what)),
         BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
-                    htonl (proc_event::what::PROC_EVENT_EXIT),
+                    htonl (PROC_EVENT_EXIT),
                     0, 1),
         BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
 
@@ -112,7 +122,7 @@ bool ProcessNotify::InitProcSocket()
                     NLMSG_LENGTH (0) + offsetof (struct cn_msg, data)
                             + offsetof (struct proc_event, what)),
         BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
-                    htonl (proc_event::what::PROC_EVENT_EXEC),
+                    htonl (PROC_EVENT_EXEC),
                     0, 1),
         BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
 
@@ -172,11 +182,18 @@ void ProcessNotify::run()
 
     struct __attribute__ ((aligned(NLMSG_ALIGNTO))) {
         struct nlmsghdr header;
-        struct __attribute__ ((__packed__)) {
-            struct cn_msg connector;
-            struct proc_event event;
+        union {
+            uint8_t buf[sizeof(struct cn_msg) + sizeof(struct proc_event)];
+            struct __attribute__ ((__packed__)) {
+                struct cn_msg connector;
+                union {
+                    uint8_t payload[sizeof(struct proc_event)];
+                    struct proc_event event;
+                };
+            };
         };
     } message;
+    // struct proc_event* pEvent = (struct proc_event*)message.connector.data;
 
     Logger::Info("ProcessNotify starting");
 
@@ -197,13 +214,13 @@ void ProcessNotify::run()
         }
 
         switch (message.event.what) {
-            case proc_event::what::PROC_EVENT_FORK:
+            case PROC_EVENT_FORK: // proc_event::what::PROC_EVENT_FORK
                 _processTree->AddPnForkQueue(message.event.event_data.fork.child_pid, message.event.event_data.fork.parent_pid);
                 break;
-            case proc_event::what::PROC_EVENT_EXEC:
+            case PROC_EVENT_EXEC: // proc_event::what::PROC_EVENT_EXEC
                 _processTree->AddPnExecQueue(message.event.event_data.exec.process_pid);
                 break;
-            case proc_event::what::PROC_EVENT_EXIT:
+            case PROC_EVENT_EXIT: // proc_event::what::PROC_EVENT_EXIT
                 _processTree->AddPnExitQueue(message.event.event_data.exit.process_pid);
                 break;
         }

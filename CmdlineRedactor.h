@@ -17,6 +17,7 @@
 #ifndef AUOMS_CMDLINEREDACTOR_H
 #define AUOMS_CMDLINEREDACTOR_H
 
+#include <mutex>
 #include <string>
 #include <regex>
 #include <unordered_set>

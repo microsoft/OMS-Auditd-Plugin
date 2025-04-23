@@ -23,6 +23,7 @@
 
 #include <string>
 #include <string_view>
+#include <cstdint>
 
 MachineType DetectMachine();
 MachineType ArchNameToMachine(const std::string_view& arch);
