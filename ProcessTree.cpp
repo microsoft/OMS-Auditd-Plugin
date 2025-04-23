@@ -36,10 +36,6 @@
 #define SOL_NETLINK	270
 #endif
 
-#ifndef NLMSG_MAX_SIZE
-#define NLMSG_MAX_SIZE 16384
-#endif
-
 //constexpr int CLEAN_PROCESS_TIMEOUT = 300;
 //constexpr int CLEAN_PROCESS_INTERVAL = 300;
 constexpr int CLEAN_PROCESS_TIMEOUT = 5;
