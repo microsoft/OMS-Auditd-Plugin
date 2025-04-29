@@ -25,9 +25,9 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <linux/netlink.h>
-#include <linux/connector.h>
 #include <linux/cn_proc.h>
+#include <linux/connector.h>
+#include <linux/netlink.h>
 #include <linux/filter.h>
 #include <sys/stat.h>
 
