@@ -210,13 +210,13 @@ void ProcessNotify::run()
         }
 
         switch (message.event.what) {
-            case PROC_EVENT_FORK: // proc_event::what::PROC_EVENT_FORK
+			case proc_event::what::PROC_EVENT_FORK:
                 _processTree->AddPnForkQueue(message.event.event_data.fork.child_pid, message.event.event_data.fork.parent_pid);
                 break;
-            case PROC_EVENT_EXEC: // proc_event::what::PROC_EVENT_EXEC
+			case proc_event::what::PROC_EVENT_EXEC:
                 _processTree->AddPnExecQueue(message.event.event_data.exec.process_pid);
                 break;
-            case PROC_EVENT_EXIT: // proc_event::what::PROC_EVENT_EXIT
+			case proc_event::what::PROC_EVENT_EXIT:
                 _processTree->AddPnExitQueue(message.event.event_data.exit.process_pid);
                 break;
         }
