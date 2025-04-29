@@ -19,6 +19,7 @@
 #include <cassert>
 #include <cstring>
 #include <chrono>
+#include <system_error>
 
 extern "C" {
 #include <unistd.h>

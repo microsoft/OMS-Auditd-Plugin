@@ -21,6 +21,7 @@
 #include <vector>
 #include <algorithm>
 #include <type_traits>
+#include <cstdint>
 
 int decode_hex(std::string& out, const char* hex, size_t len);
 

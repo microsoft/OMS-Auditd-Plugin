@@ -314,9 +314,9 @@ public:
 
         re2::StringPiece val;
         if (f.InterpValueSize() > 0) {
-            val.set(f.InterpValuePtr(), f.InterpValueSize());
+            val = re2::StringPiece(f.InterpValuePtr(), f.InterpValueSize());
         } else {
-            val.set(f.RawValuePtr(), f.RawValueSize());
+            val = re2::StringPiece(f.RawValuePtr(), f.RawValueSize());
         }
 
         if (!_re_set.Match(val, &_matches)) {

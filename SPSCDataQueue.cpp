@@ -15,6 +15,8 @@
 */
 
 #include "SPSCDataQueue.h"
+#include <string>
+#include <stdexcept>
 
 
 class Segment {

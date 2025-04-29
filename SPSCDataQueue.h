@@ -25,6 +25,8 @@
 #include <cstring>
 #include <list>
 
+#include <sys/types.h>
+
 class Segment;
 
 class SPSCDataQueue {
