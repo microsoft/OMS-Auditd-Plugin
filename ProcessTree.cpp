@@ -25,9 +25,9 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <linux/netlink.h>
-#include <linux/connector.h>
 #include <linux/cn_proc.h>
+#include <linux/connector.h>
+#include <linux/netlink.h>
 #include <linux/filter.h>
 #include <sys/stat.h>
 
@@ -109,7 +109,7 @@ bool ProcessNotify::InitProcSocket()
                     NLMSG_LENGTH (0) + offsetof (struct cn_msg, data)
                             + offsetof (struct proc_event, what)),
         BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
-                    htonl (PROC_EVENT_EXIT),
+                    htonl (proc_event::what::PROC_EVENT_EXIT),
                     0, 1),
         BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
 
@@ -118,7 +118,7 @@ bool ProcessNotify::InitProcSocket()
                     NLMSG_LENGTH (0) + offsetof (struct cn_msg, data)
                             + offsetof (struct proc_event, what)),
         BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
-                    htonl (PROC_EVENT_EXEC),
+                    htonl (proc_event::what::PROC_EVENT_EXEC),
                     0, 1),
         BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
 
@@ -210,13 +210,13 @@ void ProcessNotify::run()
         }
 
         switch (message.event.what) {
-            case PROC_EVENT_FORK: // proc_event::what::PROC_EVENT_FORK
+			case proc_event::what::PROC_EVENT_FORK:
                 _processTree->AddPnForkQueue(message.event.event_data.fork.child_pid, message.event.event_data.fork.parent_pid);
                 break;
-            case PROC_EVENT_EXEC: // proc_event::what::PROC_EVENT_EXEC
+			case proc_event::what::PROC_EVENT_EXEC:
                 _processTree->AddPnExecQueue(message.event.event_data.exec.process_pid);
                 break;
-            case PROC_EVENT_EXIT: // proc_event::what::PROC_EVENT_EXIT
+			case proc_event::what::PROC_EVENT_EXIT:
                 _processTree->AddPnExitQueue(message.event.event_data.exit.process_pid);
                 break;
         }
