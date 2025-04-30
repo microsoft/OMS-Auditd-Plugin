@@ -109,7 +109,7 @@ bool ProcessNotify::InitProcSocket()
                     NLMSG_LENGTH (0) + offsetof (struct cn_msg, data)
                             + offsetof (struct proc_event, what)),
         BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
-                    htonl (PROC_EVENT_EXIT),
+                    htonl (proc_event::what::PROC_EVENT_EXIT),
                     0, 1),
         BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
 
@@ -118,7 +118,7 @@ bool ProcessNotify::InitProcSocket()
                     NLMSG_LENGTH (0) + offsetof (struct cn_msg, data)
                             + offsetof (struct proc_event, what)),
         BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
-                    htonl (PROC_EVENT_EXEC),
+                    htonl (proc_event::what::PROC_EVENT_EXEC),
                     0, 1),
         BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
 
