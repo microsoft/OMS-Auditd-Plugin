@@ -19,7 +19,7 @@
 #include "UnixDomainWriter.h"
 #include "Signals.h"
 #include "PriorityQueue.h"
-#include "Config.h"
+#include "AuomsConfig.h"
 #include "Logger.h"
 #include "EventQueue.h"
 #include "EventPrioritizer.h"
@@ -119,7 +119,7 @@ int main(int argc, char**argv) {
         setrlimit(RLIMIT_CORE, &limits);
     }
 
-    Config config;
+    AuomsConfig& config = AuomsConfig::GetInstance();
 
     if (!config_file.empty()) {
         try {
@@ -130,204 +130,25 @@ int main(int argc, char**argv) {
         }
     }
 
-    std::string auditd_path = AUDITD_BIN;
-    std::string collector_path = AUOMSCOLLECT_EXE;
-    std::string collector_config_path = "";
-
-    std::string outconf_dir = AUOMS_OUTCONF_DIR;
-    std::string rules_dir = AUOMS_RULES_DIR;
-    std::string redact_dir = AUOMS_REDACT_DIR;
-    std::string data_dir = AUOMS_DATA_DIR;
-    std::string run_dir = AUOMS_RUN_DIR;
-
-    uint32_t backlog_limit = 10240;
-    uint32_t backlog_wait_time = 1;
-
-    if (config.HasKey("outconf_dir")) {
-        outconf_dir = config.GetString("outconf_dir");
+    if (config.UseSyslog()) {
+        Logger::OpenSyslog("auoms", LOG_DAEMON);
     }
 
-    if (config.HasKey("rules_dir")) {
-        rules_dir = config.GetString("rules_dir");
-    }
+    config.SetNetlinkOnly(netlink_only);
 
-    if (config.HasKey("redact_dir")) {
-        redact_dir = config.GetString("redact_dir");
-    }
-
-    if (config.HasKey("data_dir")) {
-        data_dir = config.GetString("data_dir");
-    }
-
-    if (config.HasKey("run_dir")) {
-        run_dir = config.GetString("run_dir");
-    }
-
-    if (config.HasKey("auditd_path")) {
-        auditd_path = config.GetString("auditd_path");
-    }
-
-    if (netlink_only) {
-        auditd_path = "/does/not/exist";
-    }
-
-    if (config.HasKey("collector_path")) {
-        collector_path = config.GetString("collector_path");
-    }
-
-    if (config.HasKey("collector_config_path")) {
-        collector_config_path = config.GetString("collector_config_path");
-    }
-
-    if (config.HasKey("backlog_limit")) {
-        backlog_limit = static_cast<uint32_t>(config.GetUint64("backlog_limit"));
-    }
-
-    if (config.HasKey("backlog_wait_time")) {
-        backlog_wait_time = static_cast<uint32_t>(config.GetUint64("backlog_wait_time"));
-    }
-
-    std::string input_socket_path = run_dir + "/input.socket";
-    std::string status_socket_path = run_dir + "/status.socket";
-
-    if (config.HasKey("input_socket_path")) {
-        input_socket_path = config.GetString("input_socket_path");
-    }
-
-    if (config.HasKey("status_socket_path")) {
-        status_socket_path = config.GetString("status_socket_path");
-    }
-
-    std::string save_dir = data_dir + "/save";
-
-    if (config.HasKey("save_dir")) {
-        save_dir = config.GetString("save_dir");
-    }
-
-    int num_priorities = 8;
-    size_t max_file_data_size = 1024*1024;
-    size_t max_unsaved_files = 128;
-    size_t max_fs_bytes = 1024*1024*1024;
-    double max_fs_pct = 10;
-    double min_fs_free_pct = 5;
-    long save_delay = 250;
-
-    std::string queue_dir = data_dir + "/queue";
-
-    if (config.HasKey("queue_dir")) {
-        queue_dir = config.GetString("queue_dir");
-    }
-
-    if (queue_dir.empty()) {
+    if (config.GetQueueDir().empty()) {
         Logger::Error("Invalid 'queue_file' value");
         exit(1);
     }
 
-    if (config.HasKey("queue_num_priorities")) {
-        num_priorities = config.GetUint64("queue_num_priorities");
-    }
-
-    if (config.HasKey("queue_max_file_data_size")) {
-        max_file_data_size = config.GetUint64("queue_max_file_data_size");
-    }
-
-    if (config.HasKey("queue_max_unsaved_files")) {
-        max_unsaved_files = config.GetUint64("queue_max_unsaved_files");
-    }
-
-    if (config.HasKey("queue_max_fs_bytes")) {
-        max_fs_bytes = config.GetUint64("queue_max_fs_bytes");
-    }
-
-    if (config.HasKey("queue_max_fs_pct")) {
-        max_fs_pct = config.GetDouble("queue_max_fs_pct");
-    }
-
-    if (config.HasKey("queue_min_fs_free_pct")) {
-        min_fs_free_pct = config.GetDouble("queue_min_fs_free_pct");
-    }
-
-    if (config.HasKey("queue_save_delay")) {
-        save_delay = config.GetUint64("queue_save_delay");
-    }
-
-    std::string lock_file = data_dir + "/auoms.lock";
-
-    if (config.HasKey("lock_file")) {
-        lock_file = config.GetString("lock_file");
-    }
-
-    uint64_t rss_limit = 1024L*1024L*1024L;
-    uint64_t virt_limit = 4096L*1024L*1024L;
-    double rss_pct_limit = 5;
-
-    if (config.HasKey("rss_limit")) {
-        rss_limit = config.GetUint64("rss_limit");
-    }
-
-    if (config.HasKey("rss_pct_limit")) {
-        rss_pct_limit = config.GetDouble("rss_pct_limit");
-    }
-
-    if (config.HasKey("virt_limit")) {
-        virt_limit = config.GetUint64("virt_limit");
-    }
-
-    bool use_syslog = true;
-    if (config.HasKey("use_syslog")) {
-        use_syslog = config.GetBool("use_syslog");
-    }
-
-    if (use_syslog) {
-        Logger::OpenSyslog("auoms", LOG_DAEMON);
-    }
-
-    bool disable_cgroups = false;
-    if (config.HasKey("disable_cgroups")) {
-        disable_cgroups = config.GetBool("disable_cgroups");
-    }
-
-    // Set cgroup defaults
-    if (!config.HasKey(CPU_SOFT_LIMIT_NAME)) {
-        config.SetString(CPU_SOFT_LIMIT_NAME, "5");
-    }
-
-    if (!config.HasKey(CPU_HARD_LIMIT_NAME)) {
-        config.SetString(CPU_HARD_LIMIT_NAME, "25");
-    }
-
-    bool disable_event_filtering = false;
-    if (config.HasKey("disable_event_filtering")) {
-        disable_event_filtering = config.GetBool("disable_event_filtering");
-    }
-
-    // Set EventPrioritizer defaults
-    if (!config.HasKey("event_priority_by_syscall")) {
-        config.SetString("event_priority_by_syscall", R"json({"execve":2,"execveat":2,"*":3})json");
-    }
-
-    if (!config.HasKey("event_priority_by_record_type")) {
-        config.SetString("event_priority_by_record_type", R"json({"AUOMS_EXECVE":2,"AUOMS_SYSCALL":3,"AUOMS_PROCESS_INVENTORY":1})json");
-    }
-
-    if (!config.HasKey("event_priority_by_record_type_category")) {
-        config.SetString("event_priority_by_record_type_category", R"json({"AUOMS_MSG":0, "USER_MSG":1,"SELINUX":1,"APPARMOR":1})json");
-    }
-
-    int default_priority = 4;
-    if (config.HasKey("default_event_priority")) {
-        default_priority = static_cast<uint16_t>(config.GetUint64("default_event_priority"));
-    }
-    if (default_priority > num_priorities-1) {
-        default_priority = num_priorities-1;
-    }
-
-    auto event_prioritizer = std::make_shared<EventPrioritizer>(default_priority);
+    auto event_prioritizer = std::make_shared<EventPrioritizer>(
+                                config.GetDefaultEventPriority()
+                                );
     if (!event_prioritizer->LoadFromConfig(config)) {
         Logger::Error("Failed to load EventPrioritizer config, exiting");
         exit(1);
     }
-
+    const std::string& save_dir = config.GetSaveDirectory();
     if (!PathExists(save_dir)) {
         if (mkdir(save_dir.c_str(), 0750) != 0) {
             Logger::Error("Failed to create dir '%s': %s", save_dir.c_str(), std::strerror(errno));
@@ -336,6 +157,7 @@ int main(int argc, char**argv) {
     }
 
     Logger::Info("Trying to acquire singleton lock");
+    const std::string& lock_file = config.GetLockFile();
     LockFile singleton_lock(lock_file);
     switch(singleton_lock.Lock()) {
         case LockFile::FAILED:
@@ -353,7 +175,7 @@ int main(int argc, char**argv) {
     Logger::Info("Acquire singleton lock");
 
     std::shared_ptr<CGroupCPU> cgcpu;
-    if (!disable_cgroups) {
+    if (!config.DisableCGroups()) {
         try {
             cgcpu = CPULimits::CGFromConfig(config, "auoms");
             // systemd may not have put auoms into the default cgroup at this point
@@ -384,15 +206,26 @@ int main(int argc, char**argv) {
     // This will block signals like SIGINT and SIGTERM
     // They will be handled once Signals::Start() is called.
     Signals::Init();
-
+    std::string queue_dir = config.GetQueueDir();
     Logger::Info("Opening queue: %s", queue_dir.c_str());
-    auto queue = PriorityQueue::Open(queue_dir, num_priorities, max_file_data_size, max_unsaved_files, max_fs_bytes, max_fs_pct, min_fs_free_pct);
+    auto queue = PriorityQueue::Open(
+                    queue_dir,
+                    config.GetNumberOfEventPriorities(),
+                    config.GetMaxFileDataSize(),
+                    config.GetMaxUnsavedFiles(),
+                    config.GetMaxFsBytes(),
+                    config.GetMaxFsPercentage(),
+                    config.GetMinFsFreePercentage()
+                    );
     if (!queue) {
         Logger::Error("Failed to open queue '%s'", queue_dir.c_str());
         exit(1);
     }
 
-    auto operational_status = std::make_shared<OperationalStatus>(status_socket_path, queue);
+    auto operational_status = std::make_shared<OperationalStatus>(
+                                    config.GetStatusSocketPath(),
+                                    queue
+                                    );
     if (!operational_status->Initialize()) {
         Logger::Error("Failed to initialize OperationalStatus");
         exit(1);
@@ -400,6 +233,7 @@ int main(int argc, char**argv) {
     operational_status->Start();
 
     auto cmdline_redactor = std::make_shared<CmdlineRedactor>();
+    const std::string& redact_dir = config.GetRedactDir();
     cmdline_redactor->LoadFromDir(redact_dir, true);
 
     std::thread rule_thread([&redact_dir, &cmdline_redactor, &operational_status]() {
@@ -435,22 +269,39 @@ int main(int argc, char**argv) {
     auto system_metrics = std::make_shared<SystemMetrics>(metrics);
     system_metrics->Start();
 
-    auto proc_metrics = std::make_shared<ProcMetrics>("auoms", queue, metrics, rss_limit, virt_limit, rss_pct_limit, []() {
+    auto proc_metrics = std::make_shared<ProcMetrics>(
+                            "auoms",
+                            queue,
+                            metrics,
+                            config.GetRSSLimit(),
+                            config.GetVirtLimit(),
+                            config.GetRSSPercentageLimit(),
+                            []() {
         Logger::Error("A memory limit was exceeded, exiting immediately");
         exit(1);
     });
     proc_metrics->Start();
 
-    Inputs inputs(input_socket_path, operational_status);
+    Inputs inputs(config.GetInputSocketPath(), operational_status);
     if (!inputs.Initialize()) {
         Logger::Error("Failed to initialize inputs");
         exit(1);
     }
 
-    CollectionMonitor collection_monitor(queue, auditd_path, collector_path, collector_config_path);
+    CollectionMonitor collection_monitor(
+                            queue,
+                            config.GetAuditdPath(),
+                            config.GetCollectorPath(),
+                            config.GetCollectorConfigPath()
+                            );
     collection_monitor.Start();
 
-    AuditRulesMonitor rules_monitor(rules_dir, backlog_limit, backlog_wait_time, operational_status);
+    AuditRulesMonitor rules_monitor(
+                            config.GetRulesDir(),
+                            config.GetBacklogLimit(),
+                            config.GetBacklogWaitTime(),
+                            operational_status
+                            );
     rules_monitor.Start();
 
     auto user_db = std::make_shared<UserDB>();
@@ -468,21 +319,33 @@ int main(int argc, char**argv) {
     std::shared_ptr<ProcessTree> processTree;
     std::shared_ptr<IEventFilterFactory> outputsFilterFactory;
 
-    if (!disable_event_filtering) {
+    if (!config.DisableEventFiltering()) {
         filtersEngine = std::make_shared<FiltersEngine>();
 
         processTree = std::make_shared<ProcessTree>(user_db, filtersEngine);
         processTree->PopulateTree(); // Pre-populate tree
 
-        outputsFilterFactory = std::shared_ptr<IEventFilterFactory>(static_cast<IEventFilterFactory*>(new OutputsEventFilterFactory(user_db, filtersEngine, processTree)));
+        outputsFilterFactory = std::shared_ptr<IEventFilterFactory>(
+                                    static_cast<IEventFilterFactory*>(
+                                        new OutputsEventFilterFactory(
+                                            user_db, 
+                                            filtersEngine, 
+                                            processTree
+                                            )
+                                    )
+                                );
     }
 
-    Outputs outputs(queue, outconf_dir, save_dir, outputsFilterFactory);
+    Outputs outputs(
+                queue,
+                config.GetOutconfDir(),
+                save_dir,
+                outputsFilterFactory);
 
     std::thread autosave_thread([&]() {
         Signals::InitThread();
         try {
-            queue->Saver(save_delay);
+            queue->Saver(config.GetSaveDelay());
         } catch (const std::exception& ex) {
             Logger::Error("Unexpected exception in autosave thread: %s", ex.what());
             exit(1);
@@ -500,7 +363,7 @@ int main(int argc, char**argv) {
     }
 
     Signals::SetHupHandler([&outputs,&config_file](){
-        Config config;
+        AuomsConfig& config = AuomsConfig::GetInstance();
 
         if (config_file.size() > 0) {
             try {
@@ -517,7 +380,7 @@ int main(int argc, char**argv) {
     Signals::Start();
 
     std::shared_ptr<ProcessNotify> processNotify;
-    if (!disable_event_filtering) {
+    if (!config.DisableEventFiltering()) {
         processTree->Start();
         processNotify = std::make_shared<ProcessNotify>(processTree);
         processNotify->Start();
@@ -558,7 +421,7 @@ int main(int argc, char**argv) {
 
     try {
         collection_monitor.Stop();
-        if (!disable_event_filtering) {
+        if (!config.DisableEventFiltering()) {
             processNotify->Stop();
             processTree->Stop();
         }
