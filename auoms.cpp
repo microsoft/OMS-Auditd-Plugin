@@ -27,6 +27,7 @@
 #include "Inputs.h"
 #include "Outputs.h"
 #include "CollectionMonitor.h"
+#include "NetlinkCollectionMonitor.h"
 #include "AuditRulesMonitor.h"
 #include "OperationalStatus.h"
 #include "FileUtils.h"
@@ -288,13 +289,26 @@ int main(int argc, char**argv) {
         exit(1);
     }
 
-    CollectionMonitor collection_monitor(
-                            queue,
-                            config.GetAuditdPath(),
-                            config.GetCollectorPath(),
-                            config.GetCollectorConfigPath()
-                            );
-    collection_monitor.Start();
+    std::unique_ptr<ICollectionMonitor> collection_monitor;
+    if (config.IsNetlinkOnly()) {
+        collection_monitor = std::unique_ptr<ICollectionMonitor>(
+                                    new NetlinkCollectionMonitor(
+                                        queue,
+                                        config.GetCollectorPath(),
+                                        config.GetCollectorConfigPath()
+                                        )
+                                );
+    } else {
+        collection_monitor = std::unique_ptr<ICollectionMonitor>(
+                                    new CollectionMonitor(
+                                        queue,
+                                        config.GetAuditdPath(),
+                                        config.GetCollectorPath(),
+                                        config.GetCollectorConfigPath()
+                                        )
+                                );
+    }
+    collection_monitor->Start();
 
     AuditRulesMonitor rules_monitor(
                             config.GetRulesDir(),
@@ -420,7 +434,7 @@ int main(int argc, char**argv) {
     Logger::Info("Exiting");
 
     try {
-        collection_monitor.Stop();
+        collection_monitor->Stop();
         if (!config.DisableEventFiltering()) {
             processNotify->Stop();
             processTree->Stop();
