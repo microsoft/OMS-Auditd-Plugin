@@ -35,9 +35,9 @@ build() {
 }
 
 package() {
-    make -f Makefile.package package
+    make V=1 -f Makefile.package package
 }
 pushd build
 bootstrap
 build
-#package
+package

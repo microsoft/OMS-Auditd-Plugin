@@ -23,4 +23,4 @@ ROOT=$(pwd)
 #VDIR=$(dirname $ROOT)
 DIR=$(basename $ROOT)
 
-exec docker run --rm -v $ROOT:/sources $DOCKER_IMAGE /sources/build/docker-build-auoms-azl.sh
+exec docker run --privileged --rm -v $ROOT:/sources $DOCKER_IMAGE /sources/build/docker-build-auoms-azl.sh

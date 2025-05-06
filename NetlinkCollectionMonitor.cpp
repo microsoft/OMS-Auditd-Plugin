@@ -1,0 +1,158 @@
+/*
+    microsoft-oms-auditd-plugin
+
+    Copyright (c) Microsoft Corporation
+
+    All rights reserved.
+
+    MIT License
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the ""Software""), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
+
+#include "NetlinkCollectionMonitor.h"
+#include "ProcessInfo.h"
+#include "Logger.h"
+#include "RecordType.h"
+#include "Translate.h"
+#include "FileUtils.h"
+
+#include <cstring>
+#include <chrono>
+#include <thread>
+
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <fcntl.h>
+#include <cstdlib>
+#include <fstream>
+
+void NetlinkCollectionMonitor::run() {
+    Logger::Info("NetlinkCollectionMonitor started");
+
+    if (_netlink.Open(nullptr) != 0) {
+        Logger::Error("NetlinkCollectionMonitor: Could not open NETLINK connect, exiting");
+        return;
+    }
+
+    do {
+        auto now = std::chrono::steady_clock::now();
+
+        if (_pause_collector_check && now - _pause_time > std::chrono::seconds(3600)) {
+            _pause_collector_check = false;
+        }
+        // Always get collector aliveness. This will ensure the child is reaped if it exits and won't be restarted.
+        bool is_alive = is_collector_alive();
+        if (!_pause_collector_check && !is_alive) {
+            start_collector();
+
+            int netlink_errno = 0;
+            while (!IsStopping() && !_sleep(500) && std::chrono::steady_clock::now() - now < std::chrono::seconds(10)) {
+                if (is_collector_alive()) {
+                    break;
+                }
+            }
+            if (IsStopping()) {
+                break;
+            }
+            if (!is_collector_alive()) {
+                Logger::Warn("CollectionMonitor: Collector has not set itself as the audit pid after 10 seconds");
+            }
+        }
+    } while(!_sleep(10000));
+    Logger::Info("NetlinkCollectionMonitor stopping");
+}
+
+void NetlinkCollectionMonitor::on_stop() {
+    _collector.Wait(false);
+    if (_collector.Pid() > 0) {
+        Logger::Info("Signaling collector process to exit");
+        signal_collector(SIGTERM);
+        // Give the collector 2 second to exit normally
+        for(int i = 0; i < 20 && check_child(false); i++) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        if (check_child(false)) {
+            Logger::Info("Timeout waiting for collector process to exit, terminating with SIGKILL");
+            signal_collector(SIGKILL);
+        }
+        check_child(true);
+    }
+    _netlink.Close();
+    Logger::Info("CollectionMonitor stopped");
+}
+
+void NetlinkCollectionMonitor::report_proc_exit_status(Cmd& cmd) {
+    if (cmd.ExitCode() > -1) {
+        Logger::Info("Collector process exited with exit code %d", cmd.ExitCode());
+    } else if (cmd.Signal() > -1) {
+        Logger::Info("Collector process terminated with SIGNAL %d", cmd.Signal());
+    } else {
+        Logger::Info("Collector process terminated with unknown status");
+    }
+}
+
+bool NetlinkCollectionMonitor::check_child(bool wait) {
+    if (_collector.Pid() <= 0) {
+        return false;
+    }
+
+    auto ret = _collector.Wait(wait);
+    if (ret < 0) {
+        Logger::Warn("CollectionMonitor::check_child: waitpid() failed: %s", std::strerror(errno));
+        _pause_collector_check = true;
+        _pause_time = std::chrono::steady_clock::now();
+        return false;
+    } else if (ret == 1) {
+        report_proc_exit_status(_collector);
+        return false;
+    } else {
+        return true;
+    }
+}
+
+void NetlinkCollectionMonitor::start_collector() {
+    // Remove start times that are outside the window
+    while (!_collector_restarts.empty() && std::chrono::steady_clock::now() - *_collector_restarts.begin() > std::chrono::seconds(COLLECTOR_RESTART_WINDOW)) {
+        _collector_restarts.erase(_collector_restarts.begin());
+    }
+    // Disable collector start if num starts exceeds max allowed.
+    if (_collector_restarts.size() > MAX_COLLECTOR_RESTARTS) {
+        _pause_collector_check = true;
+        _pause_time = std::chrono::steady_clock::now();
+        Logger::Warn("NETLINK collector started more than %d times in the last %d seconds. Collector will not be started again for one hour.", MAX_COLLECTOR_RESTARTS, COLLECTOR_RESTART_WINDOW);
+        return;
+    }
+    _collector_restarts.emplace(std::chrono::steady_clock::now());
+
+    Logger::Info("Starting audit NETLINK collector \"%s\"", _collector_path.c_str());
+    auto ret = _collector.Start();
+    if (ret != 0) {
+        Logger::Error("CollectionMonitor::start_collector(): %s", _collector.FailMsg().c_str());
+    }
+}
+
+void NetlinkCollectionMonitor::signal_collector(int sig) {
+    _collector.Wait(false); // Maybe reap child first in case it has already exited.
+    if (_collector.Pid() > 0) {
+        auto ret = _collector.Kill(sig);
+        // The child might have already died, so only report an error, if kill didn't return errno == ESRCH (process not found)
+        if(ret != 0 && ret != -ESRCH) {
+            Logger::Warn("CollectionMonitor: kill(%d, %d) failed: %s", _collector.Pid(), sig, std::strerror(errno));
+            _pause_collector_check = true;
+            _pause_time = std::chrono::steady_clock::now();
+        }
+    }
+}
+
+bool NetlinkCollectionMonitor::is_collector_alive() {
+    return check_child(false);
+}

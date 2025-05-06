@@ -1,0 +1,82 @@
+MKDIR=/bin/mkdir
+CP=/bin/cp
+RPMBUILD=rpmbuild
+
+DIST=azl3
+ARCH := $(shell uname -m)
+
+PKG_SPEC=auoms.spec
+
+SRC_ROOT=$(shell realpath ..)
+include $(SRC_ROOT)/auoms.version
+
+STAGING_DIR=$(CURDIR)/staging
+
+RPMBUILD_ROOT=$(CURDIR)/rpmbuild
+RPMBUILD_BUILD=$(RPMBUILD_ROOT)/BUILD
+RPMBUILD_SPECS=$(RPMBUILD_ROOT)/SPECS
+RPMBUILD_RPMS=$(RPMBUILD_ROOT)/RPMS
+RPMBUILD_SRCS=$(RPMBUILD_ROOT)/SOURCES
+RPMBUILD_SRPMS=$(RPMBUILD_ROOT)/SRPMS
+RPMBUILD_TMP=$(RPMBUILD_ROOT)/tmp
+
+RPMBUILD_DIRS= \
+    $(RPMBUILD_BUILD) \
+    $(RPMBUILD_SPECS) \
+    $(RPMBUILD_RPMS)  \
+    $(RPMBUILD_SRCS)  \
+    $(RPMBUILD_SRPMS) \
+    $(RPMBUILD_TMP)
+
+all: package
+
+package: staging $(RPMBUILD_SPECS)/$(PKG_SPEC) | $(RPMBUILD_DIRS)
+	cd $(RPMBUILD_ROOT) && \
+	$(RM) -f $(RPMBUILD_RPMS)/$(ARCH)/*.rpm && \
+	$(RPMBUILD) \
+              --quiet \
+              --bb \
+              --noclean \
+              --define "_topdir $(RPMBUILD_ROOT)" \
+              --define "_prefix /opt/microsoft/auoms" \
+              --define "_bindir /opt/microsoft/auoms/bin" \
+              --define "_datadir /usr/share" \
+              --define "_localstatedir /var/lib/microsoft/auoms" \
+              --define "_version $(AUOMS_BUILDVERSION_MAJOR).$(AUOMS_BUILDVERSION_MINOR).$(AUOMS_BUILDVERSION_PATCH)" \
+              --define "_release $(AUOMS_BUILDVERSION_BUILDNR)" \
+              --define "_dist $(DIST)" \
+              --buildroot $(STAGING_DIR) \
+              SPECS/$(PKG_SPEC)
+
+staging: $(STAGING_DIR)
+	@make DESTDIR=$(STAGING_DIR) install
+
+$(RPMBUILD_SPECS)/$(PKG_SPEC) : $(CURDIR)/package/rpm/$(PKG_SPEC) | $(RPMBUILD_SPECS)
+	@$(CP) -f $< $@
+
+$(RPMBUILD_DIRS):
+	@$(MKDIR) -p $@
+
+$(RPMBUILD_SPECS):
+	@$(MKDIR) -p $@
+
+$(RPMBUILD_RPMS):
+	@$(MKDIR) -p $@
+
+$(RPMBUILD_SRCS):
+	@$(MKDIR) -p $@
+
+$(RPMBUILD_SRPMS):
+	@$(MKDIR) -p $@
+
+$(RPMBUILD_TMP):
+	@$(MKDIR) -p $@
+
+$(RPMBUILD_ROOT):
+	@$(MKDIR) -p $@
+
+$(STAGING_DIR):
+	@$(MKDIR) -p $@
+
+clean:
+	@$(RM) -rf $(STAGING_DIR) $(RPMBUILD_ROOT)
