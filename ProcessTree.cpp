@@ -35,6 +35,15 @@
 // This isn't defined in older socket.h include files.
 #define SOL_NETLINK	270
 #endif
+#ifndef PROC_EVENT_EXIT
+#define PROC_EVENT_EXIT   0x80000000  // A process exited (terminated)
+#endif
+#ifndef PROC_EVENT_FORK
+#define PROC_EVENT_FORK   0x00000001  // A process forked (new process created)
+#endif
+#ifndef PROC_EVENT_EXEC
+#define PROC_EVENT_EXEC   0x00000002  // A process called exec (replaced its image)
+#endif
 
 //constexpr int CLEAN_PROCESS_TIMEOUT = 300;
 //constexpr int CLEAN_PROCESS_INTERVAL = 300;
@@ -109,7 +118,7 @@ bool ProcessNotify::InitProcSocket()
                     NLMSG_LENGTH (0) + offsetof (struct cn_msg, data)
                             + offsetof (struct proc_event, what)),
         BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
-                    htonl (proc_event::what::PROC_EVENT_EXIT),
+                    htonl (PROC_EVENT_EXIT),
                     0, 1),
         BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
 
@@ -118,7 +127,7 @@ bool ProcessNotify::InitProcSocket()
                     NLMSG_LENGTH (0) + offsetof (struct cn_msg, data)
                             + offsetof (struct proc_event, what)),
         BPF_JUMP (BPF_JMP|BPF_JEQ|BPF_K,
-                    htonl (proc_event::what::PROC_EVENT_EXEC),
+                    htonl (PROC_EVENT_EXEC),
                     0, 1),
         BPF_STMT (BPF_RET|BPF_K, 0xffffffff),
 
@@ -210,13 +219,13 @@ void ProcessNotify::run()
         }
 
         switch (message.event.what) {
-			case proc_event::what::PROC_EVENT_FORK:
+			case PROC_EVENT_FORK:
                 _processTree->AddPnForkQueue(message.event.event_data.fork.child_pid, message.event.event_data.fork.parent_pid);
                 break;
-			case proc_event::what::PROC_EVENT_EXEC:
+			case PROC_EVENT_EXEC:
                 _processTree->AddPnExecQueue(message.event.event_data.exec.process_pid);
                 break;
-			case proc_event::what::PROC_EVENT_EXIT:
+			case PROC_EVENT_EXIT:
                 _processTree->AddPnExitQueue(message.event.event_data.exit.process_pid);
                 break;
         }
