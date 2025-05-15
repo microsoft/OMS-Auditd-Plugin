@@ -14,7 +14,7 @@
     THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-#include "AuditdCollectionMonitor.h"
+#include "NetlinkCollectionMonitor.h"
 #include "ProcessInfo.h"
 #include "Logger.h"
 #include "RecordType.h"
@@ -36,11 +36,11 @@
 #include <fstream>
 
 
-void AuditdCollectionMonitor::run() {
-    Logger::Info("CollectionMonitor started");
+void NetlinkCollectionMonitor::run() {
+    Logger::Info("NetlinkCollectionMonitor started");
 
     if (_netlink.Open(nullptr) != 0) {
-        Logger::Error("CollectionMonitor: Could not open NETLINK connect, exiting");
+        Logger::Error("NetlinkCollectionMonitor: Could not open NETLINK connect, exiting");
         return;
     }
 
@@ -111,7 +111,7 @@ void AuditdCollectionMonitor::run() {
     Logger::Info("CollectionMonitor stopping");
 }
 
-void AuditdCollectionMonitor::on_stop() {
+void NetlinkCollectionMonitor::on_stop() {
     _collector.Wait(false);
     if (_collector.Pid() > 0) {
         Logger::Info("Signaling collector process to exit");
@@ -140,7 +140,7 @@ void report_proc_exit_status(Cmd& cmd) {
     }
 }
 
-bool AuditdCollectionMonitor::check_child(bool wait) {
+bool NetlinkCollectionMonitor::check_child(bool wait) {
     if (_collector.Pid() <= 0) {
         return false;
     }
@@ -159,7 +159,7 @@ bool AuditdCollectionMonitor::check_child(bool wait) {
     }
 }
 
-void AuditdCollectionMonitor::start_collector() {
+void NetlinkCollectionMonitor::start_collector() {
     // Remove start times that are outside the window
     while (!_collector_restarts.empty() && std::chrono::steady_clock::now() - *_collector_restarts.begin() > std::chrono::seconds(COLLECTOR_RESTART_WINDOW)) {
         _collector_restarts.erase(_collector_restarts.begin());
@@ -180,7 +180,7 @@ void AuditdCollectionMonitor::start_collector() {
     }
 }
 
-void AuditdCollectionMonitor::signal_collector(int sig) {
+void NetlinkCollectionMonitor::signal_collector(int sig) {
     _collector.Wait(false); // Maybe reap child first in case it has already exited.
     if (_collector.Pid() > 0) {
         auto ret = _collector.Kill(sig);
@@ -193,17 +193,17 @@ void AuditdCollectionMonitor::signal_collector(int sig) {
     }
 }
 
-bool AuditdCollectionMonitor::is_auditd_enabled_systemd() {
+bool NetlinkCollectionMonitor::is_auditd_enabled_systemd() {
     int isEnabledStatus = std::system("systemctl is-enabled auditd.service > /dev/null 2>&1");
     return (PathExists(_auditd_path) && (isEnabledStatus == 0));
 }
 
-bool AuditdCollectionMonitor::is_auditd_enabled_sysv() {
+bool NetlinkCollectionMonitor::is_auditd_enabled_sysv() {
     int isEnabledStatus = std::system("chkconfig --list auditd | grep -q ':on' > /dev/null 2>&1");
     return (isEnabledStatus == 0);
 }
 
-bool AuditdCollectionMonitor::is_auditd_enabled_upstart() {
+bool NetlinkCollectionMonitor::is_auditd_enabled_upstart() {
     int isEnabledStatus = 0;
     std::ifstream file("/etc/init/auditd.conf");
     if (!file.is_open()) {
@@ -222,18 +222,18 @@ bool AuditdCollectionMonitor::is_auditd_enabled_upstart() {
     return (isEnabledStatus);
 }
 
-bool AuditdCollectionMonitor::is_auditd_present() {
+bool NetlinkCollectionMonitor::is_auditd_present() {
     if (is_auditd_enabled_systemd() || is_auditd_enabled_sysv() || is_auditd_enabled_upstart()) {
         return true;
     }
     return false;
 }
 
-bool AuditdCollectionMonitor::is_collector_alive() {
+bool NetlinkCollectionMonitor::is_collector_alive() {
     return check_child(false);
 }
 
-void AuditdCollectionMonitor::send_audit_pid_report(int pid) {
+void NetlinkCollectionMonitor::send_audit_pid_report(int pid) {
     static std::string_view SV_EMPTY;
 
     auto pinfo = ProcessInfo::OpenPid(pid, 0);
