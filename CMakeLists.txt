@@ -28,7 +28,7 @@ if(DO_STATIC_LINK)
     # and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
     # for why it is safe to use -static-libgcc -static-libstdc++
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
-    set(RE2_LIBS ${RE2_LIBS})
+    set(RE2_LIBS libre2.a)
 else()
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
     set(RE2_LIBS re2)
