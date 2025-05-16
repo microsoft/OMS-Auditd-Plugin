@@ -124,7 +124,7 @@ endif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
 
 install(TARGETS
         auomscollect
-        RUNTIME DESTINATION bin
+        RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 
 
@@ -151,6 +151,7 @@ add_executable(auoms
         InputBuffer.h
         Inputs.cpp
         Input.cpp
+		NetlinkCollectionMonitor.cpp
         Outputs.cpp
         Output.cpp
         ProcessInfo.cpp
@@ -163,7 +164,6 @@ add_executable(auoms
         CollectionMonitor.cpp
         Netlink.cpp
         NetlinkAudit.cpp
-        NetlinkCollectionMonitor.cpp
         TranslateArch.cpp
         TranslateSyscall.cpp
         TranslateRecordType.cpp
@@ -214,7 +214,7 @@ endif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
 
 install(TARGETS
         auoms
-        RUNTIME DESTINATION bin
+        RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 
 add_executable(auomsctl
@@ -268,7 +268,7 @@ endif(CMAKE_BUILD_TYPE MATCHES RelWithDebInfo)
 
 install(TARGETS
         auomsctl
-        RUNTIME DESTINATION bin
+        RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 
 add_executable(testreceiver
@@ -280,7 +280,7 @@ add_executable(testreceiver
 
 install(TARGETS
         testreceiver
-        RUNTIME DESTINATION bin
+        RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 
 add_executable(fakeaudispd
@@ -289,7 +289,7 @@ add_executable(fakeaudispd
 
 install(TARGETS
         fakeaudispd
-        RUNTIME DESTINATION bin
+        RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 
 add_executable(file2sock
@@ -302,7 +302,7 @@ add_executable(file2sock
 
 install(TARGETS
         file2sock
-        RUNTIME DESTINATION bin
+        RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/release/bin
 )
 
 #Setup CMake to run tests
@@ -720,28 +720,3 @@ target_link_libraries(EventAggregatorTests
 )
 
 add_test(EventAggregatorTests ${CMAKE_BINARY_DIR}/EventAggregatorTests --log_sink=EventAggregatorTests.log --report_sink=EventAggregatorTests.report)
-
-include(GNUInstallDirs)
-
-install(FILES
-  LICENSE
-  THIRD_PARTY_IP_NOTICE
-  DESTINATION ${CMAKE_INSTALL_PREFIX}
-)
-install(FILES
-  installer/conf/auoms.conf
-  installer/conf/auomscollect.conf
-  installer/conf/example_output.conf
-  installer/conf/example_redact.conf
-  DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}
-)
-install(FILES
-  installer/auoms.init
-  installer/auoms.service
-  DESTINATION ${CMAKE_INSTALL_PREFIX}
-)
-install(FILES
-  installer/selinux/auoms.fc
-  installer/selinux/auoms.te
-  DESTINATION ${CMAKE_INSTALL_DATADIR}
-)
