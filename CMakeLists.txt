@@ -160,7 +160,7 @@ add_executable(auoms
         EventFilter.cpp
         StringUtils.cpp
         Interpret.cpp
-        AuditdCollectionMonitor.cpp
+        CollectionMonitor.cpp
         Netlink.cpp
         NetlinkAudit.cpp
         TranslateArch.cpp
