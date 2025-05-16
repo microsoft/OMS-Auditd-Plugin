@@ -26,7 +26,7 @@
 #include "UserDB.h"
 #include "Inputs.h"
 #include "Outputs.h"
-#include "CollectionMonitorBuilder.h"
+#include "CollectionMonitor.h"
 #include "AuditRulesMonitor.h"
 #include "OperationalStatus.h"
 #include "FileUtils.h"
@@ -288,17 +288,13 @@ int main(int argc, char**argv) {
         exit(1);
     }
 
-    std::shared_ptr<ICollectionMonitor> collection_monitor =
-        CollectionMonitorBuilder::Build(
-                                config.IsNetlinkOnly() ?
-                                    COLLECTION_MONITOR_TYPE_NETLINK :
-                                    COLLECTION_MONITOR_TYPE_AUDITD,
-                                queue,
-                                config.GetAuditdPath(),
-                                config.GetCollectorPath(),
-                                config.GetCollectorConfigPath()
+    CollectionMonitor collection_monitor(
+                            queue,
+                            config.GetAuditdPath(),
+                            config.GetCollectorPath(),
+                            config.GetCollectorConfigPath()
                             );
-    collection_monitor->Start();
+    collection_monitor.Start();
 
     AuditRulesMonitor rules_monitor(
                             config.GetRulesDir(),
@@ -424,7 +420,7 @@ int main(int argc, char**argv) {
     Logger::Info("Exiting");
 
     try {
-        collection_monitor->Stop();
+        collection_monitor.Stop();
         if (!config.DisableEventFiltering()) {
             processNotify->Stop();
             processTree->Stop();
