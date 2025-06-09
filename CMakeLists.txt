@@ -329,6 +329,7 @@ enable_testing()
 if(DO_STATIC_LINK)
   set(Boost_USE_STATIC_LIBS ON)
 endif()
+set(Boost_NO_BOOST_CMAKE ON)
 find_package(Boost 1.48 COMPONENTS unit_test_framework REQUIRED)
 include_directories (${Boost_INCLUDE_DIRS})
 
