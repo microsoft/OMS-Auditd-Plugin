@@ -448,6 +448,12 @@ private:
     std::thread _saver_thread;
 
     PriorityQueueStats _stats;
+
+    // Tracks the total byte size of items in _current_buckets and _unsaved
+    size_t _total_unsaved_bytes;
+
+    // The maximum allowed bytes in memory before blocking Put calls
+    size_t _max_in_memory_queue_bytes;
 };
 
 

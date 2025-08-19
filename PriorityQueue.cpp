@@ -519,7 +519,7 @@ PriorityQueue::PriorityQueue(const std::string& dir, uint32_t num_priorities, si
       _max_file_data_size(max_file_data_size), _max_unsaved_files(max_unsaved_files), _max_fs_consumed_bytes(max_fs_bytes), _max_fs_consumed_pct(max_fs_pct), _min_fs_free_pct(min_fs_free_pct),
       _closed(false), _next_seq(1), _next_cursor_id(1),
       _min_seq(num_priorities, 0xFFFFFFFFFFFFFFFF), _max_seq(num_priorities, 0), _max_file_seq(num_priorities, 0), _current_buckets(num_priorities), _files(num_priorities), _unsaved(num_priorities), _cursors(), _cursor_handles(),
-      _last_save_warning(), _stats(num_priorities)
+      _last_save_warning(), _stats(num_priorities), _total_unsaved_bytes(0), _max_in_memory_queue_bytes(28 * 1024 * 1024)
 {
     for (uint32_t i = 0; i < num_priorities; i++) {
         _current_buckets[i] = std::make_shared<QueueItemBucket>(i);
@@ -670,6 +670,18 @@ int PriorityQueue::Put(uint32_t priority, const void* data, size_t size) {
         priority = _num_priorities-1;
     }
 
+    // If current in-memory queue data + new item size would exceed limit, wait.
+    while (_total_unsaved_bytes + size > _max_in_memory_queue_bytes && !_closed) {
+        Logger::Warn("PriorityQueue: Put blocked due to high in-memory queue usage. Current: %lu bytes, Limit: %lu bytes",
+                     _total_unsaved_bytes, _max_in_memory_queue_bytes);
+        // Wait for the saver thread to process and free memory.
+        _saver_cond.wait_for(lock, std::chrono::milliseconds(500));
+    }
+
+    if (_closed) {
+        return 0;
+    }
+
     auto item = std::shared_ptr<QueueItem>(new QueueItem(priority, _next_seq, size));
     item->SetData(data, size);
     _next_seq += 1;
@@ -685,6 +697,8 @@ int PriorityQueue::Put(uint32_t priority, const void* data, size_t size) {
     _max_seq[priority] = item->Sequence();
 
     _stats._priority_stats[priority]._num_items_added += 1;
+
+    _total_unsaved_bytes += item->Size();
 
     std::vector<std::shared_ptr<QueueCursor>> cursors;
     cursors.reserve(_cursors.size());
@@ -819,15 +833,15 @@ bool PriorityQueue::open() {
 }
 
 std::shared_ptr<QueueItemBucket> PriorityQueue::cycle_bucket(uint32_t priority) {
-    std::shared_ptr<QueueItemBucket> bucket = _current_buckets[priority];
+    std::shared_ptr<QueueItemBucket> old_bucket = _current_buckets[priority];
 
-    auto file = std::make_shared<QueueFile>(_data_dir, bucket);
+    auto file = std::make_shared<QueueFile>(_data_dir, old_bucket);
     _files[priority].emplace(file->Sequence(), file);
-    _unsaved[priority].emplace(file->Sequence(), _UnsavedEntry(file, bucket));
-    _max_file_seq[priority] = bucket->MaxSequence();
+    _unsaved[priority].emplace(file->Sequence(), _UnsavedEntry(file, old_bucket));
+    _max_file_seq[priority] = old_bucket->MaxSequence();
 
-    bucket = std::make_shared<QueueItemBucket>(priority);
-    _current_buckets[priority] = bucket;
+    std::shared_ptr<QueueItemBucket> new_bucket = std::make_shared<QueueItemBucket>(priority);
+    _current_buckets[priority] = new_bucket;
 
     _saver_cond.notify_one();
 
@@ -840,24 +854,34 @@ std::shared_ptr<QueueItemBucket> PriorityQueue::cycle_bucket(uint32_t priority) 
     if (num_unsaved > _max_unsaved_files) {
         clean_unsaved();
 
+        num_unsaved = 0;
+        for (auto& p : _unsaved) {
+            num_unsaved += p.size();
+        }
+
         for (auto pitr = _unsaved.rbegin(); num_unsaved > _max_unsaved_files && pitr != _unsaved.rend(); ++pitr) {
-            auto fitr = pitr->begin();
-            while (fitr != pitr->end() && num_unsaved > _max_unsaved_files) {
-                auto file = fitr->second._file;
-                auto bucket = fitr->second._bucket;
+            auto& inner_map = pitr->second;
+            auto fitr = inner_map.begin();
+
+            while (fitr != inner_map.end() && num_unsaved > _max_unsaved_files) {
+                auto file_to_drop = fitr->second._file;
+                auto bucket_to_drop = fitr->second._bucket;
                 num_unsaved -= 1;
+
                 Logger::Warn(
-                        "PriorityQueue: Unsaved items (priority = %d, sequence [%ld to %ld]) where removed due to memory limit being exceeded",
-                        file->Priority(), bucket->MinSequence(), bucket->MaxSequence());
-                _stats._priority_stats[bucket->Priority()]._bytes_dropped += bucket->Size();
-                _files[file->Priority()].erase(file->Sequence());
-                pitr->erase(fitr);
-                fitr = pitr->begin();
+                    "PriorityQueue: Unsaved items (priority = %d, sequence [%ld to %ld]) were removed due to max_unsaved_files limit being exceeded. Data Loss occured.",
+                    file_to_drop->Priority(), bucket_to_drop->MinSequence(), bucket_to_drop->MaxSequence());
+
+                _stats._priority_stats[bucket_to_drop->Priority()]._bytes_dropped += bucket_to_drop->Size();
+                _total_unsaved_bytes -= bucket_to_drop->Size();
+                _files[file_to_drop->Priority()].erase(file_to_drop->Sequence());
+                fitr = inner_map.erase(fitr);
             }
         }
+        _saver_cond.notify_all();
     }
 
-    return bucket;
+    return new_bucket;
 }
 
 /*
@@ -909,26 +933,48 @@ void PriorityQueue::flush_current_buckets() {
 }
 
 void PriorityQueue::clean_unsaved() {
+    std::unique_lock<std::mutex> lock(_mutex);
+
     update_min_seq();
 
-    std::vector<std::shared_ptr<QueueFile>> unsaved_to_remove;
+    size_t bytes_freed_from_unsaved = 0;
 
-    // Find unsaved that are no longer needed
+    std::vector<std::shared_ptr<QueueFile>> files_to_remove_from_files_map;
+
     for (int32_t p = _files.size()-1; p >= 0; --p) {
         auto min_seq = _min_seq[p];
         auto &pf = _files[p];
-        for (auto& f : pf) {
-            if (!f.second->Saved() && f.first <= min_seq) {
-                _unsaved[p].erase(f.second->Sequence());
-                unsaved_to_remove.emplace_back(f.second);
+        auto &p_unsaved = _unsaved[p];
+
+        for (auto it = pf.begin(); it != pf.end();) {
+            auto file_ptr = it->second;
+
+            if (file_ptr->MaxSequence() <= min_seq) {
+                auto unsaved_it = p_unsaved.find(file_ptr->Sequence());
+
+                if (unsaved_it != p_unsaved.end()) {
+                    auto& unsaved_entry = unsaved_it->second;
+                    auto bucket_ptr = unsaved_entry._bucket;
+
+                    if (!file_ptr->Saved()) {
+                        Logger::Warn("PriorityQueue: Unsaved item (P:%d, S:%ld) being cleaned but never saved. Data loss occurred.",
+                                     file_ptr->Priority(), file_ptr->Sequence());
+                        _stats._priority_stats[file_ptr->Priority()]._bytes_dropped += bucket_ptr->Size();
+                    }
+                    bytes_freed_from_unsaved += bucket_ptr->Size();
+
+                    p_unsaved.erase(unsaved_it);
+                }
+
+                files_to_remove_from_files_map.emplace_back(file_ptr);
+                it = pf.erase(it);
+            } else {
+                ++it;
             }
         }
     }
-
-    // Remove unsaved that are not needed
-    for (auto& f : unsaved_to_remove) {
-        _files[f->Priority()].erase(f->Sequence());
-    }
+    _total_unsaved_bytes -= bytes_freed_from_unsaved;
+    _saver_cond.notify_all();
 }
 
 // Only call while locked
