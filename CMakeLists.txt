@@ -160,6 +160,7 @@ add_executable(auoms
         CollectionMonitor.cpp
         Netlink.cpp
         NetlinkAudit.cpp
+        NetlinkCollectionMonitor.cpp
         TranslateArch.cpp
         TranslateSyscall.cpp
         TranslateRecordType.cpp
