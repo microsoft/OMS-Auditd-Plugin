@@ -130,6 +130,7 @@ add_executable(auoms
         env_config.h
         auoms.cpp
         auoms_version.h
+        AuomsConfig.cpp
         IO.cpp
         Event.cpp
         EventPrioritizer.cpp
