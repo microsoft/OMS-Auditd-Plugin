@@ -329,24 +329,128 @@ enable_testing()
 if(DO_STATIC_LINK)
   set(Boost_USE_STATIC_LIBS ON)
 endif()
-find_package(Boost 1.48 COMPONENTS unit_test_framework REQUIRED)
-include_directories (${Boost_INCLUDE_DIRS})
 
-add_executable(ConfigTests
-        TempFile.cpp
-        Config.cpp
-        ConfigTests.cpp
-)
-
-if(NOT DO_STATIC_LINK)
-  target_compile_definitions(ConfigTests PUBLIC BOOST_TEST_DYN_LINK=1)
+# Handle cross-compilation and sysroot environments
+if(CMAKE_CROSSCOMPILING AND CMAKE_SYSROOT)
+    message(STATUS "Cross-compiling detected with sysroot: ${CMAKE_SYSROOT}")
+    
+    # For cross-compilation, try to find Boost in sysroot first
+    set(BOOST_ROOT ${CMAKE_SYSROOT}/usr)
+    set(Boost_NO_SYSTEM_PATHS ON)
+    
+    # Set additional search paths for cross-compilation
+    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
+    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
+    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
 endif()
 
-target_link_libraries(ConfigTests ${Boost_LIBRARIES}
-        ${SYSTEMD_LIBRARIES}
-)
+# Try to find Boost with error handling
+find_package(Boost 1.48 COMPONENTS unit_test_framework)
 
-add_test(Config ${CMAKE_BINARY_DIR}/ConfigTests --log_sink=ConfigTests.log --report_sink=ConfigTests.report)
+if(Boost_FOUND)
+    # Validate that include directories exist
+    set(VALID_BOOST_DIRS "")
+    foreach(boost_include_dir ${Boost_INCLUDE_DIRS})
+        if(EXISTS "${boost_include_dir}")
+            list(APPEND VALID_BOOST_DIRS "${boost_include_dir}")
+        else()
+            message(WARNING "Boost include directory does not exist: ${boost_include_dir}")
+        endif()
+    endforeach()
+    
+    if(VALID_BOOST_DIRS)
+        set(Boost_INCLUDE_DIRS ${VALID_BOOST_DIRS})
+        include_directories(${Boost_INCLUDE_DIRS})
+        message(STATUS "Using valid Boost directories: ${Boost_INCLUDE_DIRS}")
+    else()
+        set(Boost_FOUND FALSE)
+        message(WARNING "No valid Boost include directories found")
+    endif()
+endif()
+
+if(NOT Boost_FOUND)
+    message(STATUS "System Boost not found or invalid, trying alternative approaches...")
+    
+    # Clear previous results
+    unset(Boost_FOUND CACHE)
+    unset(Boost_INCLUDE_DIRS CACHE)
+    unset(Boost_LIBRARIES CACHE)
+    unset(Boost_UNIT_TEST_FRAMEWORK_LIBRARY CACHE)
+    
+    # Try with different search modes for cross-compilation
+    if(CMAKE_CROSSCOMPILING)
+        # Reset search mode for cross-compilation
+        set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+        set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+        set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+        
+        # Try common cross-compilation paths
+        set(BOOST_ROOT ${CMAKE_SYSROOT}/usr)
+        set(Boost_NO_SYSTEM_PATHS ON)
+        
+        # Alternative: try without CONFIG mode first
+        find_package(Boost 1.48 COMPONENTS unit_test_framework NO_CMAKE_PACKAGE_REGISTRY)
+        
+        if(NOT Boost_FOUND)
+            # Try with explicit paths
+            find_path(Boost_INCLUDE_DIR 
+                NAMES boost/version.hpp
+                PATHS ${CMAKE_SYSROOT}/usr/include ${CMAKE_SYSROOT}/include
+                NO_DEFAULT_PATH)
+                
+            find_library(Boost_UNIT_TEST_FRAMEWORK_LIBRARY
+                NAMES boost_unit_test_framework
+                PATHS ${CMAKE_SYSROOT}/usr/lib ${CMAKE_SYSROOT}/lib
+                NO_DEFAULT_PATH)
+                
+            if(Boost_INCLUDE_DIR AND Boost_UNIT_TEST_FRAMEWORK_LIBRARY)
+                set(Boost_FOUND TRUE)
+                set(Boost_INCLUDE_DIRS ${Boost_INCLUDE_DIR})
+                set(Boost_LIBRARIES ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
+                message(STATUS "Found Boost manually: ${Boost_INCLUDE_DIRS}")
+            endif()
+        endif()
+    else()
+        # For native builds, try standard detection
+        set(Boost_NO_SYSTEM_PATHS OFF)
+        set(Boost_ADDITIONAL_VERSIONS "1.72.0" "1.71.0" "1.70.0" "1.69.0" "1.68.0")
+        find_package(Boost 1.48 COMPONENTS unit_test_framework)
+    endif()
+    
+    if(Boost_FOUND)
+        include_directories(${Boost_INCLUDE_DIRS})
+        message(STATUS "Found alternative Boost at: ${Boost_INCLUDE_DIRS}")
+    else()
+        message(STATUS "Boost unit_test_framework not found. Tests will be disabled.")
+        # Don't make it fatal - just disable tests that depend on Boost
+        set(DISABLE_BOOST_TESTS TRUE)
+    endif()
+endif()
+
+if(NOT DISABLE_BOOST_TESTS AND Boost_FOUND)
+    message(STATUS "Boost unit tests enabled with libraries: ${Boost_LIBRARIES}")
+    
+    add_executable(ConfigTests
+            TempFile.cpp
+            Config.cpp
+            ConfigTests.cpp
+    )
+
+    if(NOT DO_STATIC_LINK)
+      target_compile_definitions(ConfigTests PUBLIC BOOST_TEST_DYN_LINK=1)
+    endif()
+
+    target_link_libraries(ConfigTests ${Boost_LIBRARIES}
+            ${SYSTEMD_LIBRARIES}
+    )
+
+    add_test(Config ${CMAKE_BINARY_DIR}/ConfigTests --log_sink=ConfigTests.log --report_sink=ConfigTests.report)
+else()
+    message(STATUS "Boost unit tests disabled - skipping ConfigTests")
+endif()
+
+# Wrap all remaining Boost-dependent test targets
+if(NOT DISABLE_BOOST_TESTS AND Boost_FOUND)
 
 add_executable(EventTests
         TempDir.cpp
@@ -733,3 +837,7 @@ target_link_libraries(EventAggregatorTests
 )
 
 add_test(EventAggregatorTests ${CMAKE_BINARY_DIR}/EventAggregatorTests --log_sink=EventAggregatorTests.log --report_sink=EventAggregatorTests.report)
+
+else()
+    message(STATUS "Boost unit tests disabled - skipping remaining test targets (SPSCDataQueueTests, UserDBTests, StringTests, EventProcessorTests, ProcessTreeTests, ExecveConverterTests, OMSEventWriterTests, FluentEventWriterTests, OutputInputTests, CmdlineRedactorTests, EventMatcherTests, EventAggregatorTests)")
+endif()
