@@ -428,7 +428,92 @@ if(NOT Boost_FOUND)
 endif()
 
 if(NOT DISABLE_BOOST_TESTS AND Boost_FOUND)
-    message(STATUS "Boost unit tests enabled with libraries: ${Boost_LIBRARIES}")
+    # Handle both old-style and new-style Boost
+    if(TARGET Boost::unit_test_framework)
+        # Check if the target has invalid include directories
+        get_target_property(BOOST_INTERFACE_INCLUDES Boost::unit_test_framework INTERFACE_INCLUDE_DIRECTORIES)
+        set(VALID_BOOST_INTERFACE_INCLUDES "")
+        if(BOOST_INTERFACE_INCLUDES)
+            foreach(boost_include_dir ${BOOST_INTERFACE_INCLUDES})
+                if(EXISTS "${boost_include_dir}")
+                    list(APPEND VALID_BOOST_INTERFACE_INCLUDES "${boost_include_dir}")
+                else()
+                    message(WARNING "Removing invalid Boost interface include directory: ${boost_include_dir}")
+                endif()
+            endforeach()
+        endif()
+        
+        # If the target has any invalid includes, create our own interface library for safety
+        set(HAS_INVALID_INCLUDES FALSE)
+        if(BOOST_INTERFACE_INCLUDES)
+            foreach(boost_include_dir ${BOOST_INTERFACE_INCLUDES})
+                if(NOT EXISTS "${boost_include_dir}")
+                    set(HAS_INVALID_INCLUDES TRUE)
+                    break()
+                endif()
+            endforeach()
+        endif()
+        
+        if(HAS_INVALID_INCLUDES OR (NOT VALID_BOOST_INTERFACE_INCLUDES AND BOOST_INTERFACE_INCLUDES))
+            message(STATUS "Creating custom Boost unit test interface due to invalid includes")
+            add_library(boost_unit_test_custom INTERFACE)
+            
+            # Use valid includes if we found any, otherwise search for them
+            if(VALID_BOOST_INTERFACE_INCLUDES)
+                target_include_directories(boost_unit_test_custom INTERFACE ${VALID_BOOST_INTERFACE_INCLUDES})
+                message(STATUS "Using valid Boost include directories: ${VALID_BOOST_INTERFACE_INCLUDES}")
+            else()
+                # Try to find valid Boost headers manually
+                find_path(CUSTOM_BOOST_INCLUDE_DIR 
+                    NAMES boost/test/unit_test.hpp
+                    PATHS 
+                        ${CMAKE_SYSROOT}/usr/include 
+                        ${CMAKE_SYSROOT}/include
+                        /usr/include
+                        /opt/msft/*/sysroots/*/usr/include
+                    NO_DEFAULT_PATH)
+                    
+                if(CUSTOM_BOOST_INCLUDE_DIR)
+                    target_include_directories(boost_unit_test_custom INTERFACE ${CUSTOM_BOOST_INCLUDE_DIR})
+                    message(STATUS "Found valid Boost headers at: ${CUSTOM_BOOST_INCLUDE_DIR}")
+                endif()
+            endif()
+            
+            # Link to the actual library file
+            get_target_property(BOOST_LIB_LOCATION Boost::unit_test_framework IMPORTED_LOCATION)
+            if(NOT BOOST_LIB_LOCATION)
+                get_target_property(BOOST_LIB_LOCATION Boost::unit_test_framework IMPORTED_LOCATION_RELEASE)
+            endif()
+            if(NOT BOOST_LIB_LOCATION)
+                get_target_property(BOOST_LIB_LOCATION Boost::unit_test_framework IMPORTED_LOCATION_DEBUG)
+            endif()
+            
+            if(BOOST_LIB_LOCATION)
+                target_link_libraries(boost_unit_test_custom INTERFACE ${BOOST_LIB_LOCATION})
+                message(STATUS "Linking to Boost library: ${BOOST_LIB_LOCATION}")
+            else()
+                # Fallback to finding the library manually
+                find_library(BOOST_UNIT_TEST_LIB 
+                    NAMES boost_unit_test_framework
+                    PATHS ${CMAKE_SYSROOT}/usr/lib ${CMAKE_SYSROOT}/lib
+                    NO_DEFAULT_PATH)
+                if(BOOST_UNIT_TEST_LIB)
+                    target_link_libraries(boost_unit_test_custom INTERFACE ${BOOST_UNIT_TEST_LIB})
+                    message(STATUS "Found Boost library manually: ${BOOST_UNIT_TEST_LIB}")
+                endif()
+            endif()
+            
+            set(BOOST_TEST_LIBRARY boost_unit_test_custom)
+        else()
+            # Target is clean, use it directly
+            set(BOOST_TEST_LIBRARY Boost::unit_test_framework)
+        endif()
+        
+        message(STATUS "Boost unit tests enabled with target: ${BOOST_TEST_LIBRARY}")
+    else()
+        set(BOOST_TEST_LIBRARY ${Boost_LIBRARIES})
+        message(STATUS "Boost unit tests enabled with libraries: ${BOOST_TEST_LIBRARY}")
+    endif()
     
     add_executable(ConfigTests
             TempFile.cpp
@@ -440,7 +525,7 @@ if(NOT DISABLE_BOOST_TESTS AND Boost_FOUND)
       target_compile_definitions(ConfigTests PUBLIC BOOST_TEST_DYN_LINK=1)
     endif()
 
-    target_link_libraries(ConfigTests ${Boost_LIBRARIES}
+    target_link_libraries(ConfigTests ${BOOST_TEST_LIBRARY}
             ${SYSTEMD_LIBRARIES}
     )
 
@@ -465,7 +550,7 @@ if(NOT DO_STATIC_LINK)
   target_compile_definitions(EventTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(EventTests ${Boost_LIBRARIES}
+target_link_libraries(EventTests ${BOOST_TEST_LIBRARY}
         pthread
         ${SYSTEMD_LIBRARIES}
 )
@@ -483,7 +568,7 @@ if(NOT DO_STATIC_LINK)
   target_compile_definitions(QueueTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(QueueTests ${Boost_LIBRARIES}
+target_link_libraries(QueueTests ${BOOST_TEST_LIBRARY}
         ${SYSTEMD_LIBRARIES}
 )
 
@@ -501,7 +586,7 @@ if(NOT DO_STATIC_LINK)
   target_compile_definitions(PriorityQueueTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(PriorityQueueTests ${Boost_LIBRARIES}
+target_link_libraries(PriorityQueueTests ${BOOST_TEST_LIBRARY}
         pthread
         ${SYSTEMD_LIBRARIES}
 )
@@ -518,7 +603,7 @@ if(NOT DO_STATIC_LINK)
   target_compile_definitions(SPSCDataQueueTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(SPSCDataQueueTests ${Boost_LIBRARIES}
+target_link_libraries(SPSCDataQueueTests ${BOOST_TEST_LIBRARY}
         pthread
         ${SYSTEMD_LIBRARIES}
 )
@@ -537,7 +622,7 @@ if(NOT DO_STATIC_LINK)
   target_compile_definitions(UserDBTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(UserDBTests ${Boost_LIBRARIES}
+target_link_libraries(UserDBTests ${BOOST_TEST_LIBRARY}
         pthread
         ${SYSTEMD_LIBRARIES}
 )
@@ -553,7 +638,7 @@ if(NOT DO_STATIC_LINK)
   target_compile_definitions(StringTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(StringTests ${Boost_LIBRARIES}
+target_link_libraries(StringTests ${BOOST_TEST_LIBRARY}
         ${SYSTEMD_LIBRARIES}
 )
 
@@ -595,7 +680,7 @@ if(NOT DO_STATIC_LINK)
   target_compile_definitions(EventProcessorTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
+target_link_libraries(EventProcessorTests ${BOOST_TEST_LIBRARY}
         libre2.a
         dl
         pthread
@@ -626,7 +711,7 @@ if(NOT DO_STATIC_LINK)
   target_compile_definitions(ProcessTreeTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(ProcessTreeTests ${Boost_LIBRARIES}
+target_link_libraries(ProcessTreeTests ${BOOST_TEST_LIBRARY}
         libre2.a
         dl
         pthread
@@ -654,7 +739,7 @@ if(NOT DO_STATIC_LINK)
   target_compile_definitions(ExecveConverterTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(ExecveConverterTests ${Boost_LIBRARIES}
+target_link_libraries(ExecveConverterTests ${BOOST_TEST_LIBRARY}
         dl
         pthread
         rt
@@ -685,7 +770,7 @@ if(NOT DO_STATIC_LINK)
   target_compile_definitions(OMSEventWriterTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}
+target_link_libraries(OMSEventWriterTests ${BOOST_TEST_LIBRARY}
         libre2.a
         pthread
         ${SYSTEMD_LIBRARIES}
@@ -712,7 +797,7 @@ if(NOT DO_STATIC_LINK)
   target_compile_definitions(FluentEventWriterTests PUBLIC BOOST_TEST_DYN_LINK=1)
 endif()
 
-target_link_libraries(FluentEventWriterTests ${Boost_LIBRARIES}
+target_link_libraries(FluentEventWriterTests ${BOOST_TEST_LIBRARY}
         libre2.a
         pthread
         ${SYSTEMD_LIBRARIES}
@@ -758,7 +843,7 @@ endif()
 
 target_link_libraries(OutputInputTests
         libre2.a
-        ${Boost_LIBRARIES}
+        ${BOOST_TEST_LIBRARY}
         pthread
         ${SYSTEMD_LIBRARIES}
 )
@@ -782,7 +867,7 @@ endif()
 
 target_link_libraries(CmdlineRedactorTests
         libre2.a
-        ${Boost_LIBRARIES}
+        ${BOOST_TEST_LIBRARY}
         pthread
         ${SYSTEMD_LIBRARIES}
 )
@@ -806,7 +891,7 @@ endif()
 
 target_link_libraries(EventMatcherTests
         libre2.a
-        ${Boost_LIBRARIES}
+        ${BOOST_TEST_LIBRARY}
         pthread
         ${SYSTEMD_LIBRARIES}
 )
@@ -831,7 +916,7 @@ endif()
 
 target_link_libraries(EventAggregatorTests
         libre2.a
-        ${Boost_LIBRARIES}
+        ${BOOST_TEST_LIBRARY}
         pthread
         ${SYSTEMD_LIBRARIES}
 )
