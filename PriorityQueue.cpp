@@ -860,7 +860,7 @@ std::shared_ptr<QueueItemBucket> PriorityQueue::cycle_bucket(uint32_t priority) 
         }
 
         for (auto pitr = _unsaved.rbegin(); num_unsaved > _max_unsaved_files && pitr != _unsaved.rend(); ++pitr) {
-            auto& inner_map = pitr->second;
+            auto& inner_map = *pitr;
             auto fitr = inner_map.begin();
 
             while (fitr != inner_map.end() && num_unsaved > _max_unsaved_files) {
@@ -949,7 +949,7 @@ void PriorityQueue::clean_unsaved() {
         for (auto it = pf.begin(); it != pf.end();) {
             auto file_ptr = it->second;
 
-            if (file_ptr->MaxSequence() <= min_seq) {
+            if (file_ptr->Sequence() <= min_seq) {
                 auto unsaved_it = p_unsaved.find(file_ptr->Sequence());
 
                 if (unsaved_it != p_unsaved.end()) {
