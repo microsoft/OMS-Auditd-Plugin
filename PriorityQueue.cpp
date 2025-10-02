@@ -514,12 +514,12 @@ void QueueCursor::notify(int priority, uint64_t seq) {
  ** PriorityQueue
  *********************************************************************************************************************/
 
-PriorityQueue::PriorityQueue(const std::string& dir, uint32_t num_priorities, size_t max_file_data_size, size_t max_unsaved_files, uint64_t max_fs_bytes, double max_fs_pct, double min_fs_free_pct)
+PriorityQueue::PriorityQueue(const std::string& dir, uint32_t num_priorities, size_t max_file_data_size, size_t max_unsaved_files, uint64_t max_fs_bytes, double max_fs_pct, double min_fs_free_pct, size_t max_memory_bytes)
     : _dir(dir), _data_dir(dir+"/data"), _cursors_dir(dir+"/cursors"), _num_priorities(num_priorities),
-      _max_file_data_size(max_file_data_size), _max_unsaved_files(max_unsaved_files), _max_fs_consumed_bytes(max_fs_bytes), _max_fs_consumed_pct(max_fs_pct), _min_fs_free_pct(min_fs_free_pct),
+      _max_file_data_size(max_file_data_size), _max_unsaved_files(max_unsaved_files), _max_memory_bytes(max_memory_bytes), _max_fs_consumed_bytes(max_fs_bytes), _max_fs_consumed_pct(max_fs_pct), _min_fs_free_pct(min_fs_free_pct),
       _closed(false), _next_seq(1), _next_cursor_id(1),
       _min_seq(num_priorities, 0xFFFFFFFFFFFFFFFF), _max_seq(num_priorities, 0), _max_file_seq(num_priorities, 0), _current_buckets(num_priorities), _files(num_priorities), _unsaved(num_priorities), _cursors(), _cursor_handles(),
-      _last_save_warning(), _stats(num_priorities)
+      _last_save_warning(), _stats(num_priorities), _total_memory_usage(0), _last_memory_recalc()
 {
     for (uint32_t i = 0; i < num_priorities; i++) {
         _current_buckets[i] = std::make_shared<QueueItemBucket>(i);
@@ -529,6 +529,9 @@ PriorityQueue::PriorityQueue(const std::string& dir, uint32_t num_priorities, si
     }
     if (max_unsaved_files < num_priorities) {
         _max_unsaved_files = num_priorities;
+    }
+    if (max_memory_bytes == 0) {
+        _max_memory_bytes = 25L*1024L*1024L; // In-memory limit of 25MB
     }
     if (max_fs_bytes == 0) {
         _max_fs_consumed_bytes = 0xFFFFFFFFFFFFFFFF;
@@ -543,8 +546,8 @@ PriorityQueue::PriorityQueue(const std::string& dir, uint32_t num_priorities, si
     }
 }
 
-std::shared_ptr<PriorityQueue> PriorityQueue::Open(const std::string& dir, uint32_t max_priority, size_t max_file_size, size_t max_unsaved_files, uint64_t max_fs_bytes, double max_fs_pct, double min_fs_free_pct) {
-    auto queue = std::shared_ptr<PriorityQueue>(new PriorityQueue(dir, max_priority, max_file_size, max_unsaved_files, max_fs_bytes, max_fs_pct, min_fs_free_pct));
+std::shared_ptr<PriorityQueue> PriorityQueue::Open(const std::string& dir, uint32_t max_priority, size_t max_file_size, size_t max_unsaved_files, uint64_t max_fs_bytes, double max_fs_pct, double min_fs_free_pct, size_t max_memory_bytes) {
+    auto queue = std::shared_ptr<PriorityQueue>(new PriorityQueue(dir, max_priority, max_file_size, max_unsaved_files, max_fs_bytes, max_fs_pct, min_fs_free_pct, max_memory_bytes));
     if (queue->open()) {
         return queue;
     }
@@ -670,6 +673,19 @@ int PriorityQueue::Put(uint32_t priority, const void* data, size_t size) {
         priority = _num_priorities-1;
     }
 
+    // Check if adding this item would exceed memory limit before allocating any memory
+    if (_max_memory_bytes != 0xFFFFFFFFFFFFFFFF) {
+        size_t current_memory = get_current_memory_usage();
+        
+        // Check if adding this item would exceed 85% of the memory limit
+        size_t memory_threshold = (_max_memory_bytes * 85) / 100;
+        // Account for both the item size and potential QueueItem overhead
+        size_t item_memory = size + sizeof(QueueItem) + 64; // overhead for shared_ptr
+        if (current_memory + item_memory > memory_threshold) {
+            return -2;
+        }
+    }
+
     auto item = std::shared_ptr<QueueItem>(new QueueItem(priority, _next_seq, size));
     item->SetData(data, size);
     _next_seq += 1;
@@ -681,6 +697,9 @@ int PriorityQueue::Put(uint32_t priority, const void* data, size_t size) {
     }
 
     bucket->Put(item);
+
+    // Update real-time memory counter
+    _total_memory_usage.fetch_add(item->Size());
 
     _max_seq[priority] = item->Sequence();
 
@@ -814,6 +833,9 @@ bool PriorityQueue::open() {
     }
 
     update_min_seq();
+    
+    // Initialize cached memory counter
+    recalculate_memory_usage();
 
     return true;
 }
@@ -897,6 +919,42 @@ void PriorityQueue::update_min_seq() {
 
     // Update global minimum sequence
     _min_seq = min_seq;
+}
+
+// Initialize real-time memory usage counter
+// Note: Caller must hold _mutex lock
+void PriorityQueue::recalculate_memory_usage() {
+    size_t total_memory = 0;
+    
+    // Count memory from all files (only if buckets are actually loaded in memory)
+    for (int32_t p = 0; p < _files.size(); ++p) {
+        for (auto& f : _files[p]) {
+            // Use BucketSize() which returns 0 if not in memory, actual size if in memory
+            total_memory += f.second->BucketSize();
+        }
+    }
+    
+    // Count memory from current buckets (always in memory)
+    for (auto& bucket : _current_buckets) {
+        total_memory += bucket->Size();
+    }
+    
+    _total_memory_usage.store(total_memory);
+}
+
+// Get current memory usage with periodic recalculation for accuracy  
+// Note: Caller must hold _mutex lock
+size_t PriorityQueue::get_current_memory_usage() const {
+    auto now = std::chrono::steady_clock::now();
+    auto age = std::chrono::duration_cast<std::chrono::milliseconds>(now - _last_memory_recalc);
+    
+    if (age.count() > 500) { // Recalculate every 500ms
+        // Since caller already holds _mutex, this is thread-safe
+        const_cast<PriorityQueue*>(this)->recalculate_memory_usage();
+        const_cast<PriorityQueue*>(this)->_last_memory_recalc = now;
+    }
+    
+    return _total_memory_usage.load();
 }
 
 // This is only called as part of close/shutdown process

@@ -354,7 +354,7 @@ class PriorityQueue {
 public:
     static constexpr size_t MAX_ITEM_SIZE = 1024*256;
 
-    static std::shared_ptr<PriorityQueue> Open(const std::string& dir, uint32_t num_priorities, size_t max_file_data_size, size_t max_unsaved_files, uint64_t max_fs_bytes, double max_fs_pct, double min_fs_free_pct);
+    static std::shared_ptr<PriorityQueue> Open(const std::string& dir, uint32_t num_priorities, size_t max_file_data_size, size_t max_unsaved_files, uint64_t max_fs_bytes, double max_fs_pct, double min_fs_free_pct, size_t max_memory_bytes = 0);
 
     uint32_t NumPriorities() { return _num_priorities; }
 
@@ -368,7 +368,7 @@ public:
     void Commit(const std::shared_ptr<QueueCursorHandle>& cursor_handle, uint32_t priority, uint64_t seq);
     void Close(const std::shared_ptr<QueueCursorHandle>& cursor_handle);
 
-    // Return 1 on success, 0 on queue closed, and -1 if item too large
+    // Return 1 on success, 0 on queue closed, -1 if item too large, -2 if memory limit exceeded
     int Put(uint32_t priority, const void* data, size_t size);
 
     void Save(long save_delay, bool final_save = false);
@@ -391,13 +391,15 @@ private:
 
     static constexpr long MIN_SAVE_WARNING_GAP_MS = 60000;
 
-    PriorityQueue(const std::string& dir, uint32_t num_priorities, size_t max_file_data_size, size_t max_unsaved_files, uint64_t max_fs_bytes, double max_fs_pct, double min_fs_free_pct);
+    PriorityQueue(const std::string& dir, uint32_t num_priorities, size_t max_file_data_size, size_t max_unsaved_files, uint64_t max_fs_bytes, double max_fs_pct, double min_fs_free_pct, size_t max_memory_bytes);
 
     bool open();
 
     std::shared_ptr<QueueItemBucket> cycle_bucket(uint32_t priority);
     std::shared_ptr<QueueItemBucket> get_next_bucket(std::unique_lock<std::mutex>& lock, uint32_t priority, uint64_t last_seq);
     void update_min_seq();
+    void recalculate_memory_usage();
+    size_t get_current_memory_usage() const;
     void flush_current_buckets();
     void clean_unsaved();
 
@@ -410,12 +412,17 @@ private:
     uint32_t _num_priorities;
     size_t _max_file_data_size;
     size_t _max_unsaved_files;
+    size_t _max_memory_bytes;
     uint64_t _max_fs_consumed_bytes;
     double _max_fs_consumed_pct;
     double _min_fs_free_pct;
 
     std::mutex _mutex;
     std::condition_variable _saver_cond;
+
+    // Real-time memory usage tracking
+    std::atomic<size_t> _total_memory_usage;
+    mutable std::chrono::steady_clock::time_point _last_memory_recalc;
 
     bool _closed;
 
