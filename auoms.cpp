@@ -205,9 +205,9 @@ int main(int argc, char**argv) {
     }
 
     int num_priorities = 8;
-    size_t max_file_data_size = 1024*1024;
-    size_t max_unsaved_files = 128;
-    size_t max_fs_bytes = 1024*1024*1024;
+    size_t max_file_data_size = 256*1024;
+    size_t max_unsaved_files = 8;
+    size_t max_fs_bytes = 16*1024*1024;
     double max_fs_pct = 10;
     double min_fs_free_pct = 5;
     long save_delay = 250;
@@ -257,7 +257,7 @@ int main(int argc, char**argv) {
         lock_file = config.GetString("lock_file");
     }
 
-    uint64_t rss_limit = 1024L*1024L*1024L;
+    uint64_t rss_limit = 25L*1024L*1024L;
     uint64_t virt_limit = 4096L*1024L*1024L;
     double rss_pct_limit = 5;
 
