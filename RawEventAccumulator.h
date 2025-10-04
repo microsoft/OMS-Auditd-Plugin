@@ -65,7 +65,7 @@ public:
     void Flush(long milliseconds);
 
 private:
-    static constexpr size_t MAX_CACHE_ENTRY = 256;
+    static constexpr size_t MAX_CACHE_ENTRY = 64;
     std::mutex _mutex;
     std::shared_ptr<EventBuilder> _builder;
     std::shared_ptr<Metrics> _metrics;
