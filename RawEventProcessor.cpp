@@ -384,13 +384,14 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     });
 
     if (syscall_rec && syscall_field) {
-        if (InterpretField(_tmp_val, syscall_rec, syscall_field, field_type_t::SYSCALL)) {
-            if (starts_with(_tmp_val, S_EXECVE)) {
+        std::string tmp_val;
+        if (InterpretField(tmp_val, syscall_rec, syscall_field, field_type_t::SYSCALL)) {
+            if (starts_with(tmp_val, S_EXECVE)) {
                 rec_type = RecordType::AUOMS_EXECVE;
                 rec_type_name = auoms_execve_name;
             }
         }
-        _syscall = _tmp_val;
+        _syscall = tmp_val;
     }
 
     // Exclude proctitle if EXECVE is present
@@ -538,8 +539,9 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
                                 // name might be escaped
                                 unescape_raw_field(_unescaped_val, f.RawValuePtr(), f.RawValueSize());
                                 // Path names might have non-ASCII/non-printable chars, escape the name before adding it.
-                                json_escape_string(_tmp_val, _unescaped_val.data(), _unescaped_val.size());
-                                _path_name.append(_tmp_val);
+                                std::string tmp_val;
+                                json_escape_string(tmp_val, _unescaped_val.data(), _unescaped_val.size());
+                                _path_name.append(tmp_val);
                             } else if (fname == SV_NAMETYPE && !found_nametype) {
                                 if (path_num != 0) {
                                     _path_nametype.append(SV_JSON_ARRAY_SEP);
@@ -625,13 +627,14 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
         proctitle_field = EventRecordField();
 
         _execve_converter.Convert(execve_recs, _cmdline);
-        _cmdline_redactor->ApplyRules(_cmdline, _tmp_val);
+        std::string tmp_val;
+        _cmdline_redactor->ApplyRules(_cmdline, tmp_val);
 
         if (!_builder->AddField(SV_CMDLINE, _cmdline, SV_EMPTY, field_type_t::UNESCAPED)) {
             throw std::runtime_error("Queue closed");
         }
 
-        if (!_builder->AddField(SV_REDACTORS, _tmp_val, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
+        if (!_builder->AddField(SV_REDACTORS, tmp_val, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
             throw std::runtime_error("Queue closed");
         }
     } else {
@@ -655,13 +658,14 @@ bool RawEventProcessor::process_syscall_event(const Event& event) {
     if (proctitle_rec && proctitle_field) {
         unescape_raw_field(_unescaped_val, proctitle_field.RawValuePtr(), proctitle_field.RawValueSize());
         ExecveConverter::ConvertRawCmdline(_unescaped_val, _cmdline);
-        _cmdline_redactor->ApplyRules(_cmdline, _tmp_val);
+        std::string tmp_val;
+        _cmdline_redactor->ApplyRules(_cmdline, tmp_val);
 
         if (!_builder->AddField(SV_PROCTITLE, _cmdline, SV_EMPTY, field_type_t::PROCTITLE)) {
             throw std::runtime_error("Queue closed");
         }
 
-        if (!_builder->AddField(SV_REDACTORS, _tmp_val, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
+        if (!_builder->AddField(SV_REDACTORS, tmp_val, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
             throw std::runtime_error("Queue closed");
         }
     }
@@ -797,16 +801,16 @@ void RawEventProcessor::process_user_cmd_record(const Event& event, const EventR
 
     for (auto &field: rec) {
         if (field.FieldName() == SV_CMD) {
-            _tmp_val.resize(0);
+            std::string tmp_val;
             unescape_raw_field(_unescaped_val, field.RawValuePtr(), field.RawValueSize());
 
-            _cmdline_redactor->ApplyRules(_unescaped_val, _tmp_val);
+            _cmdline_redactor->ApplyRules(_unescaped_val, tmp_val);
 
             if (!_builder->AddField(SV_CMD, _unescaped_val, SV_EMPTY, field_type_t::UNESCAPED)) {
                 throw std::runtime_error("Queue closed");
             }
 
-            if (!_builder->AddField(SV_REDACTORS, _tmp_val, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
+            if (!_builder->AddField(SV_REDACTORS, tmp_val, SV_EMPTY, field_type_t::UNCLASSIFIED)) {
                 throw std::runtime_error("Queue closed");
             }
 
@@ -850,38 +854,38 @@ bool RawEventProcessor::process_field(const EventRecord& record, const EventReco
 
     _field_name.append(field.FieldName());
 
-    _tmp_val.resize(0);
+    std::string tmp_val;
 
     switch (field_type) {
         case field_type_t::UID: {
             int uid = static_cast<int>(strtoul(val_ptr, nullptr, 10));
             if (uid < 0) {
-                _tmp_val = S_UNSET;
+                tmp_val = S_UNSET;
             } else {
-                _tmp_val = _user_db->GetUserName(uid);
+                tmp_val = _user_db->GetUserName(uid);
             }
-            if (_tmp_val.size() == 0) {
-                _tmp_val = "unknown-uid(" + std::to_string(uid) + ")";
+            if (tmp_val.size() == 0) {
+                tmp_val = "unknown-uid(" + std::to_string(uid) + ")";
             }
             break;
         }
         case field_type_t::GID: {
             int gid = static_cast<int>(strtoul(val_ptr, nullptr, 10));
             if (gid < 0) {
-                _tmp_val = S_UNSET;
+                tmp_val = S_UNSET;
             } else {
-                _tmp_val = _user_db->GetGroupName(gid);
+                tmp_val = _user_db->GetGroupName(gid);
             }
-            if (_tmp_val.size() == 0) {
-                _tmp_val = "unknown-gid(" + std::to_string(gid) + ")";
+            if (tmp_val.size() == 0) {
+                tmp_val = "unknown-gid(" + std::to_string(gid) + ")";
             }
             break;
         }
         case field_type_t::ESCAPED_KEY:
-            if (unescape_raw_field(_tmp_val, val_ptr, field.RawValueSize()) > 0) {
-                std::replace(_tmp_val.begin(), _tmp_val.end(), static_cast<char>(KEY_SEP), ',');
+            if (unescape_raw_field(tmp_val, val_ptr, field.RawValueSize()) > 0) {
+                std::replace(tmp_val.begin(), tmp_val.end(), static_cast<char>(KEY_SEP), ',');
             } else {
-                _tmp_val.resize(0);
+                tmp_val.resize(0);
             }
             break;
         case field_type_t::ESCAPED:
@@ -889,21 +893,21 @@ bool RawEventProcessor::process_field(const EventRecord& record, const EventReco
         case field_type_t::PROCTITLE:
             break;
         default:
-            if (!InterpretField(_tmp_val, record, field, field_type)) {
-                _tmp_val.resize(0);
+            if (!InterpretField(tmp_val, record, field, field_type)) {
+                tmp_val.resize(0);
             }
             break;
     }
 
-    if (!_builder->AddField(_field_name, val, _tmp_val, field_type)) {
+    if (!_builder->AddField(_field_name, val, tmp_val, field_type)) {
         throw std::runtime_error("Queue closed");
     }
     return true;
 }
 
 bool RawEventProcessor::add_int_field(const std::string_view& name, int val, field_type_t ft) {
-    _tmp_val.assign(std::to_string(val));
-    return add_str_field(name, _tmp_val, ft);
+    std::string tmp_val = std::to_string(val);
+    return add_str_field(name, tmp_val, ft);
 }
 
 bool RawEventProcessor::add_str_field(const std::string_view& name, const std::string_view& val, field_type_t ft) {
@@ -914,18 +918,18 @@ bool RawEventProcessor::add_str_field(const std::string_view& name, const std::s
 }
 
 bool RawEventProcessor::add_uid_field(const std::string_view& name, int uid, field_type_t ft) {
-    _tmp_val.assign(std::to_string(uid));
+    std::string tmp_val = std::to_string(uid);
     std::string user = _user_db->GetUserName(uid);
-    if (!_builder->AddField(name, _tmp_val, user.c_str(), ft)) {
+    if (!_builder->AddField(name, tmp_val, user.c_str(), ft)) {
         throw std::runtime_error("Queue closed");
     }
     return true;
 }
 
 bool RawEventProcessor::add_gid_field(const std::string_view& name, int gid, field_type_t ft) {
-    _tmp_val.assign(std::to_string(gid));
+    std::string tmp_val = std::to_string(gid);
     std::string user = _user_db->GetGroupName(gid);
-    if (!_builder->AddField(name, _tmp_val, user.c_str(), ft)) {
+    if (!_builder->AddField(name, tmp_val, user.c_str(), ft)) {
         throw std::runtime_error("Queue closed");
     }
     return true;
@@ -1005,7 +1009,8 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
 
     pinfo->format_cmdline(_cmdline);
 
-    _cmdline_redactor->ApplyRules(_cmdline, _tmp_val);
+    std::string tmp_val;
+    _cmdline_redactor->ApplyRules(_cmdline, tmp_val);
 
     bool cmdline_truncated = pinfo->is_cmdline_truncated();
 
@@ -1013,7 +1018,7 @@ bool RawEventProcessor::generate_proc_event(ProcessInfo* pinfo, uint64_t sec, ui
         return false;
     }
 
-    if (!add_str_field("redactors"sv, _tmp_val, field_type_t::UNESCAPED)) {
+    if (!add_str_field("redactors"sv, tmp_val, field_type_t::UNESCAPED)) {
         return false;
     }
 
