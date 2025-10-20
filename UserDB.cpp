@@ -243,7 +243,11 @@ int UserDB::get_user_list(std::vector<std::pair<int, std::string>>& users) {
             break; // Exit on read failure
         }
 
-        users.emplace_back(static_cast<int>(user_id), user_name);
+        if (user_name != nullptr) {
+            users.emplace_back(static_cast<int>(user_id), std::string(user_name));
+        } else {
+            Logger::Error("Received null user_name for user_id %u, skipping", user_id);
+        }
         sd_bus_message_exit_container(msg);
     }
 
