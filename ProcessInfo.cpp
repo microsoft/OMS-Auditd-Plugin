@@ -18,6 +18,7 @@
 #include "Logger.h"
 #include "StringUtils.h"
 #include "ExecveConverter.h"
+#include "AuomsConfig.h"
 
 #include <algorithm>
 #include <climits>
@@ -93,12 +94,13 @@ int ProcessInfo::read_and_parse_stat(int pid) {
     std::array<char, 64> path;
     std::array<char, 2048> data;
 
-    snprintf(path.data(), path.size(), "/proc/%d/stat", pid);
+    auto& proc_path = AuomsConfig::GetInstance().GetProcPath();
+    snprintf(path.data(), path.size(), "%s/%d/stat", proc_path.c_str(), pid);
 
     int fd = ::open(path.data(), O_RDONLY|O_CLOEXEC);
     if (fd < 0) {
         if (errno != ENOENT && errno != ESRCH) {
-            Logger::Warn("Failed to open /proc/%d/stat: %s", pid, strerror(errno));
+            Logger::Warn("Failed to open %s/%d/stat: %s", proc_path.c_str(), pid, strerror(errno));
         }
         return -1;
     }
@@ -108,7 +110,7 @@ int ProcessInfo::read_and_parse_stat(int pid) {
         close(fd);
         // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
         if (nr < 0 && errno != ENOENT && errno != ESRCH) {
-            Logger::Warn("Failed to read /proc/%d/stat: %s", pid, strerror(errno));
+            Logger::Warn("Failed to read %s/%d/stat: %s", proc_path.c_str(), pid, strerror(errno));
         }
         return -1;
     }
@@ -274,12 +276,13 @@ int ProcessInfo::read_and_parse_status(int pid) {
     std::array<char, 64> path;
     std::array<char, 8192> data;
 
-    snprintf(path.data(), path.size(), "/proc/%d/status", pid);
+    auto& proc_path = AuomsConfig::GetInstance().GetProcPath();
+    snprintf(path.data(), path.size(), "%s/%d/status", proc_path.c_str(), pid);
 
     int fd = ::open(path.data(), O_RDONLY|O_CLOEXEC);
     if (fd < 0) {
         if (errno != ENOENT && errno != ESRCH) {
-            Logger::Warn("Failed to open /proc/%d/status: %s", pid, strerror(errno));
+            Logger::Warn("Failed to open %s/%d/status: %s", proc_path.c_str(), pid, strerror(errno));
         }
         return -1;
     }
@@ -289,7 +292,7 @@ int ProcessInfo::read_and_parse_status(int pid) {
         close(fd);
         // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
         if (nr < 0 && errno != ENOENT && errno != ESRCH) {
-            Logger::Warn("Failed to read /proc/%d/status: %s", pid, strerror(errno));
+            Logger::Warn("Failed to read %s/%d/status: %s", proc_path.c_str(), pid, strerror(errno));
         }
         return -1;
     }
@@ -440,12 +443,13 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
     std::array<char, 64> path;
     std::array<char, 2048> data;
 
-    snprintf(path.data(), path.size(), "/proc/%d/cgroup", pid);
+    auto& proc_path = AuomsConfig::GetInstance().GetProcPath();
+    snprintf(path.data(), path.size(), "%s/%d/cgroup", proc_path.c_str(), pid);
 
     int fd = ::open(path.data(), O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
         if (errno != ENOENT && errno != ESRCH) {
-            Logger::Warn("Failed to open /proc/%d/cgroup: %s", pid, strerror(errno));
+            Logger::Warn("Failed to open %s/%d/cgroup: %s", proc_path.c_str(), pid, strerror(errno));
         }
         return -1;
     }
@@ -454,7 +458,7 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
     if (nr <= 0) {
         close(fd);
         if (nr < 0 && errno != ENOENT && errno != ESRCH) {
-            Logger::Warn("Failed to read /proc/%d/cgroup: %s", pid, strerror(errno));
+            Logger::Warn("Failed to read %s/%d/cgroup: %s", proc_path.c_str(), pid, strerror(errno));
         }
         return -1;
     }
@@ -467,12 +471,13 @@ int ProcessInfo::read_and_parse_cgroup(int pid) {
 bool ProcessInfo::read(int pid) {
     std::array<char, 64> path;
 
-    snprintf(path.data(), path.size(), "/proc/%d/exe", pid);
+    auto& proc_path = AuomsConfig::GetInstance().GetProcPath();
+    snprintf(path.data(), path.size(), "%s/%d/exe", proc_path.c_str(), pid);
 
     int pret = read_and_parse_stat(pid);
     if (pret != 0) {
         if (pret > 0) {
-            Logger::Warn("Failed to parse /proc/%d/stat", pid);
+            Logger::Warn("Failed to parse %s/%d/stat", proc_path.c_str(), pid);
         }
         return false;
     }
@@ -480,7 +485,7 @@ bool ProcessInfo::read(int pid) {
     pret = read_and_parse_status(pid);
     if (pret != 0) {
         if (pret > 0) {
-            Logger::Warn("Failed to parse /proc/%d/status", pid);
+            Logger::Warn("Failed to parse %s/%d/status", proc_path.c_str(), pid);
         }
         return false;
     }
@@ -494,7 +499,7 @@ bool ProcessInfo::read(int pid) {
             // EACCES (Permission denied) will be seen occasionally (probably due to racy nature of /proc iteration)
             // ONly emit error if it wasn't EACCES or ESRCH
             if (errno != EACCES && errno != ESRCH) {
-                Logger::Warn("Failed to readlink /proc/%d/exe: %s", pid, strerror(errno));
+                Logger::Warn("Failed to readlink %s/%d/exe: %s", proc_path.c_str(), pid, strerror(errno));
             }
             return false;
     }
@@ -503,11 +508,11 @@ bool ProcessInfo::read(int pid) {
     // Kernel processes will not have anything in the cmdline file.
     if (exe_status == 1 && _cmdline_size_limit > 0) {
         // The Event field value size limit is UINT16_MAX (including NULL terminator)
-        snprintf(path.data(), path.size(), "/proc/%d/cmdline", pid);
+        snprintf(path.data(), path.size(), "%s/%d/cmdline", proc_path.c_str(), pid);
         if (!read_file(path.data(), _cmdline, _cmdline_size_limit, _cmdline_truncated)) {
             // Only generate a log message if the error was something other than ENOENT (No such file or directory) or ESRCH (No such process)
             if (errno != ENOENT && errno != ESRCH) {
-                Logger::Warn("Failed to read /proc/%d/cmdline: %s", pid, strerror(errno));
+                Logger::Warn("Failed to read %s/%d/cmdline: %s", proc_path.c_str(), pid, strerror(errno));
             }
             return false;
         }
@@ -574,7 +579,8 @@ void ProcessInfo::clear() {
 }
 
 std::unique_ptr<ProcessInfo> ProcessInfo::Open(int cmdline_size_limit) {
-    DIR *dp = opendir("/proc");
+    auto& proc_path = AuomsConfig::GetInstance().GetProcPath();
+    DIR *dp = opendir(proc_path.c_str());
 
     if (dp == nullptr) {
         return std::unique_ptr<ProcessInfo>();

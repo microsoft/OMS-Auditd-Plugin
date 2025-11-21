@@ -66,6 +66,7 @@ public:
     const std::string& GetCollectorConfigPath() const;
     const std::string& GetRulesDir() const;
     const std::string& GetOutconfDir() const;
+    const std::string& GetProcPath() const;
 
     uint64_t GetRSSLimit() const;
     uint64_t GetVirtLimit() const;
@@ -91,6 +92,7 @@ private:
     std::string _rules_dir = AUOMS_RULES_DIR;
     std::string _redact_dir = AUOMS_REDACT_DIR;
     std::string _data_dir = AUOMS_DATA_DIR;
+    std::string _proc_path = "/proc";
     std::string _run_dir = AUOMS_RUN_DIR;
     std::string _input_socket_path;
     std::string _status_socket_path;
@@ -152,4 +154,5 @@ private:
     static std::string KEY_DISABLE_CGROUPS;
     static std::string KEY_DISABLE_EVENT_FILTERING;
     static std::string KEY_DEFAULT_EVENT_PRIORITY;
+    static std::string KEY_PROC_PATH;
 };
