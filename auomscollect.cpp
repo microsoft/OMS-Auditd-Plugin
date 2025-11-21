@@ -29,6 +29,7 @@
 #include "FileWatcher.h"
 #include "Defer.h"
 #include "Gate.h"
+#include "AuomsConfig.h"
 #include "FileUtils.h"
 #include "Metrics.h"
 #include "ProcMetrics.h"
@@ -219,7 +220,8 @@ bool DoNetlinkCollection(SPSCDataQueue& raw_queue, std::shared_ptr<Metric>& byte
     uint32_t pid = status.pid;
     uint32_t enabled = status.enabled;
 
-    if (pid != 0 && PathExists("/proc/" + std::to_string(pid))) {
+    auto& proc_path = AuomsConfig::GetInstance().GetProcPath();
+    if (pid != 0 && PathExists(proc_path + "/" + std::to_string(pid))) {
         Logger::Error("There is another process (pid = %d) already assigned as the audit collector", pid);
         return false;
     }

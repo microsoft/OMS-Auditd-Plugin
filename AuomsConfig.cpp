@@ -46,6 +46,7 @@ std::string AuomsConfig::KEY_USE_SYSLOG = "use_syslog";
 std::string AuomsConfig::KEY_DISABLE_CGROUPS = "disable_cgroups";
 std::string AuomsConfig::KEY_DISABLE_EVENT_FILTERING = "disable_event_filtering";
 std::string AuomsConfig::KEY_DEFAULT_EVENT_PRIORITY = "default_event_priority";
+std::string AuomsConfig::KEY_PROC_PATH = "proc_path";
 
 std::unique_ptr<AuomsConfig> AuomsConfig::_instance;
 std::once_flag AuomsConfig::_initFlag;
@@ -65,6 +66,9 @@ AuomsConfig::Load(const std::string& path) {
     }
     if (HasKey(KEY_DATA_DIR)) {
         _data_dir = GetString(KEY_DATA_DIR);
+    }
+    if (HasKey(KEY_PROC_PATH)) {
+        _proc_path = GetString(KEY_PROC_PATH);
     }
     if (HasKey(KEY_RUN_DIR)) {
         _run_dir = GetString(KEY_RUN_DIR);
@@ -346,6 +350,12 @@ const std::string&
 AuomsConfig::GetOutconfDir() const {
     std::shared_lock<std::shared_mutex> lock(_mutex);
     return _outconf_dir;  
+}
+
+const std::string&
+AuomsConfig::GetProcPath() const {
+    std::shared_lock<std::shared_mutex> lock(_mutex);
+    return _proc_path;
 }
 
 long
