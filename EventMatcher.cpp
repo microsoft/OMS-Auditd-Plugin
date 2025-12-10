@@ -44,7 +44,7 @@ static std::unordered_map<std::string, FieldMatchRuleOp> s_opName2op = {
 
 std::shared_ptr<FieldMatchRule> FieldMatchRule::FromJSON(const rapidjson::Value& value) {
     if (!value.IsObject()) {
-        throw new std::invalid_argument("FieldMatchRule::FromJSON(): value is not a JSON object");
+        throw std::invalid_argument("FieldMatchRule::FromJSON(): value is not a JSON object");
     }
 
     std::string name;
@@ -54,42 +54,42 @@ std::shared_ptr<FieldMatchRule> FieldMatchRule::FromJSON(const rapidjson::Value&
 
     auto m = value.FindMember("name");
     if (m == value.MemberEnd()) {
-        throw new std::invalid_argument("FieldMatchRule::FromJSON(): Missing 'name'");
+        throw std::invalid_argument("FieldMatchRule::FromJSON(): Missing 'name'");
     }
     name = m->value.GetString();
 
     m = value.FindMember("op");
     if (m == value.MemberEnd()) {
-        throw new std::invalid_argument("FieldMatchRule::FromJSON(): Missing 'op'");
+        throw std::invalid_argument("FieldMatchRule::FromJSON(): Missing 'op'");
     }
     op_name = m->value.GetString();
 
     m = value.FindMember("value");
     if (m != value.MemberEnd()) {
         if (value.HasMember("values")) {
-            throw new std::invalid_argument("FieldMatchRule::FromJSON(): Only one of 'value' or 'values' is allowed");
+            throw std::invalid_argument("FieldMatchRule::FromJSON(): Only one of 'value' or 'values' is allowed");
         }
 
         if (!m->value.IsString()) {
-            throw new std::invalid_argument("FieldMatchRule::FromJSON(): Invalid JSON type for 'value', must be a string");
+            throw std::invalid_argument("FieldMatchRule::FromJSON(): Invalid JSON type for 'value', must be a string");
         }
         values.emplace_back(m->value.GetString());
     } else {
         m = value.FindMember("values");
         
         if (m == value.MemberEnd()) {
-            throw new std::invalid_argument("FieldMatchRule::FromJSON(): Missing values, one of 'value' or 'values' required");
+            throw std::invalid_argument("FieldMatchRule::FromJSON(): Missing values, one of 'value' or 'values' required");
         }
         if (!m->value.IsArray()) {
-            throw new std::invalid_argument("FieldMatchRule::FromJSON(): Invalid JSON type for 'values', must be an array");
+            throw std::invalid_argument("FieldMatchRule::FromJSON(): Invalid JSON type for 'values', must be an array");
         }
         if (m->value.Size() == 0) {
-            throw new std::invalid_argument("FieldMatchRule::FromJSON(): 'values' array is empty");
+            throw std::invalid_argument("FieldMatchRule::FromJSON(): 'values' array is empty");
         }
         values.reserve(m->value.Size());
         for (auto it = m->value.Begin(); it != m->value.End(); ++it) {
             if (!it->IsString()) {
-                throw new std::invalid_argument("FieldMatchRule::FromJSON(): Invalid JSON type for entry in 'values' array");
+                throw std::invalid_argument("FieldMatchRule::FromJSON(): Invalid JSON type for entry in 'values' array");
             }
             values.emplace_back(it->GetString());
         }
@@ -99,7 +99,7 @@ std::shared_ptr<FieldMatchRule> FieldMatchRule::FromJSON(const rapidjson::Value&
 
     auto opit = s_opName2op.find(op_name);
     if (opit == s_opName2op.end()) {
-            throw new std::invalid_argument(std::string("FieldMatchRule::FromJSON(): Invalid op value: ") + op_name);
+            throw std::invalid_argument(std::string("FieldMatchRule::FromJSON(): Invalid op value: ") + op_name);
     }
 
     return std::make_shared<FieldMatchRule>(name, opit->second, values);
@@ -168,23 +168,23 @@ std::string FieldMatchRule::ToJSONString() const {
 
 std::shared_ptr<EventMatchRule> EventMatchRule::FromJSON(const rapidjson::Value& value) {
     if (!value.IsObject()) {
-        throw new std::invalid_argument("EventMatchRule::FromJSON(): value is not a JSON object");
+        throw std::invalid_argument("EventMatchRule::FromJSON(): value is not a JSON object");
     }
 
     auto m = value.FindMember("record_types");
     if (m == value.MemberEnd()) {
-        throw new std::invalid_argument("EventMatchRule::FromJSON(): Missing 'record_types'");
+        throw std::invalid_argument("EventMatchRule::FromJSON(): Missing 'record_types'");
     }
     std::unordered_set<RecordType> rctypes;
     if (!m->value.IsArray()) {
-        throw new std::invalid_argument("EventMatchRule::FromJSON(): Invalid JSON type for 'record_types', must be an array");
+        throw std::invalid_argument("EventMatchRule::FromJSON(): Invalid JSON type for 'record_types', must be an array");
     }
     if (m->value.Size() == 0) {
-        throw new std::invalid_argument("EventMatchRule::FromJSON(): 'record_types' array is empty");
+        throw std::invalid_argument("EventMatchRule::FromJSON(): 'record_types' array is empty");
     }
     for (auto it = m->value.Begin(); it != m->value.End(); ++it) {
         if (!it->IsString()) {
-            throw new std::invalid_argument("EventMatchRule::FromJSON(): Invalid JSON type for entry in 'record_types' array");
+            throw std::invalid_argument("EventMatchRule::FromJSON(): Invalid JSON type for entry in 'record_types' array");
         }
         auto rc = RecordNameToType(std::string_view(it->GetString(), it->GetStringLength()));
         rctypes.emplace(rc);
@@ -192,13 +192,13 @@ std::shared_ptr<EventMatchRule> EventMatchRule::FromJSON(const rapidjson::Value&
 
     m = value.FindMember("field_rules");
     if (m == value.MemberEnd()) {
-        throw new std::invalid_argument("EventMatchRule::FromJSON(): Missing 'field_rules'");
+        throw std::invalid_argument("EventMatchRule::FromJSON(): Missing 'field_rules'");
     }
     if (!m->value.IsArray()) {
-        throw new std::invalid_argument("EventMatchRule::FromJSON(): Invalid JSON type for 'field_rules', must be an array");
+        throw std::invalid_argument("EventMatchRule::FromJSON(): Invalid JSON type for 'field_rules', must be an array");
     }
     if (m->value.Size() == 0) {
-        throw new std::invalid_argument("EventMatchRule::FromJSON(): 'field_rules' array is empty");
+        throw std::invalid_argument("EventMatchRule::FromJSON(): 'field_rules' array is empty");
     }
     std::vector<std::shared_ptr<FieldMatchRule>> rules;
     rules.reserve(m->value.Size());
