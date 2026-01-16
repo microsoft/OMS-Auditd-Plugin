@@ -71,7 +71,6 @@ private:
     std::string _syscall;
     std::string _field_name;
     std::string _unescaped_val;
-    std::string _tmp_val;
     std::string _cmdline;
     std::string _path_name;
     std::string _path_nametype;
