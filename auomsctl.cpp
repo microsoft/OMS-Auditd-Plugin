@@ -556,14 +556,15 @@ bool is_service_sysv_enabled() {
 bool is_service_enabled() {
     std::string service_name(AUOMS_SERVICE_NAME);
     std::string path = SYSTEMCTL_PATH;
+    std::string auoms_init_script_path = "/etc/init.d/" + service_name;
     if (!PathExists(path)) {
         return is_service_sysv_enabled();
-    } else {
+    } else if (PathExists(auoms_init_script_path)) {
         // On some systemd systems the presence of /etc/init.d/auoms will cause "systemctl is-enabled" to return invalid service status
         // We attempt to remove the file before checking service status
-        if (unlink("/etc/init.d/auoms") != 0) {
+        if (unlink(auoms_init_script_path.c_str()) != 0) {
             if (errno != ENOENT) {
-                throw std::system_error(errno, std::system_category(), "Failed to remove /etc/init.d/auoms: ");
+                throw std::system_error(errno, std::system_category(), "Failed to remove " + auoms_init_script_path + ": ");
             }
         }
     }
