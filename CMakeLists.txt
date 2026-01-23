@@ -28,8 +28,10 @@ if(DO_STATIC_LINK)
     # and https://www.gnu.org/licenses/gcc-exception-3.1-faq.en.html
     # for why it is safe to use -static-libgcc -static-libstdc++
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,relro -Wl,-z,now -static-libgcc -static-libstdc++ -Wl,--no-as-needed -lrt -Wl,--as-needed")
+    set(RE2_LIBS ${RE2_LIBS})
 else()
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
+    set(RE2_LIBS re2)
 endif()
 
 if (DEPS_INCLUDE)
@@ -105,7 +107,7 @@ add_executable(auomscollect
 target_compile_options(auomscollect PRIVATE "-Werror")
 
 target_link_libraries(auomscollect
-        libre2.a
+        ${RE2_LIBS}
         dl
         pthread
         rt
@@ -130,6 +132,7 @@ add_executable(auoms
         env_config.h
         auoms.cpp
         auoms_version.h
+        AuomsConfig.cpp
         IO.cpp
         Event.cpp
         EventPrioritizer.cpp
@@ -193,7 +196,7 @@ add_executable(auoms
 target_compile_options(auoms PRIVATE "-Werror")
 
 target_link_libraries(auoms
-        libre2.a
+        ${RE2_LIBS}
         dl
         pthread
         rt
@@ -248,7 +251,7 @@ add_executable(auomsctl
 target_compile_options(auomsctl PRIVATE "-Werror")
 
 target_link_libraries(auomsctl
-        libre2.a
+        ${RE2_LIBS}
         pthread
         rt
 )
@@ -454,7 +457,7 @@ if(NOT DO_STATIC_LINK)
 endif()
 
 target_link_libraries(EventProcessorTests ${Boost_LIBRARIES}
-        libre2.a
+        ${RE2_LIBS}
         dl
         pthread
         rt
@@ -480,7 +483,7 @@ add_executable(ProcessInfoTests
 )
 
 target_link_libraries(ProcessInfoTests ${Boost_LIBRARIES}
-    libre2.a
+    ${RE2_LIBS}
     dl
     pthread
     rt
@@ -514,7 +517,7 @@ if(NOT DO_STATIC_LINK)
 endif()
 
 target_link_libraries(ProcessTreeTests ${Boost_LIBRARIES}
-        libre2.a
+        ${RE2_LIBS}
         dl
         pthread
         rt
@@ -571,7 +574,7 @@ if(NOT DO_STATIC_LINK)
 endif()
 
 target_link_libraries(OMSEventWriterTests ${Boost_LIBRARIES}
-        libre2.a
+        ${RE2_LIBS}
         pthread
 )
 
@@ -597,7 +600,7 @@ if(NOT DO_STATIC_LINK)
 endif()
 
 target_link_libraries(FluentEventWriterTests ${Boost_LIBRARIES}
-        libre2.a
+        ${RE2_LIBS}
         pthread
 )
 
@@ -640,7 +643,7 @@ if(NOT DO_STATIC_LINK)
 endif()
 
 target_link_libraries(OutputInputTests
-        libre2.a
+        ${RE2_LIBS}
         ${Boost_LIBRARIES}
         pthread
 )
@@ -663,7 +666,7 @@ if(NOT DO_STATIC_LINK)
 endif()
 
 target_link_libraries(CmdlineRedactorTests
-        libre2.a
+        ${RE2_LIBS}
         ${Boost_LIBRARIES}
         pthread
 )
@@ -686,7 +689,7 @@ if(NOT DO_STATIC_LINK)
 endif()
 
 target_link_libraries(EventMatcherTests
-        libre2.a
+        ${RE2_LIBS}
         ${Boost_LIBRARIES}
         pthread
 )
@@ -710,7 +713,7 @@ if(NOT DO_STATIC_LINK)
 endif()
 
 target_link_libraries(EventAggregatorTests
-        libre2.a
+        ${RE2_LIBS}
         ${Boost_LIBRARIES}
         pthread
 )
