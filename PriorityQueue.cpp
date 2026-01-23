@@ -686,14 +686,8 @@ int PriorityQueue::Put(uint32_t priority, const void* data, size_t size) {
 
     _stats._priority_stats[priority]._num_items_added += 1;
 
-    std::vector<std::shared_ptr<QueueCursor>> cursors;
-    cursors.reserve(_cursors.size());
     for (auto& c : _cursors) {
-        cursors.emplace_back(c.second);
-    }
-
-    for (auto& c : cursors) {
-        c->notify(priority, item->Sequence());
+        c.second->notify(priority, item->Sequence());
     }
 
     return 1;
