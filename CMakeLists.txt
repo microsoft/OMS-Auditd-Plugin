@@ -66,6 +66,7 @@ add_executable(auomscollect
         env_config.h
         auoms_version.h
         auomscollect.cpp
+        AuomsConfig.cpp
         IO.cpp
         Event.cpp
         EventPrioritizer.cpp
@@ -130,6 +131,7 @@ add_executable(auoms
         env_config.h
         auoms.cpp
         auoms_version.h
+        AuomsConfig.cpp
         IO.cpp
         Event.cpp
         EventPrioritizer.cpp
@@ -160,6 +162,7 @@ add_executable(auoms
         CollectionMonitor.cpp
         Netlink.cpp
         NetlinkAudit.cpp
+        NetlinkCollectionMonitor.cpp
         TranslateArch.cpp
         TranslateSyscall.cpp
         TranslateRecordType.cpp
@@ -420,6 +423,7 @@ add_test(String ${CMAKE_BINARY_DIR}/StringTests --log_sink=StringTests.log --rep
 add_executable(EventProcessorTests
         auoms_version.h
         EventProcessorTests.cpp
+        AuomsConfig.cpp
         Event.cpp
         RawEventProcessor.cpp
         RawEventAccumulator.cpp
@@ -465,6 +469,7 @@ add_test(EventProcessor ${CMAKE_BINARY_DIR}/EventProcessorTests --log_sink=Event
 add_executable(ProcessInfoTests
     auoms_version.h
     ProcessInfoTests.cpp
+    AuomsConfig.cpp
     Event.cpp
     Signals.cpp
     Logger.cpp
@@ -495,6 +500,7 @@ add_test(NAME ProcessInfoTests COMMAND ProcessInfoTests)
 add_executable(ProcessTreeTests
         auoms_version.h
         ProcessTreeTests.cpp
+        AuomsConfig.cpp
         Event.cpp
         Signals.cpp
         Logger.cpp

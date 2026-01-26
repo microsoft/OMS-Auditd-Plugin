@@ -18,6 +18,7 @@
 #include "Logger.h"
 #include "FileUtils.h"
 #include "StringUtils.h"
+#include "AuomsConfig.h"
 
 void SystemMetrics::run() {
     Logger::Info("SystemMetrics: starting");
@@ -53,7 +54,8 @@ bool read_proc_stat(uint64_t *cpu_user, uint64_t *cpu_user_nice, uint64_t *cpu_s
     *cpu_idle = 0;
     *num_cpu = 0;
     try {
-        auto lines = ReadFile("/proc/stat");
+        auto& proc_path = AuomsConfig::GetInstance().GetProcPath();
+        auto lines = ReadFile(proc_path + "/stat");
         if (lines.empty()) {
             return false;
         }
@@ -76,7 +78,8 @@ bool read_proc_stat(uint64_t *cpu_user, uint64_t *cpu_user_nice, uint64_t *cpu_s
 
 bool read_proc_meminfo(uint64_t *total_mem, uint64_t *free_mem) {
     try {
-        auto lines = ReadFile("/proc/meminfo");
+        auto& proc_path = AuomsConfig::GetInstance().GetProcPath();
+        auto lines = ReadFile(proc_path + "/meminfo");
         if (lines.empty()) {
             return false;
         }
