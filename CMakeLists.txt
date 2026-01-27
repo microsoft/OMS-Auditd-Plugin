@@ -223,6 +223,7 @@ add_executable(auomsctl
         Netlink.cpp
         NetlinkAudit.cpp
         AuditStatus.cpp AuditStatus.h
+        AuomsConfig.cpp
         RunBase.cpp
         Signals.cpp
         Logger.cpp
