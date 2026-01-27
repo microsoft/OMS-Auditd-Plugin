@@ -41,6 +41,7 @@
 #include "env_config.h"
 #include "KernelInfo.h"
 #include "CmdlineRedactor.h"
+#include "AuomsConfig.h"
 
 #define AUOMS_SERVICE_NAME "auoms"
 #define AUDITD_SERVICE_NAME "auditd"
@@ -1351,8 +1352,9 @@ int monitor_auoms_events() {
         return 1;
     }
 
+    AuomsConfig::GetInstance().Load(AUOMS_CONF_FILE);
     std::string sock_path = std::string(AUOMS_RUN_DIR) + "/auomsctl.socket";
-    std::string config_path = std::string(AUOMS_OUTCONF_DIR) + "/auomsctl.conf";
+    std::string config_path = AuomsConfig::GetInstance().GetOutconfDir() + "/auomsctl.conf";
 
     UnixDomainListener listener(sock_path, 0666);
     if (!listener.Open()) {
