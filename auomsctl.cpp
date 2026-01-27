@@ -1352,7 +1352,7 @@ int monitor_auoms_events() {
         return 1;
     }
 
-    AuomsConfig::GetInstance().Load(AUOMS_CONF_FILE);
+    AuomsConfig::GetInstance().Load(AUOMS_CONF);
     std::string sock_path = std::string(AUOMS_RUN_DIR) + "/auomsctl.socket";
     std::string config_path = AuomsConfig::GetInstance().GetOutconfDir() + "/auomsctl.conf";
 
