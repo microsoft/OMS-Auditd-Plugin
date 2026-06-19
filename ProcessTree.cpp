@@ -307,7 +307,7 @@ void ProcessTree::AddPid(int pid, int ppid)
             process->_cmdline = parent->_cmdline;
             process->_containerid = parent->_containerid;
             process->_exec_propagation = parent->_exec_propagation;
-            parent->_children.emplace_back(pid);
+            LinkChild(parent, pid);
             process->_ancestors = parent->_ancestors;
             struct Ancestor anc = {ppid, parent->_exe};
             process->_ancestors.emplace_back(anc);
@@ -364,16 +364,12 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
         if (ppid != process->_ppid) {
             auto it2 = _processes.find(process->_ppid);
             if (it2 != _processes.end()) {
-                auto oldparent = it2->second;
-                auto e = std::find(oldparent->_children.begin(), oldparent->_children.end(), pid);
-                if (e != oldparent->_children.end()) {
-                    oldparent->_children.erase(e);
-                }
+                UnlinkChild(it2->second, pid);
             }
             it2 = _processes.find(ppid);
             if (it2 != _processes.end()) {
                 auto parentproc = it2->second;
-                parentproc->_children.emplace_back(pid);
+                LinkChild(parentproc, pid);
                 {
                     std::lock_guard<std::mutex> _lock(process->_mutex);
                     if (!(parentproc->_containeridfromhostprocess).empty()) {
@@ -423,7 +419,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::AddProcess(enum ProcessTreeSource 
         auto it2 = _processes.find(ppid);
         if (it2 != _processes.end()) {
             auto parentproc = it2->second;
-            parentproc->_children.emplace_back(pid);
+            LinkChild(parentproc, pid);
             {
                 std::lock_guard<std::mutex> _lock(process->_mutex);
                 if (!(parentproc->_containeridfromhostprocess).empty()) {
@@ -496,10 +492,22 @@ void ProcessTree::Clean()
     std::unique_lock<std::mutex> process_write_lock(_process_write_mutex);
 
     for (auto element = _processes.begin(); element != _processes.end();) {
-        if (element->second->_exited || proc_is_gone(element->second->_pid)) {
-            std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - element->second->_exit_time;
+        auto& proc = element->second;
+        bool gone = proc->_exited || proc_is_gone(proc->_pid);
+        if (gone && !proc->_exited) {
+            // First time we noticed it disappeared from /proc; stamp exit_time
+            // so the timeout below has a stable reference and we don't keep it forever.
+            proc->_exited = true;
+            proc->_exit_time = std::chrono::system_clock::now();
+        }
+        if (gone) {
+            std::chrono::duration<double> elapsed_seconds = std::chrono::system_clock::now() - proc->_exit_time;
             if (elapsed_seconds.count() > CLEAN_PROCESS_TIMEOUT) {
-                // remove this process
+                // Detach from parent so long-lived parents don't accumulate stale child pids.
+                auto pit = _processes.find(proc->_ppid);
+                if (pit != _processes.end()) {
+                    UnlinkChild(pit->second, proc->_pid);
+                }
                 element = _processes.erase(element);
                 // back round the loop without iterating (as the erase() gave us the next item)
                 continue;
@@ -507,6 +515,27 @@ void ProcessTree::Clean()
         }
         element++;
     }
+}
+
+void ProcessTree::LinkChild(const std::shared_ptr<ProcessTreeItem>& parent, int pid)
+{
+    if (!parent) {
+        return;
+    }
+    auto& v = parent->_children;
+    if (std::find(v.begin(), v.end(), pid) == v.end()) {
+        v.emplace_back(pid);
+    }
+}
+
+void ProcessTree::UnlinkChild(const std::shared_ptr<ProcessTreeItem>& parent, int pid)
+{
+    if (!parent) {
+        return;
+    }
+    auto& v = parent->_children;
+    // Remove all occurrences in case duplicates were inserted before this fix shipped.
+    v.erase(std::remove(v.begin(), v.end(), pid), v.end());
 }
 
 std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
@@ -522,7 +551,7 @@ std::shared_ptr<ProcessTreeItem> ProcessTree::GetInfoForPid(int pid)
             auto it2 = _processes.find(process->_ppid);
             if (it2 != _processes.end()) {
                 auto parentproc = it2->second;
-                parentproc->_children.emplace_back(pid);
+                LinkChild(parentproc, pid);
                 if (!(parentproc->_containeridfromhostprocess).empty()) {
                     process->_containerid = parentproc->_containeridfromhostprocess;
                 } else {
@@ -595,7 +624,7 @@ void ProcessTree::PopulateTree()
         auto process = p.second;
         auto it = _processes.find(process->_ppid);
         if (it != _processes.end()) {
-            it->second->_children.emplace_back(process->_pid);
+            LinkChild(it->second, process->_pid);
         }
     }
 

@@ -242,6 +242,10 @@ private:
     std::shared_ptr<ProcessTreeItem> ReadProcEntry(int pid);
     void ApplyFlags(const std::shared_ptr<ProcessTreeItem>& process);
     void SetContainerId(const std::shared_ptr<ProcessTreeItem>& p, const std::string& containerid);
+    // Bounded child-link helpers: keep parent->_children unique and clean up
+    // when a child is erased so long-lived parents don't accumulate stale pids.
+    static void LinkChild(const std::shared_ptr<ProcessTreeItem>& parent, int pid);
+    static void UnlinkChild(const std::shared_ptr<ProcessTreeItem>& parent, int pid);
 
     std::shared_ptr<UserDB> _user_db;
     std::shared_ptr<FiltersEngine> _filtersEngine;
