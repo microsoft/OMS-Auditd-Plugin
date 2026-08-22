@@ -847,7 +847,7 @@ std::shared_ptr<QueueItemBucket> PriorityQueue::cycle_bucket(uint32_t priority) 
                 auto bucket = fitr->second._bucket;
                 num_unsaved -= 1;
                 Logger::Warn(
-                        "PriorityQueue: Unsaved items (priority = %d, sequence [%ld to %ld]) where removed due to memory limit being exceeded",
+                        "PriorityQueue: Unsaved items (priority = %d, sequence [%ld to %ld]) were removed due to memory limit being exceeded",
                         file->Priority(), bucket->MinSequence(), bucket->MaxSequence());
                 _stats._priority_stats[bucket->Priority()]._bytes_dropped += bucket->Size();
                 _files[file->Priority()].erase(file->Sequence());
